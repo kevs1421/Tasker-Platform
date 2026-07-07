@@ -1,0 +1,1978 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useAuthStore } from '@/stores/auth'
+import type { Project, Task, Subtask, Comment, Message, User } from '@/types'
+import {
+  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
+  formatDate, formatRelativeTime,
+} from '@/features/route-guard'
+
+// shadcn/ui
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Calendar } from '@/components/ui/calendar'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  DialogFooter, DialogDescription,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+
+// date-fns
+import { format, isPast, isToday, parseISO } from 'date-fns'
+
+// toast
+import { toast } from 'sonner'
+
+// framer-motion
+import { motion, AnimatePresence } from 'framer-motion'
+
+// lucide-react
+import {
+  Plus, Search, MoreHorizontal, Trash2, LayoutGrid, List,
+  Send, MessageSquare, CalendarIcon, Tag, Users, FolderKanban,
+  CircleDot, Clock, Eye, CheckCircle2, Circle, ChevronDown,
+  X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
+  Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
+  MessageCircle, Hash, AlertCircle,
+} from 'lucide-react'
+
+// ─── Helpers ────────────────────────────────────────────────
+
+const STATUS_COLUMNS = [
+  { key: 'todo' as const, label: 'To Do', color: 'bg-slate-400', bgColor: 'bg-slate-50 dark:bg-slate-900/40', headerBg: 'bg-slate-100 dark:bg-slate-800/60' },
+  { key: 'in_progress' as const, label: 'In Progress', color: 'bg-amber-500', bgColor: 'bg-amber-50/50 dark:bg-amber-900/20', headerBg: 'bg-amber-100 dark:bg-amber-900/40' },
+  { key: 'in_review' as const, label: 'In Review', color: 'bg-purple-500', bgColor: 'bg-purple-50/50 dark:bg-purple-900/20', headerBg: 'bg-purple-100 dark:bg-purple-900/40' },
+  { key: 'done' as const, label: 'Done', color: 'bg-emerald-500', bgColor: 'bg-emerald-50/50 dark:bg-emerald-900/20', headerBg: 'bg-emerald-100 dark:bg-emerald-900/40' },
+]
+
+const PROJECT_COLORS = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
+  '#14b8a6', '#06b6d4', '#8b5cf6', '#d946ef', '#ec4899',
+  '#64748b', '#78716c',
+]
+
+function cn(...classes: (string | false | undefined | null)[]) {
+  return classes.filter(Boolean).join(' ')
+}
+
+// ─── Shared Sub-components ──────────────────────────────────
+
+function LoadingCard() {
+  return (
+    <Card className="p-4">
+      <Skeleton className="h-4 w-3/4 mb-3" />
+      <Skeleton className="h-3 w-full mb-2" />
+      <Skeleton className="h-2 w-full mb-3" />
+      <div className="flex justify-between">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+    </Card>
+  )
+}
+
+function AvatarStack({ users, max = 3 }: { users: (User | undefined)[]; max?: number }) {
+  const visible = users.slice(0, max)
+  const extra = users.length - max
+  return (
+    <div className="flex -space-x-2">
+      {visible.map((u, i) =>
+        u ? (
+          <Avatar key={u.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/50" style={{ zIndex: visible.length - i }}>
+            <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+              {getInitials(u.name)}
+            </AvatarFallback>
+          </Avatar>
+        ) : null
+      )}
+      {extra > 0 && (
+        <div className="h-6 w-6 rounded-full bg-slate-200 dark:bg-slate-700 border-2 border-background flex items-center justify-center text-[10px] font-medium text-slate-600 dark:text-slate-300" style={{ zIndex: 0 }}>
+          +{extra}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MemberAvatar({ user, size = 'md' }: { user: User | undefined; size?: 'sm' | 'md' }) {
+  const sizeClasses = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm'
+  if (!user) return null
+  return (
+    <Avatar className={sizeClasses}>
+      <AvatarFallback className={cn('bg-slate-200 dark:bg-slate-700 font-medium')}>
+        {getInitials(user.name)}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function EmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center py-16 text-center"
+    >
+      <div className="h-14 w-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+        <Icon className="h-7 w-7 text-slate-400" />
+      </div>
+      <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
+      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+    </motion.div>
+  )
+}
+
+// ─── TeamProjects ───────────────────────────────────────────
+
+export function TeamProjects() {
+  const { user, setSelectedProjectId } = useAuthStore()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
+  const [expandedLoading, setExpandedLoading] = useState(false)
+  const [taskFilter, setTaskFilter] = useState<string>('all')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [createTaskLoading, setCreateTaskLoading] = useState(false)
+  const [createTaskProjectId, setCreateTaskProjectId] = useState<string>('')
+
+  // Create project form
+  const [projName, setProjName] = useState('')
+  const [projDesc, setProjDesc] = useState('')
+  const [projPriority, setProjPriority] = useState('medium')
+  const [projDueDate, setProjDueDate] = useState<Date>()
+  const [projColor, setProjColor] = useState(PROJECT_COLORS[0])
+  const [projCalendarOpen, setProjCalendarOpen] = useState(false)
+
+  // Create task form
+  const [taskTitle, setTaskTitle] = useState('')
+  const [taskDesc, setTaskDesc] = useState('')
+  const [taskStatus, setTaskStatus] = useState<'todo' | 'in_progress' | 'in_review' | 'done'>('todo')
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
+  const [taskDueDate, setTaskDueDate] = useState<Date>()
+  const [taskTags, setTaskTags] = useState('')
+  const [taskAssignee, setTaskAssignee] = useState<string>('')
+  const [taskCalendarOpen, setTaskCalendarOpen] = useState(false)
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      const data = await res.json()
+      const filtered = (data.projects || []).filter((p: Project) =>
+        p.members?.some((m) => m.userId === user?.id)
+      )
+      setProjects(filtered)
+    } catch {
+      toast.error('Failed to load projects')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  const handleExpand = async (projectId: string) => {
+    if (expandedId === projectId) {
+      setExpandedId(null)
+      setExpandedTasks([])
+      return
+    }
+    setExpandedId(projectId)
+    setTaskFilter('all')
+    setExpandedLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`)
+      const data = await res.json()
+      setExpandedTasks(data.project?.tasks || [])
+    } catch {
+      toast.error('Failed to load tasks')
+    } finally {
+      setExpandedLoading(false)
+    }
+  }
+
+  const handleCreateProject = async () => {
+    if (!projName.trim()) { toast.error('Project name is required'); return }
+    setCreateLoading(true)
+    try {
+      await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projName, description: projDesc || null, priority: projPriority,
+          dueDate: projDueDate ? projDueDate.toISOString() : null, color: projColor,
+        }),
+      })
+      toast.success('Project created')
+      setCreateOpen(false)
+      setProjName(''); setProjDesc(''); setProjPriority('medium')
+      setProjDueDate(undefined); setProjColor(PROJECT_COLORS[0])
+      fetchProjects()
+    } catch {
+      toast.error('Failed to create project')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
+  const handleCreateTask = async () => {
+    if (!taskTitle.trim()) { toast.error('Task title is required'); return }
+    setCreateTaskLoading(true)
+    try {
+      await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: taskTitle, description: taskDesc || null, status: taskStatus,
+          priority: taskPriority, projectId: createTaskProjectId,
+          dueDate: taskDueDate ? taskDueDate.toISOString() : null,
+          tags: taskTags, assigneeId: taskAssignee || null,
+        }),
+      })
+      toast.success('Task created')
+      setCreateTaskOpen(false)
+      setTaskTitle(''); setTaskDesc(''); setTaskStatus('todo')
+      setTaskPriority('medium'); setTaskDueDate(undefined)
+      setTaskTags(''); setTaskAssignee('')
+      if (expandedId === createTaskProjectId) handleExpand(createTaskProjectId)
+      else handleExpand(createTaskProjectId)
+    } catch {
+      toast.error('Failed to create task')
+    } finally {
+      setCreateTaskLoading(false)
+    }
+  }
+
+  const openCreateTaskForProject = (projectId: string) => {
+    setCreateTaskProjectId(projectId)
+    setCreateTaskOpen(true)
+  }
+
+  const getProjectTaskStats = (projectId: string) => {
+    if (expandedId !== projectId) return null
+    const total = expandedTasks.length
+    const done = expandedTasks.filter((t) => t.status === 'done').length
+    return { total, done }
+  }
+
+  const filteredTasks = taskFilter === 'all'
+    ? expandedTasks
+    : expandedTasks.filter((t) => t.status === taskFilter)
+
+  if (loading) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => <LoadingCard key={i} />)}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Team Projects</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {projects.length} project{projects.length !== 1 ? 's' : ''} you are assigned to
+          </p>
+        </div>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" /> Create Project
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Create New Project</DialogTitle>
+              <DialogDescription>Add a new project to your workspace.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Project Name</Label>
+                <Input placeholder="Enter project name" value={projName} onChange={(e) => setProjName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea placeholder="Describe the project..." value={projDesc} onChange={(e) => setProjDesc(e.target.value)} rows={3} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Priority</Label>
+                  <Select value={projPriority} onValueChange={setProjPriority}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Due Date</Label>
+                  <Popover open={projCalendarOpen} onOpenChange={setProjCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
+                        <CalendarIcon className="h-4 w-4" />
+                        {projDueDate ? format(projDueDate, 'PPP') : 'Pick a date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={projDueDate} onSelect={(d) => { setProjDueDate(d); setProjCalendarOpen(false) }} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Color</Label>
+                <div className="flex flex-wrap gap-2">
+                  {PROJECT_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      className={cn(
+                        'h-8 w-8 rounded-full transition-all ring-2',
+                        projColor === c ? 'ring-offset-2 ring-offset-background scale-110' : 'ring-transparent hover:scale-105',
+                      )}
+                      style={{ backgroundColor: c, ringColor: c }}
+                      onClick={() => setProjColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreateProject} disabled={createLoading} className="gap-2">
+                {createLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create Project
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Project Grid */}
+      {projects.length === 0 ? (
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="You haven't been assigned to any projects. Create one or ask an admin to assign you."
+        />
+      ) : (
+        <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AnimatePresence>
+            {projects.map((project, idx) => {
+              const totalTasks = project._count?.tasks || 0
+              const members = project.members || []
+              const memberUsers = members.map((m) => m.user).filter(Boolean) as User[]
+              const pConfig = getPriorityConfig(project.priority)
+              const isExpanded = expandedId === project.id
+              const stats = getProjectTaskStats(project.id)
+
+              return (
+                <motion.div
+                  key={project.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                >
+                  <Card
+                    className={cn(
+                      'overflow-hidden cursor-pointer transition-all hover:shadow-md',
+                      isExpanded && 'ring-1 ring-primary/20 shadow-md',
+                    )}
+                    onClick={() => handleExpand(project.id)}
+                  >
+                    <div className="flex">
+                      <div className="w-1.5 shrink-0" style={{ backgroundColor: project.color }} />
+                      <CardContent className="flex-1 p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <h3 className="font-semibold text-sm leading-tight line-clamp-1">{project.name}</h3>
+                          <Badge className={cn('text-[10px] px-1.5 py-0 ml-2 shrink-0', pConfig.color)}>
+                            {pConfig.label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 min-h-[2rem]">
+                          {project.description || 'No description'}
+                        </p>
+                        <Progress
+                          value={stats ? (stats.total > 0 ? (stats.done / stats.total) * 100 : 0) : 0}
+                          className="h-1.5 mb-3"
+                        />
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                              {stats ? `${stats.done}/${stats.total}` : totalTasks}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Users className="h-3 w-3" />
+                              {members.length}
+                            </span>
+                          </div>
+                          {project.dueDate && (
+                            <span className={cn(
+                              isPast(parseISO(project.dueDate)) && !isToday(parseISO(project.dueDate))
+                                ? 'text-red-500' : '',
+                            )}>
+                              {formatDate(project.dueDate)}
+                            </span>
+                          )}
+                        </div>
+                        {memberUsers.length > 0 && (
+                          <div className="mt-3">
+                            <AvatarStack users={memberUsers} max={4} />
+                          </div>
+                        )}
+                      </CardContent>
+                    </div>
+                  </Card>
+
+                  {/* Expanded Task List */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Card className="mt-2 p-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold text-sm">Tasks</h4>
+                              <div className="flex gap-1">
+                                {['all', 'todo', 'in_progress', 'in_review', 'done'].map((s) => (
+                                  <Button
+                                    key={s}
+                                    variant={taskFilter === s ? 'default' : 'ghost'}
+                                    size="sm"
+                                    className="h-7 text-xs px-2"
+                                    onClick={() => setTaskFilter(s)}
+                                  >
+                                    {s === 'all' ? 'All' : getStatusConfig(s).label}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                            <Button size="sm" className="h-8 text-xs gap-1" onClick={() => openCreateTaskForProject(project.id)}>
+                              <Plus className="h-3 w-3" /> Add Task
+                            </Button>
+                          </div>
+                          {expandedLoading ? (
+                            <div className="space-y-2">
+                              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                            </div>
+                          ) : filteredTasks.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-4">No tasks found</p>
+                          ) : (
+                            <ScrollArea className="max-h-64">
+                              <div className="space-y-2">
+                                {filteredTasks.map((task) => {
+                                  const sConfig = getStatusConfig(task.status)
+                                  const pConf = getPriorityConfig(task.priority)
+                                  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+                                  return (
+                                    <div
+                                      key={task.id}
+                                      className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors group cursor-pointer"
+                                      onClick={() => setSelectedProjectId(project.id)}
+                                    >
+                                      <div className={cn('h-2 w-2 rounded-full shrink-0', sConfig.dotColor)} />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{task.title}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                          <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>{pConf.label}</Badge>
+                                          {task.dueDate && (
+                                            <span className={cn('text-[10px] text-muted-foreground', isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) ? 'text-red-500' : '')}>
+                                              {formatDate(task.dueDate)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <AvatarStack users={assignees} max={2} />
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </ScrollArea>
+                          )}
+                        </Card>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
+        </motion.div>
+      )}
+
+      {/* Create Task Dialog */}
+      <Dialog open={createTaskOpen} onOpenChange={setCreateTaskOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create New Task</DialogTitle>
+            <DialogDescription>Add a task to the project.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Describe the task..." value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} rows={2} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={taskStatus} onValueChange={(v) => setTaskStatus(v as typeof taskStatus)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="in_review">In Review</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as typeof taskPriority)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Popover open={taskCalendarOpen} onOpenChange={setTaskCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
+                      <CalendarIcon className="h-4 w-4" />
+                      {taskDueDate ? format(taskDueDate, 'PPP') : 'Pick a date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={taskDueDate} onSelect={(d) => { setTaskDueDate(d); setTaskCalendarOpen(false) }} />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>Assignee</Label>
+                <Select value={taskAssignee} onValueChange={setTaskAssignee}>
+                  <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const proj = projects.find((p) => p.id === createTaskProjectId)
+                      return (proj?.members || []).map((m) => (
+                        <SelectItem key={m.userId} value={m.userId}>
+                          {m.user?.name || m.userId}
+                        </SelectItem>
+                      ))
+                    })()}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Tags (comma separated)</Label>
+              <Input placeholder="design, frontend, urgent" value={taskTags} onChange={(e) => setTaskTags(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateTaskOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateTask} disabled={createTaskLoading} className="gap-2">
+              {createTaskLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Create Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── TeamTasks ──────────────────────────────────────────────
+
+export function TeamTasks() {
+  const { user, setSelectedTaskId, setSelectedProjectId } = useAuthStore()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProject, setSelectedProject] = useState<string>('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
+  const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+
+  // Create task form
+  const [cTitle, setCTitle] = useState('')
+  const [cDesc, setCDesc] = useState('')
+  const [cStatus, setCStatus] = useState<'todo' | 'in_progress' | 'in_review' | 'done'>('todo')
+  const [cPriority, setCPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
+  const [cDueDate, setCDueDate] = useState<Date>()
+  const [cTags, setCTags] = useState('')
+  const [cAssignee, setCAssignee] = useState<string>('')
+  const [cCalendarOpen, setCCalendarOpen] = useState(false)
+
+  // Detail task subtasks/comments
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [comments, setComments] = useState<Comment[]>([])
+  const [newSubtask, setNewSubtask] = useState('')
+  const [newComment, setNewComment] = useState('')
+  const [subtaskLoading, setSubtaskLoading] = useState(false)
+  const [commentLoading, setCommentLoading] = useState(false)
+
+  // Detail edit
+  const [editStatus, setEditStatus] = useState<string>('')
+  const [editPriority, setEditPriority] = useState<string>('')
+  const [editDueDate, setEditDueDate] = useState<Date>()
+  const [editCalendarOpen, setEditCalendarOpen] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      const data = await res.json()
+      const filtered = (data.projects || []).filter((p: Project) =>
+        p.members?.some((m) => m.userId === user?.id)
+      )
+      setProjects(filtered)
+      if (filtered.length > 0 && !selectedProject) {
+        setSelectedProject(filtered[0].id)
+      }
+    } catch {
+      toast.error('Failed to load projects')
+    }
+  }, [user, selectedProject])
+
+  const fetchTasks = useCallback(async () => {
+    if (!selectedProject) return
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ projectId: selectedProject })
+      if (user) params.set('assigneeId', user.id)
+      const res = await fetch(`/api/tasks?${params}`)
+      const data = await res.json()
+      setTasks(data.tasks || [])
+    } catch {
+      toast.error('Failed to load tasks')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedProject, user])
+
+  useEffect(() => { fetchProjects() }, [fetchProjects])
+  useEffect(() => { fetchTasks() }, [fetchTasks])
+
+  const openDetail = async (task: Task) => {
+    setDetailTask(task)
+    setEditStatus(task.status)
+    setEditPriority(task.priority)
+    setEditDueDate(task.dueDate ? parseISO(task.dueDate) : undefined)
+    setDetailOpen(true)
+    setSelectedTaskId(task.id)
+    setSelectedProjectId(task.projectId)
+
+    try {
+      const [stRes, cmRes] = await Promise.all([
+        fetch(`/api/tasks/subtasks?taskId=${task.id}`),
+        fetch(`/api/comments?taskId=${task.id}`),
+      ])
+      const stData = await stRes.json()
+      const cmData = await cmRes.json()
+      setSubtasks(stData.subtasks || [])
+      setComments(cmData.comments || [])
+    } catch {
+      // Subtasks/comments may not exist
+    }
+  }
+
+  const handleUpdateTask = async (updates: Record<string, unknown>) => {
+    if (!detailTask) return
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/tasks/${detailTask.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      const data = await res.json()
+      setDetailTask(data.task || detailTask)
+      fetchTasks()
+      toast.success('Task updated')
+    } catch {
+      toast.error('Failed to update task')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleDeleteTask = async () => {
+    if (!detailTask) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
+      toast.success('Task deleted')
+      setDetailOpen(false)
+      setDetailTask(null)
+      fetchTasks()
+    } catch {
+      toast.error('Failed to delete task')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleAddSubtask = async () => {
+    if (!detailTask || !newSubtask.trim()) return
+    setSubtaskLoading(true)
+    try {
+      await fetch('/api/tasks/subtasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newSubtask, taskId: detailTask.id }),
+      })
+      setNewSubtask('')
+      const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
+      const data = await res.json()
+      setSubtasks(data.subtasks || [])
+      fetchTasks()
+    } catch {
+      toast.error('Failed to add subtask')
+    } finally {
+      setSubtaskLoading(false)
+    }
+  }
+
+  const handleToggleSubtask = async (subtaskId: string) => {
+    try {
+      await fetch('/api/tasks/subtasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subtaskId }),
+      })
+      if (detailTask) {
+        const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
+        const data = await res.json()
+        setSubtasks(data.subtasks || [])
+        fetchTasks()
+      }
+    } catch {
+      toast.error('Failed to toggle subtask')
+    }
+  }
+
+  const handleDeleteSubtask = async (subtaskId: string) => {
+    try {
+      await fetch(`/api/tasks/subtasks?subtaskId=${subtaskId}`, { method: 'DELETE' })
+      if (detailTask) {
+        const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
+        const data = await res.json()
+        setSubtasks(data.subtasks || [])
+        fetchTasks()
+      }
+    } catch {
+      toast.error('Failed to delete subtask')
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!detailTask || !newComment.trim() || !user) return
+    setCommentLoading(true)
+    try {
+      await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newComment, taskId: detailTask.id, userId: user.id }),
+      })
+      setNewComment('')
+      const res = await fetch(`/api/comments?taskId=${detailTask.id}`)
+      const data = await res.json()
+      setComments(data.comments || [])
+      fetchTasks()
+    } catch {
+      toast.error('Failed to add comment')
+    } finally {
+      setCommentLoading(false)
+    }
+  }
+
+  const handleCreateTask = async () => {
+    if (!cTitle.trim() || !selectedProject) return
+    setCreateLoading(true)
+    try {
+      await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cTitle, description: cDesc || null, status: cStatus,
+          priority: cPriority, projectId: selectedProject,
+          dueDate: cDueDate ? cDueDate.toISOString() : null,
+          tags: cTags, assigneeId: cAssignee || null,
+        }),
+      })
+      toast.success('Task created')
+      setCreateOpen(false)
+      setCTitle(''); setCDesc(''); setCStatus('todo')
+      setCPriority('medium'); setCDueDate(undefined); setCTags(''); setCAssignee('')
+      fetchTasks()
+    } catch {
+      toast.error('Failed to create task')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleAddComment()
+    }
+  }
+
+  const handleSubtaskKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleAddSubtask()
+    }
+  }
+
+  if (loading && projects.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-3">
+              <Skeleton className="h-8 w-24" />
+              {Array.from({ length: 3 }).map((_, j) => <Skeleton key={j} className="h-28 w-full rounded-lg" />)}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const currentProject = projects.find((p) => p.id === selectedProject)
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Select project" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+                    {p.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {currentProject && (
+            <Badge variant="outline" className="text-xs">
+              {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-muted rounded-lg p-0.5">
+            <Button
+              variant={viewMode === 'board' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setViewMode('board')}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Board
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="h-3.5 w-3.5" /> List
+            </Button>
+          </div>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" /> Create Task
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Create New Task</DialogTitle>
+                <DialogDescription>Add a task to {currentProject?.name || 'the project'}.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Title</Label>
+                  <Input placeholder="Task title" value={cTitle} onChange={(e) => setCTitle(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea placeholder="Describe the task..." value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={2} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={cStatus} onValueChange={(v) => setCStatus(v as typeof cStatus)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todo">To Do</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="in_review">In Review</SelectItem>
+                        <SelectItem value="done">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Priority</Label>
+                    <Select value={cPriority} onValueChange={(v) => setCPriority(v as typeof cPriority)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Due Date</Label>
+                    <Popover open={cCalendarOpen} onOpenChange={setCCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
+                          <CalendarIcon className="h-4 w-4" />
+                          {cDueDate ? format(cDueDate, 'PPP') : 'Pick a date'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={cDueDate} onSelect={(d) => { setCDueDate(d); setCCalendarOpen(false) }} />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Assignee</Label>
+                    <Select value={cAssignee} onValueChange={setCAssignee}>
+                      <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+                      <SelectContent>
+                        {currentProject?.members?.map((m) => (
+                          <SelectItem key={m.userId} value={m.userId}>
+                            {m.user?.name || m.userId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tags (comma separated)</Label>
+                  <Input placeholder="design, frontend, urgent" value={cTags} onChange={(e) => setCTags(e.target.value)} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateTask} disabled={createLoading} className="gap-2">
+                  {createLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Create Task
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Board View */}
+      {viewMode === 'board' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {STATUS_COLUMNS.map((col) => {
+            const colTasks = tasks.filter((t) => t.status === col.key)
+            return (
+              <div key={col.key} className="space-y-3">
+                <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
+                  <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
+                  <span className="text-sm font-semibold">{col.label}</span>
+                  <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center">
+                    {colTasks.length}
+                  </Badge>
+                </div>
+                <ScrollArea className="max-h-[calc(100vh-280px)]">
+                  <div className="space-y-2 pb-2">
+                    {colTasks.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-muted-foreground">No tasks</div>
+                    ) : (
+                      colTasks.map((task, idx) => {
+                        const pConf = getPriorityConfig(task.priority)
+                        const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+                        const tags = task.tags ? task.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
+                        const totalSub = task._count?.subtasks || 0
+                        const doneSub = task._count?.completedSubtasks || 0
+                        const commentCount = task._count?.comments || 0
+
+                        return (
+                          <motion.div
+                            key={task.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.03 }}
+                          >
+                            <Card
+                              className="p-3 cursor-pointer hover:shadow-md transition-all border-border/50 hover:border-border"
+                              onClick={() => openDetail(task)}
+                            >
+                              <div className="space-y-2.5">
+                                {/* Tags */}
+                                {tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {tags.slice(0, 3).map((tag) => (
+                                      <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-500">
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                    {tags.length > 3 && (
+                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-400">
+                                        +{tags.length - 3}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Title */}
+                                <h4 className="text-sm font-medium leading-tight">{task.title}</h4>
+
+                                {/* Meta row */}
+                                <div className="flex items-center justify-between">
+                                  <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>
+                                    {pConf.label}
+                                  </Badge>
+                                  {task.dueDate && (
+                                    <span className={cn(
+                                      'text-[10px] flex items-center gap-1',
+                                      isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
+                                        ? 'text-red-500' : 'text-muted-foreground',
+                                    )}>
+                                      <CalendarIcon className="h-3 w-3" />
+                                      {format(parseISO(task.dueDate), 'MMM d')}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Subtask progress */}
+                                {totalSub > 0 && (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                                      <span>Subtasks</span>
+                                      <span>{doneSub}/{totalSub}</span>
+                                    </div>
+                                    <Progress value={totalSub > 0 ? (doneSub / totalSub) * 100 : 0} className="h-1" />
+                                  </div>
+                                )}
+
+                                {/* Bottom row */}
+                                <div className="flex items-center justify-between pt-1">
+                                  <AvatarStack users={assignees} max={2} />
+                                  {commentCount > 0 && (
+                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                      <MessageCircle className="h-3 w-3" />
+                                      {commentCount}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </Card>
+                          </motion.div>
+                        )
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        /* List View */
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[40%]">Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Assignees</TableHead>
+                <TableHead>Due Date</TableHead>
+                <TableHead className="w-[100px]">Project</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tasks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+                    No tasks found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                tasks.map((task) => {
+                  const sConf = getStatusConfig(task.status)
+                  const pConf = getPriorityConfig(task.priority)
+                  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+                  return (
+                    <TableRow
+                      key={task.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => openDetail(task)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className={cn('h-2 w-2 rounded-full shrink-0', sConf.dotColor)} />
+                          <div>
+                            <p className="text-sm font-medium">{task.title}</p>
+                            {task.tags && (
+                              <div className="flex gap-1 mt-1">
+                                {task.tags.split(',').slice(0, 2).map((t) => (
+                                  <Badge key={t} variant="outline" className="text-[10px] px-1 py-0 h-4">{t.trim()}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn('text-[10px]', sConf.color)}>{sConf.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn('text-[10px]', pConf.color)}>{pConf.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <AvatarStack users={assignees} max={2} />
+                      </TableCell>
+                      <TableCell>
+                        {task.dueDate ? (
+                          <span className={cn(
+                            'text-xs',
+                            isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
+                              ? 'text-red-500 font-medium' : 'text-muted-foreground',
+                          )}>
+                            {formatDate(task.dueDate)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {task.project && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: task.project.color }} />
+                            <span className="text-xs truncate max-w-[80px]">{task.project.name}</span>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      {/* Task Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setSubtasks([]); setComments([]) } }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          {detailTask && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className={cn('h-3 w-3 rounded-full', getStatusConfig(detailTask.status).dotColor)} />
+                  <DialogTitle className="text-lg">{detailTask.title}</DialogTitle>
+                </div>
+                <DialogDescription className="sr-only">Task details</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Status / Priority / Due Date */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Status</Label>
+                    <Select value={editStatus} onValueChange={(v) => { setEditStatus(v); handleUpdateTask({ status: v }) }}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todo">To Do</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="in_review">In Review</SelectItem>
+                        <SelectItem value="done">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Priority</Label>
+                    <Select value={editPriority} onValueChange={(v) => { setEditPriority(v); handleUpdateTask({ priority: v }) }}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Due Date</Label>
+                    <Popover open={editCalendarOpen} onOpenChange={setEditCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="h-9 w-full justify-start text-left font-normal gap-2 text-sm">
+                          <CalendarIcon className="h-3.5 w-3.5" />
+                          {editDueDate ? format(editDueDate, 'PPP') : 'Set date'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={editDueDate}
+                          onSelect={(d) => { setEditDueDate(d); setEditCalendarOpen(false); if (d) handleUpdateTask({ dueDate: d.toISOString() }) }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                {detailTask.description && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Description</Label>
+                    <p className="text-sm text-foreground/80 whitespace-pre-wrap bg-muted/50 rounded-lg p-3">
+                      {detailTask.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Tags */}
+                {detailTask.tags && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Tags</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detailTask.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          <Hash className="h-3 w-3 mr-1" />{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assignees */}
+                {detailTask.assignees && detailTask.assignees.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Assignees</Label>
+                    <div className="flex gap-2">
+                      {detailTask.assignees.map((a) => (
+                        <div key={a.id} className="flex items-center gap-2 bg-muted/50 rounded-lg px-2.5 py-1.5">
+                          <MemberAvatar user={a.user} size="sm" />
+                          <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Subtasks */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" /> Subtasks
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      {subtasks.filter((s) => s.completed).length}/{subtasks.length}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {subtasks.map((st) => (
+                      <div key={st.id} className="flex items-center gap-2 group">
+                        <Checkbox
+                          checked={st.completed}
+                          onCheckedChange={() => handleToggleSubtask(st.id)}
+                          className="h-4 w-4"
+                        />
+                        <span className={cn('text-sm flex-1', st.completed && 'line-through text-muted-foreground')}>
+                          {st.title}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleDeleteSubtask(st.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a subtask..."
+                      value={newSubtask}
+                      onChange={(e) => setNewSubtask(e.target.value)}
+                      onKeyDown={handleSubtaskKeyDown}
+                      className="h-8 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={handleAddSubtask}
+                      disabled={subtaskLoading || !newSubtask.trim()}
+                    >
+                      {subtaskLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Comments */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4" /> Comments
+                    {comments.length > 0 && (
+                      <Badge variant="secondary" className="text-xs h-5">{comments.length}</Badge>
+                    )}
+                  </Label>
+                  <ScrollArea className="max-h-48">
+                    <div className="space-y-3">
+                      {comments.map((c) => (
+                        <div key={c.id} className="flex gap-2.5">
+                          <MemberAvatar user={c.user} size="sm" />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs font-semibold">{c.user?.name || 'Unknown'}</span>
+                              <span className="text-[10px] text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
+                            </div>
+                            <p className="text-sm text-foreground/80 bg-muted/50 rounded-lg p-2.5">{c.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {comments.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-4">No comments yet</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Write a comment... (Ctrl+Enter to send)"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      onKeyDown={handleCommentKeyDown}
+                      className="min-h-[60px] text-sm resize-none"
+                      rows={2}
+                    />
+                    <Button
+                      size="sm"
+                      className="h-auto self-end px-3"
+                      onClick={handleAddComment}
+                      disabled={commentLoading || !newComment.trim()}
+                    >
+                      {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Delete */}
+                <div className="flex justify-end">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm" className="gap-2" disabled={deleting}>
+                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Delete Task
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete &quot;{detailTask.title}&quot;? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteTask} className="bg-destructive text-white hover:bg-destructive/90">
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── TeamMessages ───────────────────────────────────────────
+
+export function TeamMessages() {
+  const { user } = useAuthStore()
+  const [conversations, setConversations] = useState<Message[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
+  const [selectedOtherId, setSelectedOtherId] = useState<string | null>(null)
+  const [selectedOtherName, setSelectedOtherName] = useState<string>('')
+  const [newMessage, setNewMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [msgLoading, setMsgLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const fetchConversations = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/messages?userId=${user.id}`)
+      const data = await res.json()
+      setConversations(data.conversations || [])
+    } catch {
+      toast.error('Failed to load conversations')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => { fetchConversations() }, [fetchConversations])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const openConversation = async (otherId: string, otherName: string) => {
+    if (!user) return
+    setSelectedOtherId(otherId)
+    setSelectedOtherName(otherName)
+    setMsgLoading(true)
+    try {
+      const res = await fetch(`/api/messages?userId=${user.id}&otherId=${otherId}`)
+      const data = await res.json()
+      setMessages(data.messages || [])
+      // Mark as read
+      await fetch(`/api/messages?userId=${user.id}&otherId=${otherId}&markRead=true`, { method: 'PATCH' })
+      fetchConversations()
+    } catch {
+      toast.error('Failed to load messages')
+    } finally {
+      setMsgLoading(false)
+    }
+  }
+
+  const handleSend = async () => {
+    if (!user || !selectedOtherId || !newMessage.trim()) return
+    setSending(true)
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newMessage, senderId: user.id, receiverId: selectedOtherId,
+        }),
+      })
+      const data = await res.json()
+      setMessages((prev) => [...prev, data.message])
+      setNewMessage('')
+      fetchConversations()
+    } catch {
+      toast.error('Failed to send message')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  const getConversationPartner = (msg: Message): { id: string; name: string; user?: User } => {
+    if (msg.senderId === user?.id) {
+      return { id: msg.receiverId, name: msg.receiver?.name || 'Unknown', user: msg.receiver }
+    }
+    return { id: msg.senderId, name: msg.sender?.name || 'Unknown', user: msg.sender }
+  }
+
+  // Group conversations by partner
+  const conversationMap = new Map<string, { partner: User | undefined; lastMessage: Message; unread: number }>()
+  for (const msg of conversations) {
+    const partner = msg.senderId === user?.id ? msg.receiver : msg.sender
+    if (!partner) continue
+    const key = partner.id
+    const existing = conversationMap.get(key)
+    if (!existing || new Date(msg.createdAt) > new Date(existing.lastMessage.createdAt)) {
+      conversationMap.set(key, {
+        partner,
+        lastMessage: msg,
+        unread: msg.senderId !== user?.id && !msg.read ? (existing?.unread || 0) + 1 : (existing?.unread || 0),
+      })
+    } else if (msg.senderId !== user?.id && !msg.read) {
+      existing.unread++
+    }
+  }
+
+  const conversationList = Array.from(conversationMap.values()).sort(
+    (a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
+  )
+
+  return (
+    <div className="h-[calc(100vh-140px)] flex rounded-xl border bg-card overflow-hidden">
+      {/* Conversation List */}
+      <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30">
+        <div className="p-4 border-b">
+          <h2 className="font-semibold text-sm flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" /> Messages
+          </h2>
+        </div>
+        <ScrollArea className="flex-1">
+          {loading ? (
+            <div className="p-3 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-24" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : conversationList.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              No conversations yet
+            </div>
+          ) : (
+            <div className="p-2 space-y-0.5">
+              {conversationList.map(({ partner, lastMessage, unread }) => {
+                const isMe = lastMessage.senderId === user?.id
+                const preview = lastMessage.content.length > 40 ? lastMessage.content.slice(0, 40) + '...' : lastMessage.content
+                return (
+                  <button
+                    key={partner?.id}
+                    className={cn(
+                      'w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors',
+                      selectedOtherId === partner?.id ? 'bg-primary/10' : 'hover:bg-muted/60',
+                    )}
+                    onClick={() => openConversation(partner!.id, partner!.name || 'Unknown')}
+                  >
+                    <MemberAvatar user={partner} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium truncate">{partner?.name || 'Unknown'}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                          {formatRelativeTime(lastMessage.createdAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate">
+                          {isMe ? 'You: ' : ''}{preview}
+                        </p>
+                        {unread > 0 && (
+                          <Badge className="ml-2 shrink-0 h-4 min-w-4 text-[10px] px-1 justify-center bg-red-500 text-white border-0">
+                            {unread}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {selectedOtherId ? (
+          <>
+            <div className="p-4 border-b flex items-center gap-3 bg-background">
+              <MemberAvatar user={conversationList.find((c) => c.partner?.id === selectedOtherId)?.partner} />
+              <div>
+                <h3 className="font-semibold text-sm">{selectedOtherName}</h3>
+                <p className="text-xs text-muted-foreground">Direct message</p>
+              </div>
+            </div>
+            <ScrollArea className="flex-1 p-4">
+              {msgLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className={cn('flex gap-2.5', i % 2 === 0 ? '' : 'flex-row-reverse')}>
+                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                      <Skeleton className="h-12 w-48 rounded-lg" />
+                    </div>
+                  ))}
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-w-2xl">
+                  {messages.map((msg, idx) => {
+                    const isMe = msg.senderId === user?.id
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(idx * 0.02, 0.3) }}
+                        className={cn('flex gap-2.5', isMe ? 'flex-row-reverse' : '')}
+                      >
+                        <MemberAvatar user={isMe ? user : msg.sender} size="sm" />
+                        <div className={cn('max-w-[70%]', isMe ? 'text-right' : '')}>
+                          <div className={cn(
+                            'inline-block rounded-2xl px-3.5 py-2.5 text-sm',
+                            isMe
+                              ? 'bg-primary text-primary-foreground rounded-br-md'
+                              : 'bg-muted rounded-bl-md',
+                          )}>
+                            {msg.content}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-1 px-1">
+                            {formatRelativeTime(msg.createdAt)}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+            <div className="p-4 border-t bg-background">
+              <div className="flex gap-2 max-w-2xl mx-auto">
+                <Input
+                  placeholder="Type a message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="flex-1"
+                />
+                <Button onClick={handleSend} disabled={sending || !newMessage.trim()} className="gap-2 shrink-0">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Send
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+                <MessageSquare className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-lg">Select a conversation</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">Choose a conversation from the sidebar or start a new one.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── TeamProfile ────────────────────────────────────────────
+
+export function TeamProfile() {
+  const { user } = useAuthStore()
+  const [profile, setProfile] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
+
+  // Profile form
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [company, setCompany] = useState('')
+
+  // Password form
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const fetchProfile = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/user/profile?userId=${user.id}`)
+      const data = await res.json()
+      const u = data.user || user
+      setProfile(u)
+      setName(u.name)
+      setEmail(u.email)
+      setPhone(u.phone || '')
+      setCompany(u.company || '')
+    } catch {
+      toast.error('Failed to load profile')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => { fetchProfile() }, [fetchProfile])
+
+  const handleSaveProfile = async () => {
+    if (!name.trim() || !email.trim()) {
+      toast.error('Name and email are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id, name, email, phone: phone || null, company: company || null }),
+      })
+      const data = await res.json()
+      setProfile(data.user || profile)
+      toast.success('Profile updated')
+    } catch {
+      toast.error('Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('All password fields are required')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+    setPasswordSaving(true)
+    try {
+      await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id, currentPassword, newPassword }),
+      })
+      toast.success('Password changed')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch {
+      toast.error('Failed to change password')
+    } finally {
+      setPasswordSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <Skeleton className="h-8 w-48" />
+        <Card className="p-6 space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </Card>
+      </div>
+    )
+  }
+
+  const displayUser = profile || user
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Profile Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your account information and preferences</p>
+      </div>
+
+      {/* Profile Header Card */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <Card className="p-6">
+          <div className="flex items-start gap-5">
+            <Avatar className="h-20 w-20">
+              <AvatarFallback className="text-xl bg-slate-200 dark:bg-slate-700 font-semibold">
+                {displayUser ? getInitials(displayUser.name) : '??'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 space-y-3">
+              <div>
+                <h2 className="text-lg font-semibold">{displayUser?.name}</h2>
+                <p className="text-sm text-muted-foreground">{displayUser?.email}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge className={getRoleBadgeClasses(displayUser?.role || 'team')}>
+                  <Shield className="h-3 w-3 mr-1" />
+                  Team Member
+                </Badge>
+                {displayUser?.createdAt && (
+                  <Badge variant="outline" className="text-xs">
+                    <CalendarIcon className="h-3 w-3 mr-1" />
+                    Member since {formatDate(displayUser.createdAt)}
+                  </Badge>
+                )}
+                {displayUser?._count?.assignedTasks !== undefined && (
+                  <Badge variant="outline" className="text-xs">
+                    <FileText className="h-3 w-3 mr-1" />
+                    {displayUser._count.assignedTasks} assigned tasks
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+
+      {/* Edit Profile */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <Card className="p-6">
+          <CardHeader className="p-0 mb-5">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Pencil className="h-4 w-4" /> Edit Profile
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="profile-name">Full Name</Label>
+                <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-email">Email</Label>
+                <Input id="profile-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="profile-phone" className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5" /> Phone
+                </Label>
+                <Input id="profile-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-company" className="flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" /> Company
+                </Label>
+                <Input id="profile-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Save Changes
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Change Password */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <Card className="p-6">
+          <CardHeader className="p-0 mb-5">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lock className="h-4 w-4" /> Change Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-pw">Current Password</Label>
+              <Input id="current-pw" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-pw">New Password</Label>
+                <Input id="new-pw" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-pw">Confirm New Password</Label>
+                <Input id="confirm-pw" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter new password" />
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleChangePassword} disabled={passwordSaving} variant="outline" className="gap-2">
+                {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                Update Password
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
+  )
+}

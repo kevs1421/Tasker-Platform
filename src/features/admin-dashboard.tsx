@@ -1,0 +1,1508 @@
+'use client'
+
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuthStore } from '@/stores/auth'
+import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User, Comment } from '@/types'
+import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
+
+// shadcn/ui
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+
+// recharts
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+
+// date-fns
+import { format } from 'date-fns'
+
+// icons
+import {
+  FileCheck, FolderKanban, ListTodo, MessageSquare,
+  CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
+  Plus, Trash2, Eye, Send, ChevronDown,
+  Search, ArrowUpRight, CircleDot,
+  MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon
+} from 'lucide-react'
+
+import { toast } from 'sonner'
+import { motion } from 'framer-motion'
+
+// ─── Animation Variants ───────────────────────────────────────────────────────
+
+const fadeIn = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.2 }
+}
+
+const staggerContainer = {
+  animate: { transition: { staggerChildren: 0.05 } }
+}
+
+// ─── Shared: Action Icon Helper ────────────────────────────────────────────────
+
+function ActivityIcon({ action }: { action: string }) {
+  if (action.includes('created')) return <Plus className="h-4 w-4 text-emerald-500" />
+  if (action.includes('completed') || action.includes('done')) return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+  if (action.includes('moved') || action.includes('updated')) return <ArrowUpRight className="h-4 w-4 text-amber-500" />
+  if (action.includes('deleted') || action.includes('removed')) return <Trash2 className="h-4 w-4 text-rose-500" />
+  if (action.includes('comment')) return <MessageCircle className="h-4 w-4 text-slate-500" />
+  if (action.includes('onboarding')) return <FileCheck className="h-4 w-4 text-purple-500" />
+  return <CircleDot className="h-4 w-4 text-slate-400" />
+}
+
+// ─── AdminOverview ─────────────────────────────────────────────────────────────
+
+export function AdminOverview() {
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [activities, setActivities] = useState<ActivityLog[]>([])
+  const [pendingOnboarding, setPendingOnboarding] = useState(0)
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [statsRes, actRes] = await Promise.all([
+          fetch('/api/admin'),
+          fetch('/api/admin/activity')
+        ])
+        if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
+        const statsData = await statsRes.json()
+        const actData = await actRes.json()
+        setStats(statsData.stats)
+        setActivities(actData.activities?.slice(0, 8) ?? [])
+        setPendingOnboarding(actData.pendingOnboarding ?? 0)
+      } catch {
+        toast.error('Failed to load dashboard data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const chartData = stats ? [
+    { name: 'To Do', count: stats.todoTasks, fill: '#94a3b8' },
+    { name: 'In Progress', count: stats.inProgressTasks, fill: '#f59e0b' },
+    { name: 'In Review', count: stats.inReviewTasks, fill: '#a855f7' },
+    { name: 'Done', count: stats.completedTasks, fill: '#10b981' },
+  ] : []
+
+  if (loading) return <OverviewSkeleton />
+
+  if (!stats) return <p className="text-muted-foreground">No data available.</p>
+
+  const mainCards = [
+    { label: 'Total Tasks', value: stats.totalTasks, sub: `${stats.completedTasks} completed`, icon: ListTodo, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+    { label: 'Active Projects', value: stats.activeProjects, sub: `${stats.totalProjects} total`, icon: FolderKanban, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+    { label: 'Team Members', value: stats.totalMembers, sub: 'Internal team', icon: Users, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+    { label: 'Total Clients', value: stats.totalClients, sub: 'External users', icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+  ]
+
+  const smallCards = [
+    { label: 'In Progress', value: stats.inProgressTasks, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Overdue', value: stats.overdueTasks, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'This Week', value: stats.thisWeekCompleted, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Pending Onboarding', value: pendingOnboarding, icon: FileCheck, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+  ]
+
+  return (
+    <motion.div {...staggerContainer} initial="initial" animate="animate" className="space-y-6">
+      {/* Main stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {mainCards.map((c) => (
+          <motion.div key={c.label} {...fadeIn}>
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">{c.label}</p>
+                    <p className="text-2xl font-bold">{c.value}</p>
+                    <p className="text-xs text-muted-foreground">{c.sub}</p>
+                  </div>
+                  <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+                    <c.icon className={`h-5 w-5 ${c.color}`} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Smaller stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {smallCards.map((c) => (
+          <motion.div key={c.label} {...fadeIn}>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+                    <c.icon className={`h-4 w-4 ${c.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold">{c.value}</p>
+                    <p className="text-xs text-muted-foreground">{c.label}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Chart + Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Bar Chart */}
+        <motion.div {...fadeIn} className="lg:col-span-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Task Distribution</CardTitle>
+              <CardDescription>Breakdown by current status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <RechartsTooltip
+                      contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
+                    />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Recent Activity */}
+        <motion.div {...fadeIn} className="lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Recent Activity</CardTitle>
+              <CardDescription>Latest actions across the platform</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-64 px-4">
+                <div className="space-y-4 py-2">
+                  {activities.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No recent activity</p>}
+                  {activities.map((act) => (
+                    <div key={act.id} className="flex items-start gap-3">
+                      <Avatar className="h-8 w-8 mt-0.5">
+                        {act.user?.avatar ? <AvatarImage src={act.user.avatar} alt={act.user.name} /> : null}
+                        <AvatarFallback className="text-xs bg-slate-100 dark:bg-slate-800">
+                          {act.user ? getInitials(act.user.name) : '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{act.user?.name ?? 'System'}</span>
+                          <ActivityIcon action={act.action} />
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{act.details ?? act.action}</p>
+                        <p className="text-xs text-muted-foreground/60 mt-0.5">{formatRelativeTime(act.createdAt)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    </motion.div>
+  )
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <Card className="lg:col-span-3"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+        <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+      </div>
+    </div>
+  )
+}
+
+// ─── AdminOnboarding ───────────────────────────────────────────────────────────
+
+function getOnboardingBadge(status: string) {
+  switch (status) {
+    case 'in_progress': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    case 'submitted': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    case 'approved': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    case 'rejected': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+    default: return 'bg-slate-100 text-slate-700'
+  }
+}
+
+function getOnboardingStatusLabel(status: string) {
+  const map: Record<string, string> = { in_progress: 'In Progress', submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected' }
+  return map[status] || status
+}
+
+export function AdminOnboarding() {
+  const { user } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [forms, setForms] = useState<OnboardingForm[]>([])
+  const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[] }) | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [reviewing, setReviewing] = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await fetch('/api/onboarding')
+        if (!res.ok) throw new Error('Failed')
+        const data = await res.json()
+        setForms(data.forms ?? [])
+      } catch {
+        toast.error('Failed to load onboarding forms')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  async function openForm(form: OnboardingForm) {
+    try {
+      const res = await fetch(`/api/onboarding/${form.id}`)
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setSelectedForm(data.form)
+      setDialogOpen(true)
+    } catch {
+      toast.error('Failed to load form details')
+    }
+  }
+
+  async function handleReview(submissionId: string, status: 'approved' | 'rejected') {
+    if (!user) return
+    setReviewing(submissionId)
+    try {
+      const notes = reviewNotes[submissionId] || ''
+      const patchRes = await fetch(`/api/onboarding/${submissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
+      })
+      if (!patchRes.ok) {
+        const d = await patchRes.json()
+        throw new Error(d.error)
+      }
+      toast.success(`Submission ${status === 'approved' ? 'approved' : 'rejected'} successfully`)
+      // Refresh
+      if (selectedForm) {
+        const fresh = await fetch(`/api/onboarding/${selectedForm.id}`)
+        if (fresh.ok) {
+          const data = await fresh.json()
+          setSelectedForm(data.form)
+        }
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to review')
+    } finally {
+      setReviewing(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-48" />
+        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold">Onboarding Management</h2>
+        <p className="text-sm text-muted-foreground">Review and manage client onboarding submissions</p>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Form Title</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead className="text-center">Submissions</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-16"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {forms.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No onboarding forms found</TableCell></TableRow>
+              )}
+              {forms.map((form) => (
+                <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+                  <TableCell className="font-medium">{form.title}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {form.project && <div className="h-3 w-3 rounded-full" style={{ backgroundColor: form.project.color }} />}
+                      <span className="text-sm text-muted-foreground">{form.project?.name ?? '—'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">{form._count?.submissions ?? 0}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+                      {getOnboardingStatusLabel(form.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Submissions Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
+            <DialogDescription>
+              {selectedForm?.project?.name ?? 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="space-y-4 py-2">
+              {selectedForm?.submissions?.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">No submissions yet</p>
+              )}
+              {selectedForm?.submissions?.map((sub) => (
+                <Card key={sub.id} className="border">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+                          <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
+                          <p className="text-xs text-muted-foreground">{sub.client?.company ?? 'No company'}</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
+                        {getOnboardingStatusLabel(sub.status)}
+                      </Badge>
+                    </div>
+
+                    {sub.submittedAt && (
+                      <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
+                    )}
+
+                    {sub.reviewNotes && (
+                      <div className="bg-muted/50 rounded-md p-2 text-xs">
+                        <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+                        {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+                      </div>
+                    )}
+
+                    {sub.status === 'submitted' && (
+                      <div className="space-y-2">
+                        <Textarea
+                          placeholder="Add review notes..."
+                          value={reviewNotes[sub.id] ?? ''}
+                          onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                          className="text-sm"
+                          rows={2}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
+                            disabled={reviewing === sub.id}
+                          >
+                            {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsUp className="h-3 w-3 mr-1" /> Approve</>}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
+                            disabled={reviewing === sub.id}
+                          >
+                            {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsDown className="h-3 w-3 mr-1" /> Reject</>}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </motion.div>
+  )
+}
+
+// ─── AdminProjects ─────────────────────────────────────────────────────────────
+
+const PRESET_COLORS = ['#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#e11d48']
+
+export function AdminProjects() {
+  const { user } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState({ name: '', description: '', priority: 'medium', dueDate: null as Date | null, color: PRESET_COLORS[0] })
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setProjects(data.projects ?? [])
+    } catch {
+      toast.error('Failed to load projects')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  async function handleCreate() {
+    if (!user || !form.name.trim()) return
+    setCreating(true)
+    try {
+      const createRes = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          description: form.description || null,
+          priority: form.priority,
+          dueDate: form.dueDate ? form.dueDate.toISOString() : null,
+          color: form.color,
+          createdBy: user.id
+        })
+      })
+      if (!createRes.ok) {
+        const d = await createRes.json()
+        throw new Error(d.error)
+      }
+      toast.success('Project created successfully')
+      setCreateOpen(false)
+      setForm({ name: '', description: '', priority: 'medium', dueDate: null, color: PRESET_COLORS[0] })
+      fetchProjects()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create project')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function handleStatusChange(projectId: string, status: string) {
+    try {
+      const patchRes = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      })
+      if (!patchRes.ok) throw new Error()
+      toast.success(`Project ${status}`)
+      fetchProjects()
+    } catch {
+      toast.error('Failed to update project status')
+    }
+  }
+
+  async function handleDelete(projectId: string) {
+    try {
+      const delRes = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      if (!delRes.ok) throw new Error()
+      toast.success('Project deleted')
+      fetchProjects()
+    } catch {
+      toast.error('Failed to delete project')
+    }
+  }
+
+  function getProjectStatusBadge(status: string) {
+    switch (status) {
+      case 'active': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+      case 'completed': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+      case 'archived': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+      default: return 'bg-slate-100 text-slate-700'
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center"><Skeleton className="h-10 w-48" /><Skeleton className="h-10 w-32" /></div>
+        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Projects</h2>
+          <p className="text-sm text-muted-foreground">Manage all projects across the platform</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Plus className="h-4 w-4 mr-2" /> New Project
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead className="hidden md:table-cell">Description</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead className="text-center">Tasks</TableHead>
+                <TableHead className="text-center hidden sm:table-cell">Members</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-16"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {projects.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No projects found</TableCell></TableRow>
+              )}
+              {projects.map((p) => {
+                const pCfg = getPriorityConfig(p.priority)
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="font-medium">{p.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-48 truncate">
+                      {p.description ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>
+                        {pCfg.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">{p._count?.tasks ?? 0}</TableCell>
+                    <TableCell className="text-center hidden sm:table-cell">{p._count?.members ?? 0}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7">
+                            <Badge variant="secondary" className={getProjectStatusBadge(p.status)}>
+                              {p.status}
+                            </Badge>
+                            <ChevronDown className="h-3 w-3 ml-1" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'active')}>Active</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'completed')}>Completed</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'archived')}>Archived</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                    <TableCell>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Project</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete &quot;{p.name}&quot;? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(p.id)} className="bg-rose-600 hover:bg-rose-700">
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Create Project Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+            <DialogDescription>Add a new project to your workspace</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input placeholder="Project name" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Brief description (optional)" value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={form.priority} onValueChange={(v) => setForm(p => ({ ...p, priority: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {form.dueDate ? format(form.dueDate, 'MMM d, yyyy') : 'Pick a date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={form.dueDate ?? undefined}
+                      onSelect={(d: Date | undefined) => setForm(p => ({ ...p, dueDate: d ?? null }))}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={`h-8 w-8 rounded-full border-2 transition-all ${form.color === c ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setForm(p => ({ ...p, color: c }))}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={!form.name.trim() || creating} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {creating ? 'Creating...' : 'Create Project'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </motion.div>
+  )
+}
+
+// ─── AdminTasks ────────────────────────────────────────────────────────────────
+
+const STATUS_FILTERS = ['all', 'todo', 'in_progress', 'in_review', 'done'] as const
+type StatusFilter = typeof STATUS_FILTERS[number]
+
+const STATUS_LABELS: Record<string, string> = {
+  all: 'All', todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done'
+}
+
+export function AdminTasks() {
+  const { user } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+
+  const fetchTasks = useCallback(async (status: StatusFilter) => {
+    setLoading(true)
+    try {
+      const url = status === 'all' ? '/api/tasks' : `/api/tasks?status=${status}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setTasks(data.tasks ?? [])
+    } catch {
+      toast.error('Failed to load tasks')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTasks(statusFilter) }, [statusFilter, fetchTasks])
+
+  async function openTaskDetail(task: Task) {
+    setSelectedTask(task)
+    setDetailOpen(true)
+    setCommentText('')
+    // Fetch full task with comments
+    try {
+      const detailRes = await fetch(`/api/tasks/${task.id}`)
+      if (detailRes.ok) {
+        const data = await detailRes.json()
+        setSelectedTask(data.task)
+        setComments(data.task?.comments ?? [])
+      }
+    } catch { /* use basic data */ }
+  }
+
+  async function handleUpdateTask(taskId: string, updates: Record<string, unknown>) {
+    try {
+      const patchRes = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      })
+      if (!patchRes.ok) throw new Error()
+      toast.success('Task updated')
+      fetchTasks(statusFilter)
+      // Update selected task if open
+      if (selectedTask?.id === taskId) {
+        const fresh = await fetch(`/api/tasks/${taskId}`)
+        if (fresh.ok) {
+          const data = await fresh.json()
+          setSelectedTask(data.task)
+          setComments(data.task?.comments ?? [])
+        }
+      }
+    } catch {
+      toast.error('Failed to update task')
+    }
+  }
+
+  const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
+
+  if (loading && tasks.length === 0) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-48" />
+        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold">Tasks</h2>
+        <p className="text-sm text-muted-foreground">View and manage all tasks across projects</p>
+      </div>
+
+      {/* Status Filter Tabs */}
+      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+        <TabsList>
+          {STATUS_FILTERS.map((s) => (
+            <TabsTrigger key={s} value={s} className="text-sm">
+              {STATUS_LABELS[s]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead className="hidden md:table-cell">Assignees</TableHead>
+                <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+                <TableHead className="hidden lg:table-cell">Project</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTasks.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tasks found</TableCell></TableRow>
+              )}
+              {filteredTasks.map((task) => {
+                const sCfg = getStatusConfig(task.status)
+                const pCfg = getPriorityConfig(task.priority)
+                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done'
+                return (
+                  <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openTaskDetail(task)}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${sCfg.dotColor}`} />
+                        <span className="font-medium text-sm">{task.title}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={`${sCfg.color} text-xs`}>{sCfg.label}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>{pCfg.label}</Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex -space-x-2">
+                        {task.assignees?.slice(0, 3).map((a) => (
+                          <TooltipProvider key={a.id}>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Avatar className="h-7 w-7 border-2 border-background">
+                                  {a.user?.avatar ? <AvatarImage src={a.user.avatar} /> : null}
+                                  <AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">
+                                    {a.user ? getInitials(a.user.name) : '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </TooltipTrigger>
+                              <TooltipContent><p>{a.user?.name}</p></TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                        {(task.assignees?.length ?? 0) > 3 && (
+                          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-medium border-2 border-background">
+                            +{task.assignees!.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {task.dueDate ? (
+                        <span className={`text-sm ${isOverdue ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
+                          {formatDate(task.dueDate)}
+                        </span>
+                      ) : <span className="text-sm text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <div className="flex items-center gap-2">
+                        {task.project && <div className="h-2 w-2 rounded-full" style={{ backgroundColor: task.project.color }} />}
+                        <span className="text-sm text-muted-foreground">{task.project?.name ?? '—'}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Task Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          {selectedTask && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-lg">{selectedTask.title}</DialogTitle>
+                <DialogDescription>
+                  {selectedTask.project?.name ?? 'Project'} · Created {formatRelativeTime(selectedTask.createdAt)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <ScrollArea className="flex-1 -mx-6 px-6">
+                <div className="space-y-6 py-2">
+                  {/* Status & Priority */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Status</Label>
+                      <Select value={selectedTask.status} onValueChange={(v) => handleUpdateTask(selectedTask.id, { status: v })}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todo">To Do</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="in_review">In Review</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Priority</Label>
+                      <Select value={selectedTask.priority} onValueChange={(v) => handleUpdateTask(selectedTask.id, { priority: v })}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="urgent">Urgent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Due Date */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Due Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-fit justify-start text-left font-normal h-9">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {selectedTask.dueDate ? format(new Date(selectedTask.dueDate), 'MMM d, yyyy') : 'Set due date'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={selectedTask.dueDate ? new Date(selectedTask.dueDate) : undefined}
+                          onSelect={(d: Date | undefined) => handleUpdateTask(selectedTask.id, { dueDate: d ? d.toISOString() : null })}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Description */}
+                  {selectedTask.description && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Description</Label>
+                      <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 whitespace-pre-wrap">
+                        {selectedTask.description}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subtasks */}
+                  {selectedTask.subtasks && selectedTask.subtasks.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Subtasks ({selectedTask._count?.completedSubtasks ?? 0}/{selectedTask.subtasks.length})
+                      </Label>
+                      <div className="space-y-1">
+                        {selectedTask.subtasks.map((st) => (
+                          <div key={st.id} className="flex items-center gap-2 text-sm">
+                            <div className={`h-4 w-4 rounded border ${st.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'} flex items-center justify-center`}>
+                              {st.completed && <CheckCircle2 className="h-3 w-3 text-white" />}
+                            </div>
+                            <span className={st.completed ? 'line-through text-muted-foreground' : ''}>{st.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Comments */}
+                  <div className="space-y-3">
+                    <Label className="text-xs text-muted-foreground">
+                      Comments ({comments.length})
+                    </Label>
+                    <div className="space-y-3 max-h-48 overflow-y-auto">
+                      {comments.map((c) => (
+                        <div key={c.id} className="flex gap-2">
+                          <Avatar className="h-7 w-7 mt-0.5 flex-shrink-0">
+                            {c.user?.avatar ? <AvatarImage src={c.user.avatar} /> : null}
+                            <AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">
+                              {c.user ? getInitials(c.user.name) : '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium">{c.user?.name ?? 'Unknown'}</span>
+                              <span className="text-xs text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{c.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {comments.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No comments yet</p>}
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </motion.div>
+  )
+}
+
+// ─── AdminMessages ─────────────────────────────────────────────────────────────
+
+interface Conversation {
+  user: User | null
+  lastMessage: Message | null
+  unread: number
+}
+
+export function AdminMessages() {
+  const { user } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [msgText, setMsgText] = useState('')
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const currentUserId = user?.id
+    if (!currentUserId) return
+    async function fetchData() {
+      try {
+        const res = await fetch(`/api/messages?userId=${currentUserId}`)
+        if (!res.ok) throw new Error('Failed')
+        const data = await res.json()
+        setConversations(data.conversations ?? [])
+      } catch {
+        toast.error('Failed to load conversations')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [user])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  async function selectConversation(convo: Conversation) {
+    const currentUserId = user?.id
+    if (!currentUserId || !convo.user) return
+    setSelectedConvo(convo)
+    setMsgText('')
+    try {
+      const res = await fetch(`/api/messages?userId=${currentUserId}&otherId=${convo.user.id}`)
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setMessages(data.messages ?? [])
+    } catch {
+      toast.error('Failed to load messages')
+    }
+    // Clear unread
+    setConversations(prev => prev.map(c => c.user?.id === convo.user?.id ? { ...c, unread: 0 } : c))
+  }
+
+  async function sendMessage() {
+    if (!user || !selectedConvo?.user || !msgText.trim()) return
+    setSending(true)
+    const text = msgText.trim()
+    setMsgText('')
+    try {
+      const sendRes = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, senderId: user.id, receiverId: selectedConvo.user.id })
+      })
+      if (!sendRes.ok) throw new Error()
+      const data = await sendRes.json()
+      setMessages(prev => [...prev, data.message])
+    } catch {
+      toast.error('Failed to send message')
+      setMsgText(text)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-12rem)] flex gap-0 border rounded-lg overflow-hidden">
+        <div className="w-80 border-r p-4 space-y-3">
+          <Skeleton className="h-10 w-full" />
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+        </div>
+        <div className="flex-1 flex items-center justify-center"><p className="text-muted-foreground text-sm">Select a conversation</p></div>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="h-[calc(100vh-12rem)] flex border rounded-lg overflow-hidden">
+      {/* Conversation List */}
+      <div className="w-80 border-r bg-background flex flex-col flex-shrink-0">
+        <div className="p-3 border-b">
+          <h2 className="text-lg font-semibold mb-2">Messages</h2>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search conversations..." className="pl-9 h-9 text-sm" />
+          </div>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-1">
+            {conversations.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">No conversations yet</p>
+            )}
+            {conversations.map((convo, idx) => {
+              const isSelected = selectedConvo?.user?.id === convo.user?.id
+              return (
+                <button
+                  key={convo.user?.id ?? idx}
+                  className={`w-full text-left px-3 py-3 rounded-md flex items-start gap-3 transition-colors ${isSelected ? 'bg-muted' : 'hover:bg-muted/50'}`}
+                  onClick={() => selectConversation(convo)}
+                >
+                  <Avatar className="h-10 w-10 mt-0.5 flex-shrink-0">
+                    {convo.user?.avatar ? <AvatarImage src={convo.user.avatar} /> : null}
+                    <AvatarFallback className="text-xs bg-slate-100 dark:bg-slate-800">
+                      {convo.user ? getInitials(convo.user.name) : '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium truncate">{convo.user?.name ?? 'Unknown'}</span>
+                      {convo.lastMessage && (
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
+                          {formatRelativeTime(convo.lastMessage.createdAt)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {convo.lastMessage?.content ?? 'No messages yet'}
+                    </p>
+                  </div>
+                  {convo.unread > 0 && (
+                    <div className="h-5 w-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                      {convo.unread}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col bg-background">
+        {selectedConvo?.user ? (
+          <>
+            {/* Chat Header */}
+            <div className="p-3 border-b flex items-center gap-3">
+              <Avatar className="h-8 w-8">
+                {selectedConvo.user.avatar ? <AvatarImage src={selectedConvo.user.avatar} /> : null}
+                <AvatarFallback className="text-xs bg-slate-100 dark:bg-slate-800">
+                  {getInitials(selectedConvo.user.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium">{selectedConvo.user.name}</p>
+                <p className="text-xs text-muted-foreground">{selectedConvo.user.company ?? selectedConvo.user.email}</p>
+              </div>
+              <Badge variant="secondary" className={`ml-auto text-xs ${getRoleBadgeClasses(selectedConvo.user.role)}`}>
+                {selectedConvo.user.role}
+              </Badge>
+            </div>
+
+            {/* Messages */}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-3">
+                {messages.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">No messages yet. Say hello!</p>
+                )}
+                {messages.map((msg) => {
+                  const isSent = msg.senderId === user?.id
+                  return (
+                    <div key={msg.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isSent ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-muted rounded-bl-md'}`}>
+                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className={`text-[10px] mt-1 ${isSent ? 'text-emerald-100' : 'text-muted-foreground'}`}>
+                          {formatRelativeTime(msg.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Message Input */}
+            <div className="p-3 border-t">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Type a message..."
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="flex-1"
+                />
+                <Button onClick={sendMessage} disabled={!msgText.trim() || sending} className="bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-2">
+              <MessageSquare className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+              <p className="text-muted-foreground text-sm">Select a conversation to start chatting</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── AdminProfile ──────────────────────────────────────────────────────────────
+
+export function AdminProfile() {
+  const { user, login } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [profile, setProfile] = useState({
+    name: '', email: '', phone: '', company: ''
+  })
+  const [passwords, setPasswords] = useState({
+    currentPassword: '', newPassword: '', confirmPassword: ''
+  })
+
+  useEffect(() => {
+    const currentUserId = user?.id
+    if (!currentUserId) return
+    async function fetchData() {
+      try {
+        const res = await fetch(`/api/user/profile?userId=${currentUserId}`)
+        if (!res.ok) throw new Error('Failed')
+        const data = await res.json()
+        setProfile({
+          name: data.user.name ?? '',
+          email: data.user.email ?? '',
+          phone: data.user.phone ?? '',
+          company: data.user.company ?? '',
+        })
+      } catch {
+        toast.error('Failed to load profile')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [user])
+
+  async function handleSave() {
+    if (!user) return
+    setSaving(true)
+    try {
+      const body: Record<string, string> = {
+        userId: user.id,
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        company: profile.company,
+      }
+      if (passwords.currentPassword && passwords.newPassword) {
+        if (passwords.newPassword !== passwords.confirmPassword) {
+          toast.error('New passwords do not match')
+          setSaving(false)
+          return
+        }
+        if (passwords.newPassword.length < 6) {
+          toast.error('Password must be at least 6 characters')
+          setSaving(false)
+          return
+        }
+        body.currentPassword = passwords.currentPassword
+        body.newPassword = passwords.newPassword
+      }
+      const patchRes = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!patchRes.ok) {
+        const d = await patchRes.json()
+        throw new Error(d.error)
+      }
+      const data = await patchRes.json()
+      toast.success('Profile updated successfully')
+      // Update store user
+      if (data.user && user) {
+        login({ ...user, ...data.user, password: (user as unknown as Record<string, unknown>).password as string })
+      }
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+          <Card><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold">Profile Settings</h2>
+        <p className="text-sm text-muted-foreground">Manage your account information and preferences</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Profile Form */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Personal Information</CardTitle>
+            <CardDescription>Update your account details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input id="name" value={profile.name} onChange={(e) => setProfile(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input id="phone" value={profile.phone} onChange={(e) => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="company">Company</Label>
+                <Input id="company" value={profile.company} onChange={(e) => setProfile(p => ({ ...p, company: e.target.value }))} placeholder="Optional" />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Change Password */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Change Password</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPass">Current Password</Label>
+                  <Input id="currentPass" type="password" value={passwords.currentPassword} onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} placeholder="Enter current" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPass">New Password</Label>
+                  <Input id="newPass" type="password" value={passwords.newPassword} onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} placeholder="Enter new" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPass">Confirm Password</Label>
+                  <Input id="confirmPass" type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Leave password fields empty to keep your current password.</p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Account Info Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Account Info</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex flex-col items-center text-center">
+              <Avatar className="h-20 w-20 mb-3">
+                {user?.avatar ? <AvatarImage src={user.avatar} /> : null}
+                <AvatarFallback className="text-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  {user ? getInitials(user.name) : '?'}
+                </AvatarFallback>
+              </Avatar>
+              <h3 className="font-semibold">{user?.name}</h3>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Role</span>
+                <Badge variant="secondary" className={getRoleBadgeClasses(user?.role ?? '')}>
+                  {user?.role ?? '—'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  {user?.status ?? 'active'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Member since</span>
+                <span className="text-sm font-medium">{user?.createdAt ? formatDate(user.createdAt) : '—'}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+              <Shield className="h-5 w-5 text-emerald-600" />
+              <div>
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Admin Access</p>
+                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">Full platform management</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </motion.div>
+  )
+}
