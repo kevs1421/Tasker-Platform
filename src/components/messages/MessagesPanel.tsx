@@ -1,0 +1,766 @@
+'use client'
+
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuthStore } from '@/stores/auth'
+import type { Message, User, MessageGroup, GroupMember } from '@/types'
+import { getRoleBadgeClasses, getInitials, formatRelativeTime } from '@/features/route-guard'
+import { cn } from '@/lib/utils'
+import { motion } from 'framer-motion'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
+} from 'lucide-react'
+
+// ─── Types ──────────────────────────────────────────────────────────────────────
+
+interface DirectConversation {
+  type: 'direct'
+  user: User | null
+  lastMessage: Message | null
+  unread: number
+}
+
+interface GroupConversation {
+  type: 'group'
+  group: {
+    id: string; name: string; avatar?: string | null
+    members: { userId: string; user: { id: string; name: string; avatar?: string | null } | null }[]
+    _count: { members: number }
+    createdAt: string; updatedAt: string
+  }
+  lastMessage: Message | null
+  unread: number
+}
+
+type Conversation = DirectConversation | GroupConversation
+
+// ─── Avatar helper ─────────────────────────────────────────────────────────────
+
+function UserAvatar({ user, size = 'md', className }: { user?: User | null; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const sizeMap = { sm: 'h-8 w-8 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-12 w-12 text-sm' }
+  if (!user) return <div className={cn(sizeMap[size], 'rounded-full bg-muted flex items-center justify-center', className)}>?</div>
+  return (
+    <Avatar className={cn(sizeMap[size], className)}>
+      {user.avatar && <AvatarImage src={user.avatar} />}
+      <AvatarFallback className="bg-slate-100 dark:bg-slate-800 font-medium">
+        {getInitials(user.name)}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function GroupAvatar({ name, size = 'md', className }: { name: string; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const sizeMap = { sm: 'h-8 w-8 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-12 w-12 text-sm' }
+  return (
+    <div className={cn(sizeMap[size], 'rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center', className)}>
+      <Users className={size === 'sm' ? 'h-3.5 w-3.5 text-violet-600 dark:text-violet-400' : size === 'md' ? 'h-4 w-4 text-violet-600 dark:text-violet-400' : 'h-5 w-5 text-violet-600 dark:text-violet-400'} />
+    </div>
+  )
+}
+
+// ─── Create Group Dialog ───────────────────────────────────────────────────────
+
+function CreateGroupDialog({
+  open, onOpenChange, onCreated, currentUser,
+}: {
+  open: boolean; onOpenChange: (open: boolean) => void;
+  onCreated: (group: MessageGroup) => void; currentUser: User;
+}) {
+  const [name, setName] = useState('')
+  const [users, setUsers] = useState<User[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((d) => {
+        // Exclude current user from the list
+        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    setName('')
+    setSelectedIds([])
+    setSearch('')
+  }, [open, currentUser.id])
+
+  const toggleUser = (userId: string) => {
+    setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId])
+  }
+
+  const handleCreate = async () => {
+    if (!name.trim() || selectedIds.length === 0) return
+    setCreating(true)
+    try {
+      const res = await fetch('/api/message-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), createdBy: currentUser.id, memberIds: selectedIds }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      toast.success('Group created')
+      onCreated(data.group)
+      onOpenChange(false)
+    } catch {
+      toast.error('Failed to create group')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const filteredUsers = users.filter(
+    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-violet-600" /> Create Group
+          </DialogTitle>
+          <DialogDescription>Start a group conversation with team members</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Input placeholder="Group name..." value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+
+          <div>
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search users..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <ScrollArea className="max-h-48 rounded-md border">
+              {loading ? (
+                <div className="p-3 space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No users found</p>
+              ) : (
+                <div className="p-1">
+                  {filteredUsers.map((u) => (
+                    <button
+                      key={u.id}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
+                      onClick={() => toggleUser(u.id)}
+                    >
+                      <Checkbox checked={selectedIds.includes(u.id)} />
+                      <UserAvatar user={u} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{u.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      </div>
+                      <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>{u.role}</Badge>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+            {selectedIds.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-2">{selectedIds.length} member{selectedIds.length > 1 ? 's' : ''} selected</p>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={handleCreate} disabled={!name.trim() || selectedIds.length === 0 || creating}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Create Group
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Group Info Dialog ──────────────────────────────────────────────────────────
+
+function GroupInfoDialog({
+  open, onOpenChange, group, currentUserId,
+}: {
+  open: boolean; onOpenChange: (open: boolean) => void
+  group: { id: string; name: string; members?: GroupMember[]; _count?: { members: number } } | null
+  currentUserId: string
+}) {
+  const [members, setMembers] = useState<(GroupMember & { user: User })[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!open || !group) return
+    setLoading(true)
+    fetch(`/api/message-groups/${group.id}?userId=${currentUserId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setMembers((d.group?.members ?? []) as (GroupMember & { user: User })[])
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    setSearch('')
+    setShowAddUser(false)
+  }, [open, group, currentUserId])
+
+  const handleAddMember = async (userId: string) => {
+    if (!group) return
+    try {
+      const res = await fetch(`/api/message-groups/${group.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addMemberIds: [userId] }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setMembers(data.group.members ?? [])
+      toast.success('Member added')
+    } catch {
+      toast.error('Failed to add member')
+    }
+  }
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!group) return
+    try {
+      const res = await fetch(`/api/message-groups/${group.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeMemberIds: [userId] }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setMembers(data.group.members ?? [])
+      toast.success('Member removed')
+    } catch {
+      toast.error('Failed to remove member')
+    }
+  }
+
+  const handleLoadUsers = () => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((d) => {
+        const memberIds = members.map((m) => m.userId)
+        setUsers((d.users ?? []).filter((u: User) => !memberIds.includes(u.id)))
+      })
+      .catch(() => {})
+    setShowAddUser(true)
+  }
+
+  const filteredUsers = users.filter(
+    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-violet-600" /> Group Info
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {group && (
+            <div className="flex items-center gap-3">
+              <GroupAvatar name={group.name} size="lg" />
+              <div>
+                <p className="font-semibold">{group.name}</p>
+                <p className="text-sm text-muted-foreground">{group._count?.members ?? members.length} members</p>
+              </div>
+            </div>
+          )}
+
+          <Separator />
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Members</p>
+              {!showAddUser && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleLoadUsers}>
+                  <UserPlus className="h-3.5 w-3.5" /> Add
+                </Button>
+              )}
+            </div>
+
+            {showAddUser && (
+              <div className="mb-3 space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search users..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+                </div>
+                <ScrollArea className="max-h-32 rounded-md border">
+                  <div className="p-1">
+                    {filteredUsers.slice(0, 8).map((u) => (
+                      <button
+                        key={u.id}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
+                        onClick={() => handleAddMember(u.id)}
+                      >
+                        <UserAvatar user={u} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.name}</p>
+                        </div>
+                        <UserPlus className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowAddUser(false)}>Done</Button>
+              </div>
+            )}
+
+            <ScrollArea className="max-h-48 rounded-md border">
+              {loading ? (
+                <div className="p-3 space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                </div>
+              ) : (
+                <div className="p-1">
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50">
+                      <UserAvatar user={m.user} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{m.user?.name ?? 'Unknown'}</p>
+                        <p className="text-xs text-muted-foreground">{m.role === 'admin' ? 'Admin' : 'Member'}</p>
+                      </div>
+                      {m.userId !== currentUserId && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.userId)}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Main MessagesPanel Component ───────────────────────────────────────────────
+
+export function MessagesPanel() {
+  const { user } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [msgText, setMsgText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [msgLoading, setMsgLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [showGroupInfo, setShowGroupInfo] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const fetchConversations = useCallback(async () => {
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/messages?userId=${user.id}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setConversations(data.conversations ?? [])
+    } catch {
+      toast.error('Failed to load conversations')
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => { fetchConversations() }, [fetchConversations])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Determine conversation kind
+  const isGroupSelected = selectedConvo?.type === 'group'
+  const selectedGroup = isGroupSelected ? (selectedConvo as GroupConversation).group : null
+  const selectedDirectUser = !isGroupSelected ? (selectedConvo as DirectConversation | null)?.user : null
+
+  const selectConversation = async (convo: Conversation) => {
+    if (!user?.id) return
+    setSelectedConvo(convo)
+    setMsgText('')
+    setMsgLoading(true)
+
+    try {
+      let url = `/api/messages?userId=${user.id}`
+      if (convo.type === 'group') {
+        url += `&groupId=${convo.group.id}`
+      } else {
+        if (!convo.user) return
+        url += `&otherId=${convo.user.id}`
+      }
+      const res = await fetch(url)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setMessages(data.messages ?? [])
+    } catch {
+      toast.error('Failed to load messages')
+    } finally {
+      setMsgLoading(false)
+    }
+
+    // Clear unread locally
+    setConversations((prev) => prev.map((c) => {
+      if (c.type === 'direct' && convo.type === 'direct' && c.user?.id === convo.user?.id) return { ...c, unread: 0 }
+      if (c.type === 'group' && convo.type === 'group' && c.group.id === convo.group.id) return { ...c, unread: 0 }
+      return c
+    }))
+  }
+
+  const sendMessage = async () => {
+    if (!user?.id || !msgText.trim()) return
+    if (!selectedConvo) return
+
+    setSending(true)
+    const text = msgText.trim()
+    setMsgText('')
+
+    try {
+      const body: Record<string, string> = {
+        content: text,
+        senderId: user.id,
+      }
+
+      if (selectedConvo.type === 'group') {
+        body.groupId = selectedConvo.group.id
+      } else {
+        if (!selectedConvo.user) return
+        body.receiverId = selectedConvo.user.id
+      }
+
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setMessages((prev) => [...prev, data.message])
+      fetchConversations()
+    } catch {
+      toast.error('Failed to send message')
+      setMsgText(text)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  // Filter conversations
+  const filteredConversations = conversations.filter((c) => {
+    if (!searchQuery.trim()) return true
+    const q = searchQuery.toLowerCase()
+    if (c.type === 'direct') return c.user?.name.toLowerCase().includes(q) || c.user?.email.toLowerCase().includes(q)
+    return c.group.name.toLowerCase().includes(q)
+  })
+
+  // Conversation display helpers
+  const getConvoTitle = (c: Conversation) => c.type === 'direct' ? (c.user?.name ?? 'Unknown') : c.group.name
+  const getConvoSubtitle = (c: Conversation) => {
+    if (c.type === 'group') {
+      return `${c.group._count.members} members`
+    }
+    return c.user?.company ?? c.user?.email ?? ''
+  }
+  const getConvoPreview = (c: Conversation) => {
+    if (!c.lastMessage) return 'No messages yet'
+    const senderName = c.lastMessage.senderId === user?.id ? 'You' : (c.lastMessage.sender?.name ?? 'Someone')
+    if (c.type === 'group') {
+      return `${senderName}: ${c.lastMessage.content}`
+    }
+    return `${c.lastMessage.senderId === user?.id ? 'You: ' : ''}${c.lastMessage.content}`
+  }
+
+  // ── Render ───────────────────────────────────────────────
+
+  const containerHeight = 'h-[calc(100vh-12rem)]'
+
+  if (loading) {
+    return (
+      <div className={cn(containerHeight, 'flex border rounded-lg overflow-hidden')}>
+        <div className="w-80 border-r p-4 space-y-3 flex-shrink-0">
+          <Skeleton className="h-10 w-full" />
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-muted-foreground text-sm">Select a conversation</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(containerHeight, 'flex border rounded-lg overflow-hidden')}
+    >
+      {/* ─── Conversation List ──────────────────────────── */}
+      <div className="w-80 border-r bg-background flex flex-col flex-shrink-0">
+        <div className="p-3 border-b space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Messages</h2>
+            <Button
+              variant="ghost" size="icon" className="h-8 w-8"
+              onClick={() => setShowCreateGroup(true)}
+              title="Create Group"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search conversations..."
+              className="pl-9 h-9 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-1">
+            {filteredConversations.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                {searchQuery ? 'No matching conversations' : 'No conversations yet'}
+              </p>
+            )}
+            {filteredConversations.map((convo, idx) => {
+              const isSelected =
+                convo.type === 'direct'
+                  ? selectedDirectUser?.id === convo.user?.id
+                  : selectedGroup?.id === convo.group.id
+              return (
+                <button
+                  key={convo.type === 'direct' ? convo.user?.id ?? idx : convo.group.id}
+                  className={cn(
+                    'w-full text-left px-3 py-3 rounded-md flex items-start gap-3 transition-colors',
+                    isSelected ? 'bg-muted' : 'hover:bg-muted/50'
+                  )}
+                  onClick={() => selectConversation(convo)}
+                >
+                  {convo.type === 'direct' ? (
+                    <UserAvatar user={convo.user} size="md" className="mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <GroupAvatar name={convo.group.name} size="md" className="mt-0.5 flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-medium truncate">{getConvoTitle(convo)}</span>
+                        {convo.type === 'group' && (
+                          <Users className="h-3 w-3 text-violet-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      {convo.lastMessage && (
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
+                          {formatRelativeTime(convo.lastMessage.createdAt)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {getConvoPreview(convo)}
+                    </p>
+                  </div>
+                  {convo.unread > 0 && (
+                    <div className="h-5 w-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                      {convo.unread}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* ─── Chat Area ─────────────────────────────────── */}
+      <div className="flex-1 flex flex-col bg-background">
+        {selectedConvo ? (
+          <>
+            {/* Chat Header */}
+            <div className="p-3 border-b flex items-center gap-3">
+              {isGroupSelected ? (
+                <>
+                  <button onClick={() => setShowGroupInfo(true)} className="flex items-center gap-3 hover:bg-muted/50 rounded-md px-1 -ml-1 py-0.5 transition-colors">
+                    <GroupAvatar name={selectedGroup!.name} size="md" />
+                    <div>
+                      <p className="text-sm font-medium flex items-center gap-1.5">
+                        {selectedGroup!.name}
+                        <Users className="h-3.5 w-3.5 text-violet-500" />
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedGroup!._count.members} members
+                      </p>
+                    </div>
+                  </button>
+                </>
+              ) : selectedDirectUser ? (
+                <>
+                  <UserAvatar user={selectedDirectUser} size="md" />
+                  <div>
+                    <p className="text-sm font-medium">{selectedDirectUser.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedDirectUser.company ?? selectedDirectUser.email}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className={cn('ml-auto text-xs', getRoleBadgeClasses(selectedDirectUser.role))}>
+                    {selectedDirectUser.role}
+                  </Badge>
+                </>
+              ) : null}
+            </div>
+
+            {/* Messages */}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-3 max-w-2xl mx-auto">
+                {msgLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className={cn('flex gap-2.5', i % 2 === 0 ? '' : 'justify-end')}>
+                        <Skeleton className="h-10 w-48 rounded-2xl" />
+                      </div>
+                    ))}
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                    <MessageSquare className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      {isGroupSelected ? 'No messages yet. Start the conversation!' : 'No messages yet. Say hello!'}
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg, idx) => {
+                    const isSent = msg.senderId === user?.id
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(idx * 0.015, 0.2) }}
+                        className={cn('flex gap-2.5', isSent ? 'justify-end' : 'justify-start')}
+                      >
+                        {!isSent && (
+                          <UserAvatar user={msg.sender} size="sm" className="mt-auto" />
+                        )}
+                        <div className={cn('max-w-[70%]', isSent ? 'text-right' : '')}>
+                          {/* Show sender name in group chats */}
+                          {isGroupSelected && !isSent && (
+                            <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
+                              {msg.sender?.name ?? 'Unknown'}
+                            </p>
+                          )}
+                          <div className={cn(
+                            'inline-block rounded-2xl px-4 py-2.5 text-sm',
+                            isSent
+                              ? 'bg-emerald-600 text-white rounded-br-md'
+                              : 'bg-muted rounded-bl-md',
+                          )}>
+                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          </div>
+                          <div className={cn(
+                            'flex items-center gap-1 mt-1 text-[10px] text-muted-foreground',
+                            isSent ? 'justify-end' : 'justify-start'
+                          )}>
+                            <span>{formatRelativeTime(msg.createdAt)}</span>
+                            {isSent && msg.read && <CheckCheck className="w-3 h-3" />}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Message Input */}
+            <div className="p-3 border-t">
+              <div className="flex gap-2 max-w-2xl mx-auto">
+                <Input
+                  placeholder={isGroupSelected ? `Message ${selectedGroup!.name}...` : 'Type a message...'}
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={!msgText.trim() || sending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+                <MessageSquare className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-lg">Select a conversation</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Choose a conversation from the sidebar or create a new group.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Dialogs */}
+      <CreateGroupDialog
+        open={showCreateGroup}
+        onOpenChange={setShowCreateGroup}
+        onCreated={() => { fetchConversations(); setShowCreateGroup(false) }}
+        currentUser={user!}
+      />
+      <GroupInfoDialog
+        open={showGroupInfo}
+        onOpenChange={setShowGroupInfo}
+        group={selectedGroup ? { id: selectedGroup.id, name: selectedGroup.name, _count: selectedGroup._count } : null}
+        currentUserId={user?.id ?? ''}
+      />
+    </motion.div>
+  )
+}

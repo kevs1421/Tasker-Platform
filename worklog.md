@@ -91,3 +91,36 @@ Stage Summary:
 - TaskDetail & AdminTasks: Click "Assignees (N)" → popover opens with user selection list. Selected users shown as removable chips below.
 - CreateTaskModal: Inline scrollable list with same visual style (avatar + name + role + check circle).
 - All three locations show: user avatar, name, role label (ADMIN/TEAM), and a filled/empty circle indicator.
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix message recipients display + add group messaging feature
+
+Work Log:
+- Explored all message-related code across the codebase (3 role-specific message panels, 1 API route, 1 Prisma model)
+- Identified issues: no recipient info in chat headers, no group messaging, no search in admin messages, broken PATCH endpoint in team messages
+- Added MessageGroup and GroupMember models to Prisma schema with proper relations
+- Pushed schema to SQLite database
+- Updated types/index.ts with MessageGroup, GroupMember interfaces
+- Created /api/message-groups/route.ts (GET list, POST create)
+- Created /api/message-groups/[id]/route.ts (GET detail, PATCH update members/name, DELETE)
+- Rewrote /api/messages/route.ts to support both direct and group conversations in a single unified response
+- Fixed Date serialization bug (Prisma returns Date objects that can't be serialized or compared with localeCompare)
+- Built shared MessagesPanel component at src/components/messages/MessagesPanel.tsx with:
+  - Unified conversation list (direct + group) sorted by most recent message
+  - Search/filter for conversations
+  - Create Group dialog with user search and multi-select
+  - Group Info dialog for viewing/managing members (add/remove)
+  - Group chat with sender names on each message
+  - Direct chat showing recipient name, email, and role badge
+  - Read receipts (check marks)
+  - Proper loading skeletons and empty states
+- Updated AdminMessages, TeamMessages, ClientMessages to use shared MessagesPanel
+- Verified via browser: conversations load, search works, group created via API, group messages displayed correctly, direct message headers show recipient info
+
+Stage Summary:
+- Key files created: src/components/messages/MessagesPanel.tsx, src/app/api/message-groups/route.ts, src/app/api/message-groups/[id]/route.ts
+- Key files modified: prisma/schema.prisma, src/types/index.ts, src/app/api/messages/route.ts, src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx, src/features/client-dashboard.tsx
+- All 3 dashboards now share a single, consistent messaging component with group chat support
+- Date serialization fix applied to /api/messages conversation list endpoint

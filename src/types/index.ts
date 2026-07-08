@@ -48,9 +48,20 @@ export interface Onboarding {
 }
 
 export interface Message {
-  id: string; content: string; senderId: string; receiverId: string;
-  projectId?: string | null; read: boolean; createdAt: string;
-  sender?: User; receiver?: User;
+  id: string; content: string; senderId: string; receiverId?: string | null;
+  groupId?: string | null; projectId?: string | null; read: boolean; createdAt: string;
+  sender?: User; receiver?: User; group?: MessageGroup;
+}
+
+export interface MessageGroup {
+  id: string; name: string; avatar?: string | null;
+  createdBy: string; createdAt: string; updatedAt: string;
+  creator?: User; members?: GroupMember[]; _count?: { members: number; messages: number };
+}
+
+export interface GroupMember {
+  id: string; groupId: string; userId: string; role: string; joinedAt: string;
+  group?: MessageGroup; user?: User;
 }
 
 export interface ActivityLog {

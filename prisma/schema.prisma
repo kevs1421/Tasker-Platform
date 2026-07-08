@@ -27,9 +27,11 @@ model User {
   createdProjects Project[]
   memberships    ProjectMember[]
   onboardingSubmissions Onboarding[]
-  sentMessages      Message[] @relation("SentMessages")
-  receivedMessages  Message[] @relation("ReceivedMessages")
-  reviewedOnboardings Onboarding[] @relation("OnboardingReviewer")
+  sentMessages       Message[]       @relation("SentMessages")
+  receivedMessages   Message[]       @relation("ReceivedMessages")
+  createdGroups      MessageGroup[]  @relation("CreatedGroups")
+  groupMemberships   GroupMember[]   @relation("GroupMemberships")
+  reviewedOnboardings Onboarding[]   @relation("OnboardingReviewer")
 }
 
 model Project {
@@ -164,19 +166,48 @@ model Onboarding {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  content   String
-  senderId  String
-  receiverId String
-  projectId String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String?
+  groupId    String?
+  projectId  String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
-  sender   User  @relation("SentMessages", fields: [senderId], references: [id])
-  receiver User  @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sender   User          @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User?         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  group    MessageGroup? @relation(fields: [groupId], references: [id])
 
   @@index([senderId, receiverId])
   @@index([receiverId, senderId])
+  @@index([groupId])
+}
+
+model MessageGroup {
+  id        String   @id @default(cuid())
+  name      String
+  avatar    String?
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator   User           @relation("CreatedGroups", fields: [createdBy], references: [id])
+  members   GroupMember[]
+  messages  Message[]
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String   @default("member") // admin, member
+  joinedAt  DateTime @default(now())
+
+  group MessageGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User         @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
 }
 
 model ActivityLog {
