@@ -1,7 +1,7 @@
-import { Request, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { title, completed, taskId } = await request.json()
     if (!title || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -10,18 +10,55 @@ export async function POST(request: Request) {
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }
 
-export async function PATCH(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const { id, title, completed } = await request.json()
+    const taskId = request.nextUrl.searchParams.get('taskId')
+    if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
+    const subtasks = await db.subtask.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+    })
+    return NextResponse.json({
+      subtasks: subtasks.map((s) => ({
+        ...s,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString(),
+      })),
+    })
+  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const id = body.id || body.subtaskId
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-    const subtask = await db.subtask.update({ where: { id }, data: { ...(title !== undefined && { title }), ...(completed !== undefined && { completed }) } })
+
+    let completed = body.completed
+
+    // Toggle case: team dashboard only sends the id without a completed value
+    if (completed === undefined) {
+      const existing = await db.subtask.findUnique({ where: { id } })
+      if (!existing) return NextResponse.json({ error: 'Subtask not found' }, { status: 404 })
+      completed = !existing.completed
+    }
+
+    const subtask = await db.subtask.update({
+      where: { id },
+      data: {
+        ...(body.title !== undefined && { title: body.title }),
+        completed,
+      },
+    })
     return NextResponse.json({ subtask })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
-    const { id } = await request.json()
+    const id =
+      request.nextUrl.searchParams.get('subtaskId') ||
+      (await request.json().then((body: { id?: string }) => body.id).catch(() => null))
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
     await db.subtask.delete({ where: { id } })
     return NextResponse.json({ success: true })

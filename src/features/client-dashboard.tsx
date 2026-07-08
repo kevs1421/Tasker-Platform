@@ -7,7 +7,7 @@ import {
   FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  MessageCircle, ListTodo, Check, CheckCheck, Search
+  MessageCircle, ListTodo, Check, CheckCheck, Search, ClipboardCheck, Plus
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type {
@@ -29,9 +29,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { isBefore, parseISO } from 'date-fns'
+import { cn } from '@/lib/utils'
 
 // ─── Animation Variants ──────────────────────────────────────────
 const fadeSlide = {
@@ -122,6 +124,13 @@ export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboa
 // ═══════════════════════════════════════════════════════════════════
 // CLIENT PROJECTS
 // ═══════════════════════════════════════════════════════════════════
+const ONBOARDING_STEPS = [
+  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+]
+
 export function ClientProjects() {
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<(Project & { tasks?: (Task & { _count: { comments: number; subtasks: number; completedSubtasks: number } })[] })[]>([])
@@ -130,6 +139,14 @@ export function ClientProjects() {
   const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
   const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }) | null>(null)
   const [taskDetailLoading, setTaskDetailLoading] = useState(false)
+
+  // Onboarding creation state
+  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false)
+  const [onboardingProjectId, setOnboardingProjectId] = useState<string>('')
+  const [onboardingTitle, setOnboardingTitle] = useState('')
+  const [onboardingDesc, setOnboardingDesc] = useState('')
+  const [onboardingSteps, setOnboardingSteps] = useState<string[]>(ONBOARDING_STEPS.map(s => s.id))
+  const [creatingOnboarding, setCreatingOnboarding] = useState(false)
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -176,6 +193,54 @@ export function ClientProjects() {
     } finally {
       setTaskDetailLoading(false)
     }
+  }
+
+  const openOnboardingDialog = (projectId: string, projectName: string) => {
+    setOnboardingProjectId(projectId)
+    setOnboardingTitle(`Onboarding - ${projectName}`)
+    setOnboardingDesc('')
+    setOnboardingSteps(ONBOARDING_STEPS.map(s => s.id))
+    setOnboardingDialogOpen(true)
+  }
+
+  const handleCreateOnboarding = async () => {
+    if (!onboardingTitle.trim() || !onboardingProjectId) return
+    setCreatingOnboarding(true)
+    try {
+      const stepsJson = JSON.stringify(
+        onboardingSteps.map(stepId => {
+          const config = ONBOARDING_STEPS.find(s => s.id === stepId)
+          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+        })
+      )
+      const res = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: onboardingTitle.trim(),
+          description: onboardingDesc.trim() || null,
+          stepsJson,
+          projectId: onboardingProjectId,
+          status: 'published',
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to create')
+      }
+      toast.success('Onboarding form created successfully')
+      setOnboardingDialogOpen(false)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding')
+    } finally {
+      setCreatingOnboarding(false)
+    }
+  }
+
+  const toggleOnboardingStep = (stepId: string) => {
+    setOnboardingSteps(prev =>
+      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId]
+    )
   }
 
   // Stats
@@ -243,7 +308,7 @@ export function ClientProjects() {
                         </div>
                         <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
                       </div>
-                      <div className="flex items-center gap-4 shrink-0 text-sm">
+                      <div className="flex items-center gap-3 shrink-0 text-sm">
                         {project.dueDate && (
                           <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
                             <Calendar className="w-3.5 h-3.5" />
@@ -254,7 +319,16 @@ export function ClientProjects() {
                           <Users className="w-3.5 h-3.5" />
                           {project._count?.members || 0}
                         </span>
-                        <span className="text-muted-foreground">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5" />
+                          Onboarding
+                        </Button>
+                        <span className="text-muted-foreground cursor-pointer">
                           {expandedProjectId === project.id ? '▲' : '▼'}
                         </span>
                       </div>
@@ -349,6 +423,83 @@ export function ClientProjects() {
           })}
         </div>
       )}
+
+      {/* Create Onboarding Dialog */}
+      <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-primary" />
+              Create Onboarding
+            </DialogTitle>
+            <DialogDescription>Create an onboarding form for this project</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input
+                placeholder="Onboarding form title"
+                value={onboardingTitle}
+                onChange={(e) => setOnboardingTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Textarea
+                placeholder="Brief description of the onboarding..."
+                value={onboardingDesc}
+                onChange={(e) => setOnboardingDesc(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Steps</Label>
+                <span className="text-xs text-muted-foreground">{onboardingSteps.length} / {ONBOARDING_STEPS.length} selected</span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {ONBOARDING_STEPS.map((step) => {
+                  const isSelected = onboardingSteps.includes(step.id)
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => toggleOnboardingStep(step.id)}
+                      className={cn(
+                        'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+                        isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                      )}
+                    >
+                      <div className={cn(
+                        'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                        isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
+                      )}>
+                        {isSelected && <Check className="w-3 h-3" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{step.label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOnboardingDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleCreateOnboarding}
+              disabled={creatingOnboarding || !onboardingTitle.trim() || onboardingSteps.length === 0}
+              className="gap-2"
+            >
+              {creatingOnboarding && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Plus className="h-4 w-4" />
+              Create Onboarding
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Task Detail Dialog */}
       <Dialog open={!!taskDetail} onOpenChange={(open) => { if (!open) setTaskDetail(null) }}>

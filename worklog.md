@@ -191,3 +191,25 @@ Stage Summary:
 - Admin "Create Onboarding" button opens dialog with project picker and step configuration
 - Admin can delete onboarding forms with confirmation
 - Verified via browser: Create Onboarding dialog works, project dropdown renders above dialog, form created successfully, client onboarding wizard fields properly spaced, Create Group dialog fully functional
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix subtask under team dashboard + add dark/light mode with blue primary color
+
+Work Log:
+- Verified subtask API was already fixed from previous session (GET handler added, PATCH accepts both id/subtaskId with toggle, DELETE supports query param)
+- Verified ThemeProvider was already added to layout.tsx
+- Verified blue primary CSS was already applied to globals.css
+- Improved theme toggle: changed from click-cycle to dropdown menu (Light/Dark/System) in app-shell.tsx header
+- Added theme toggle to login page with Sun/Moon/Monitor icons
+- Updated admin dashboard buttons from hardcoded emerald-600 to bg-primary (blue)
+- Updated admin overview stat cards to use primary color for "Total Tasks"
+- Updated chart bar colors to use blue (#3b82f6) for "In Progress"
+- Updated sidebar "Admin Access" shield icon to use text-primary (blue)
+- Updated login page demo account colors with dark: variants
+- Updated login page bottom badges to use text-primary for "Admin Panel"
+
+Stage Summary:
+- Subtask API: Fully functional - GET, POST (create), PATCH (toggle), DELETE all work
+- Dark/Light mode: ThemeProvider wrapping app, dropdown toggle in header, toggle on login page
+- Primary color: Blue (oklch blue ~264 hue) applied to all CSS variables, admin buttons, sidebar, stat cards

@@ -1,0 +1,809 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import {
+     7→     7→  FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
+     8→     8→  ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
+     9→     9→  Calendar, Users, Loader2, FileText, Shield, Lock, Save,
+    10→    10→  MessageCircle, ListTodo, Check, CheckCheck, Search
+    11→    11→} from 'lucide-react'
+    12→    12→import { useAuthStore } from '@/stores/auth'
+    13→    13→import type {
+    14→    14→  User, Project, Task, Message, Comment, Subtask
+    15→    15→} from '@/types'
+    16→    16→import {
+    17→    17→  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
+    18→    18→  formatDate, formatRelativeTime
+    19→    19→} from '@/features/route-guard'
+    20→    20→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    21→    21→import { Button } from '@/components/ui/button'
+    22→    22→import { Input } from '@/components/ui/input'
+    23→    23→import { Textarea } from '@/components/ui/textarea'
+    24→    24→import { Badge } from '@/components/ui/badge'
+    25→    25→import { Label } from '@/components/ui/label'
+    26→    26→import { Skeleton } from '@/components/ui/skeleton'
+    27→    27→import { Progress } from '@/components/ui/progress'
+    28→    28→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    29→    29→import { Separator } from '@/components/ui/separator'
+    30→    30→import { ScrollArea } from '@/components/ui/scroll-area'
+    31→    31→import {
+    32→    32→  Dialog, DialogContent, DialogHeader, DialogTitle
+    33→    33→} from '@/components/ui/dialog'
+    34→    34→import { isBefore, parseISO } from 'date-fns'
+    35→    35→
+    36→    36→// ─── Animation Variants ──────────────────────────────────────────
+    37→    37→const fadeSlide = {
+    38→    38→  initial: { opacity: 0, y: 12 },
+    39→    39→  animate: { opacity: 1, y: 0 },
+    40→    40→  exit: { opacity: 0, y: -12 },
+    41→    41→  transition: { duration: 0.25 }
+    42→    42→}
+    43→    43→
+    44→    44→// ─── Shared sub-components ───────────────────────────────────────
+    45→    45→
+    46→    46→function PageSkeleton() {
+    47→    47→  return (
+    48→    48→    <div className="space-y-6 p-4 md:p-6">
+    49→    49→      <Skeleton className="h-8 w-64" />
+    50→    50→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    51→    51→        {Array.from({ length: 4 }).map((_, i) => (
+    52→    52→          <Skeleton key={i} className="h-24 rounded-lg" />
+    53→    53→        ))}
+    54→    54→      </div>
+    55→    55→      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    56→    56→        {Array.from({ length: 3 }).map((_, i) => (
+    57→    57→          <Skeleton key={i} className="h-48 rounded-lg" />
+    58→    58→        ))}
+    59→    59→      </div>
+    60→    60→    </div>
+    61→    61→  )
+    62→    62→}
+    63→    63→
+    64→    64→function StatCard({ icon: Icon, label, value, color }: {
+    65→    65→  icon: React.ElementType; label: string; value: number | string; color: string
+    66→    66→}) {
+    67→    67→  return (
+    68→    68→    <motion.div {...fadeSlide} className="bg-card border rounded-xl p-4 md:p-5 shadow-sm">
+    69→    69→      <div className="flex items-center gap-3">
+    70→    70→        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
+    71→    71→          <Icon className="w-5 h-5 text-white" />
+    72→    72→        </div>
+    73→    73→        <div>
+    74→    74→          <p className="text-sm text-muted-foreground">{label}</p>
+    75→    75→          <p className="text-2xl font-bold">{value}</p>
+    76→    76→        </div>
+    77→    77→      </div>
+    78→    78→    </motion.div>
+    79→    79→  )
+    80→    80→}
+    81→    81→
+    82→    82→function PriorityBadge({ priority }: { priority: string }) {
+    83→    83→  const cfg = getPriorityConfig(priority)
+    84→    84→  return (
+    85→    85→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    86→    86→      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor}`} />
+    87→    87→      {cfg.label}
+    88→    88→    </span>
+    89→    89→  )
+    90→    90→}
+    91→    91→
+    92→    92→function StatusBadge({ status }: { status: string }) {
+    93→    93→  const cfg = getStatusConfig(status)
+    94→    94→  const Icon = cfg.icon === 'check' ? CheckCircle2 : cfg.icon === 'clock' ? Clock : cfg.icon === 'eye' ? Eye : Circle
+    95→    95→  return (
+    96→    96→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    97→    97→      <Icon className="w-3 h-3" />
+    98→    98→      {cfg.label}
+    99→    99→    </span>
+   100→   100→  )
+   101→   101→}
+   102→   102→
+   103→   103→function EmptyState({ icon: Icon, title, description }: {
+   104→   104→  icon: React.ElementType; title: string; description: string
+   105→   105→}) {
+   106→   106→  return (
+   107→   107→    <motion.div {...fadeSlide} className="flex flex-col items-center justify-center py-16 text-center">
+   108→   108→      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   109→   109→        <Icon className="w-8 h-8 text-muted-foreground" />
+   110→   110→      </div>
+   111→   111→      <h3 className="text-lg font-semibold mb-1">{title}</h3>
+   112→   112→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+   113→   113→    </motion.div>
+   114→   114→  )
+   115→   115→}
+   116→   116→
+   117→   117→// ═══════════════════════════════════════════════════════════════════
+   118→   118→// CLIENT ONBOARDING (re-exported from wizard component)
+   119→   119→// ═══════════════════════════════════════════════════════════════════
+   120→   120→export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboardingWizard'
+   121→   121→
+   122→   122→// ═══════════════════════════════════════════════════════════════════
+   123→   123→// CLIENT PROJECTS
+   124→   124→// ═══════════════════════════════════════════════════════════════════
+   125→   125→export function ClientProjects() {
+   126→   126→  const { user } = useAuthStore()
+   127→   127→  const [projects, setProjects] = useState<(Project & { tasks?: (Task & { _count: { comments: number; subtasks: number; completedSubtasks: number } })[] })[]>([])
+   128→   128→  const [loading, setLoading] = useState(true)
+   129→   129→  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+   130→   130→  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
+   131→   131→  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }) | null>(null)
+   132→   132→  const [taskDetailLoading, setTaskDetailLoading] = useState(false)
+   133→   133→
+   134→   134→  const fetchProjects = useCallback(async () => {
+   135→   135→    try {
+   136→   136→      const res = await fetch('/api/projects')
+   137→   137→      const data = await res.json()
+   138→   138→      // Filter to active projects and those the client is a member of
+   139→   139→      const clientProjects = (data.projects || [])
+   140→   140→        .filter((p: Project) => p.status === 'active' && p.members?.some(m => m.userId === user?.id))
+   141→   141→      setProjects(clientProjects)
+   142→   142→    } catch {
+   143→   143→      toast.error('Failed to load projects')
+   144→   144→    } finally {
+   145→   145→      setLoading(false)
+   146→   146→    }
+   147→   147→  }, [user?.id])
+   148→   148→
+   149→   149→  useEffect(() => { fetchProjects() }, [fetchProjects])
+   150→   150→
+   151→   151→  const expandProject = async (projectId: string) => {
+   152→   152→    if (expandedProjectId === projectId) {
+   153→   153→      setExpandedProjectId(null)
+   154→   154→      setExpandedTasks([])
+   155→   155→      return
+   156→   156→    }
+   157→   157→    setExpandedProjectId(projectId)
+   158→   158→    try {
+   159→   159→      const res = await fetch(`/api/projects/${projectId}`)
+   160→   160→      const data = await res.json()
+   161→   161→      setExpandedTasks(data.project?.tasks || [])
+   162→   162→    } catch {
+   163→   163→      toast.error('Failed to load project tasks')
+   164→   164→    }
+   165→   165→  }
+   166→   166→
+   167→   167→  const openTaskDetail = async (taskId: string) => {
+   168→   168→    setTaskDetailLoading(true)
+   169→   169→    setTaskDetail(null)
+   170→   170→    try {
+   171→   171→      const res = await fetch(`/api/tasks/${taskId}`)
+   172→   172→      const data = await res.json()
+   173→   173→      setTaskDetail(data.task)
+   174→   174→    } catch {
+   175→   175→      toast.error('Failed to load task details')
+   176→   176→    } finally {
+   177→   177→      setTaskDetailLoading(false)
+   178→   178→    }
+   179→   179→  }
+   180→   180→
+   181→   181→  // Stats
+   182→   182→  const allTasks = projects.flatMap(p => p.tasks || [])
+   183→   183→  const totalTasks = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
+   184→   184→  const completedTasks = allTasks.filter(t => t.status === 'done').length
+   185→   185→  const inProgressTasks = allTasks.filter(t => t.status === 'in_progress').length
+   186→   186→
+   187→   187→  if (loading) return <PageSkeleton />
+   188→   188→
+   189→   189→  return (
+   190→   190→    <div className="p-4 md:p-6 space-y-6">
+   191→   191→      <div className="flex items-center gap-3">
+   192→   192→        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+   193→   193→          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+   194→   194→        </div>
+   195→   195→        <div>
+   196→   196→          <h1 className="text-2xl font-bold">My Projects</h1>
+   197→   197→          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+   198→   198→        </div>
+   199→   199→      </div>
+   200→   200→
+   201→   201→      {/* Stats */}
+   202→   202→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   203→   203→        <StatCard icon={FolderKanban} label="My Projects" value={projects.length} color="bg-emerald-500" />
+   204→   204→        <StatCard icon={ListTodo} label="Total Tasks" value={totalTasks} color="bg-amber-500" />
+   205→   205→        <StatCard icon={CheckCircle2} label="Completed" value={completedTasks} color="bg-teal-500" />
+   206→   206→        <StatCard icon={Clock} label="In Progress" value={inProgressTasks} color="bg-orange-500" />
+   207→   207→      </div>
+   208→   208→
+   209→   209→      {/* Project Cards */}
+   210→   210→      {projects.length === 0 ? (
+   211→   211→        <EmptyState
+   212→   212→          icon={FolderKanban}
+   213→   213→          title="No active projects"
+   214→   214→          description="You don't have any active projects yet."
+   215→   215→        />
+   216→   216→      ) : (
+   217→   217→        <div className="space-y-4">
+   218→   218→          {projects.map((project, i) => {
+   219→   219→            const projectTasks = expandedProjectId === project.id ? expandedTasks : []
+   220→   220→            const doneTasks = projectTasks.filter(t => t.status === 'done').length
+   221→   221→            const totalT = project._count?.tasks || 0
+   222→   222→            const pct = totalT > 0 ? Math.round((doneTasks / totalT) * 100) : 0
+   223→   223→            const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+   224→   224→
+   225→   225→            return (
+   226→   226→              <motion.div
+   227→   227→                key={project.id}
+   228→   228→                initial={{ opacity: 0, y: 12 }}
+   229→   229→                animate={{ opacity: 1, y: 0 }}
+   230→   230→                transition={{ delay: i * 0.05 }}
+   231→   231→              >
+   232→   232→                <Card
+   233→   233→                  className="cursor-pointer hover:shadow-md transition-shadow border-l-4"
+   234→   234→                  style={{ borderLeftColor: project.color }}
+   235→   235→                  onClick={() => expandProject(project.id)}
+   236→   236→                >
+   237→   237→                  <CardContent className="p-4 md:p-5">
+   238→   238→                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   239→   239→                      <div className="min-w-0 flex-1">
+   240→   240→                        <div className="flex items-center gap-2 mb-1">
+   241→   241→                          <h3 className="font-semibold text-base truncate">{project.name}</h3>
+   242→   242→                          <PriorityBadge priority={project.priority} />
+   243→   243→                        </div>
+   244→   244→                        <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+   245→   245→                      </div>
+   246→   246→                      <div className="flex items-center gap-4 shrink-0 text-sm">
+   247→   247→                        {project.dueDate && (
+   248→   248→                          <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+   249→   249→                            <Calendar className="w-3.5 h-3.5" />
+   250→   250→                            {formatDate(project.dueDate)}
+   251→   251→                          </span>
+   252→   252→                        )}
+   253→   253→                        <span className="text-muted-foreground flex items-center gap-1">
+   254→   254→                          <Users className="w-3.5 h-3.5" />
+   255→   255→                          {project._count?.members || 0}
+   256→   256→                        </span>
+   257→   257→                        <span className="text-muted-foreground">
+   258→   258→                          {expandedProjectId === project.id ? '▲' : '▼'}
+   259→   259→                        </span>
+   260→   260→                      </div>
+   261→   261→                    </div>
+   262→   262→
+   263→   263→                    {/* Progress bar */}
+   264→   264→                    <div className="mt-3 space-y-1">
+   265→   265→                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+   266→   266→                        <span>{doneTasks}/{totalT} tasks completed</span>
+   267→   267→                        <span>{pct}%</span>
+   268→   268→                      </div>
+   269→   269→                      <Progress value={pct} className="h-2" />
+   270→   270→                    </div>
+   271→   271→                  </CardContent>
+   272→   272→                </Card>
+   273→   273→
+   274→   274→                {/* Expanded tasks table */}
+   275→   275→                <AnimatePresence>
+   276→   276→                  {expandedProjectId === project.id && (
+   277→   277→                    <motion.div
+   278→   278→                      initial={{ opacity: 0, height: 0 }}
+   279→   279→                      animate={{ opacity: 1, height: 'auto' }}
+   280→   280→                      exit={{ opacity: 0, height: 0 }}
+   281→   281→                      transition={{ duration: 0.2 }}
+   282→   282→                      className="overflow-hidden"
+   283→   283→                    >
+   284→   284→                      <Card className="mt-2 rounded-t-none">
+   285→   285→                        <CardContent className="p-0">
+   286→   286→                          {projectTasks.length === 0 ? (
+   287→   287→                            <div className="py-8 text-center text-sm text-muted-foreground">
+   288→   288→                              No tasks in this project yet.
+   289→   289→                            </div>
+   290→   290→                          ) : (
+   291→   291→                            <div className="overflow-x-auto">
+   292→   292→                              <table className="w-full text-sm">
+   293→   293→                                <thead>
+   294→   294→                                  <tr className="border-b bg-muted/50">
+   295→   295→                                    <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
+   296→   296→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+   297→   297→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
+   298→   298→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
+   299→   299→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
+   300→   300→                                  </tr>
+   301→   301→                                </thead>
+   302→   302→                                <tbody>
+   303→   303→                                  {projectTasks.map(task => (
+   304→   304→                                    <tr
+   305→   305→                                      key={task.id}
+   306→   306→                                      className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+   307→   307→                                      onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
+   308→   308→                                    >
+   309→   309→                                      <td className="p-3">
+   310→   310→                                        <div className="font-medium">{task.title}</div>
+   311→   311→                                        {task.description && (
+   312→   312→                                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
+   313→   313→                                        )}
+   314→   314→                                      </td>
+   315→   315→                                      <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
+   316→   316→                                      <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
+   317→   317→                                      <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
+   318→   318→                                        {task.dueDate ? formatDate(task.dueDate) : '—'}
+   319→   319→                                      </td>
+   320→   320→                                      <td className="p-3 hidden lg:table-cell">
+   321→   321→                                        <div className="flex -space-x-2">
+   322→   322→                                          {task.assignees?.slice(0, 3).map(a => (
+   323→   323→                                            <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
+   324→   324→                                              <AvatarFallback className="text-[10px] bg-muted">
+   325→   325→                                                {getInitials(a.user?.name || '?')}
+   326→   326→                                              </AvatarFallback>
+   327→   327→                                            </Avatar>
+   328→   328→                                          ))}
+   329→   329→                                          {(task.assignees?.length || 0) > 3 && (
+   330→   330→                                            <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
+   331→   331→                                              +{(task.assignees?.length || 0) - 3}
+   332→   332→                                            </span>
+   333→   333→                                          )}
+   334→   334→                                        </div>
+   335→   335→                                      </td>
+   336→   336→                                    </tr>
+   337→   337→                                  ))}
+   338→   338→                                </tbody>
+   339→   339→                              </table>
+   340→   340→                            </div>
+   341→   341→                          )}
+   342→   342→                        </CardContent>
+   343→   343→                      </Card>
+   344→   344→                    </motion.div>
+   345→   345→                  )}
+   346→   346→                </AnimatePresence>
+   347→   347→              </motion.div>
+   348→   348→            )
+   349→   349→          })}
+   350→   350→        </div>
+   351→   351→      )}
+   352→   352→
+   353→   353→      {/* Task Detail Dialog */}
+   354→   354→      <Dialog open={!!taskDetail} onOpenChange={(open) => { if (!open) setTaskDetail(null) }}>
+   355→   355→        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+   356→   356→          {taskDetailLoading ? (
+   357→   357→            <div className="p-6 space-y-4">
+   358→   358→              <Skeleton className="h-6 w-3/4" />
+   359→   359→              <Skeleton className="h-4 w-1/2" />
+   360→   360→              <Skeleton className="h-20 w-full" />
+   361→   361→            </div>
+   362→   362→          ) : taskDetail ? (
+   363→   363→            <TaskDetailDialog task={taskDetail} userId={user?.id || ''} onUpdate={() => openTaskDetail(taskDetail.id)} />
+   364→   364→          ) : null}
+   365→   365→        </DialogContent>
+   366→   366→      </Dialog>
+   367→   367→    </div>
+   368→   368→  )
+   369→   369→}
+   370→   370→
+   371→   371→// ─── Task Detail Dialog ─────────────────────────────────────
+   372→   372→function TaskDetailDialog({
+   373→   373→  task, userId, onUpdate
+   374→   374→}: {
+   375→   375→  task: Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }
+   376→   376→  userId: string
+   377→   377→  onUpdate: () => void
+   378→   378→}) {
+   379→   379→  const [comments, setComments] = useState<Comment[]>(task.comments || [])
+   380→   380→  const [newComment, setNewComment] = useState('')
+   381→   381→  const [sendingComment, setSendingComment] = useState(false)
+   382→   382→  const scrollRef = useRef<HTMLDivElement>(null)
+   383→   383→
+   384→   384→  useEffect(() => {
+   385→   385→    if (scrollRef.current) {
+   386→   386→      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+   387→   387→    }
+   388→   388→  }, [comments])
+   389→   389→
+   390→   390→  const sendComment = async () => {
+   391→   391→    if (!newComment.trim()) return
+   392→   392→    setSendingComment(true)
+   393→   393→    try {
+   394→   394→      const res = await fetch('/api/comments', {
+   395→   395→        method: 'POST',
+   396→   396→        headers: { 'Content-Type': 'application/json' },
+   397→   397→        body: JSON.stringify({ content: newComment.trim(), taskId: task.id, userId })
+   398→   398→      })
+   399→   399→      if (!res.ok) throw new Error()
+   400→   400→      const data = await res.json()
+   401→   401→      setComments(prev => [...prev, data.comment])
+   402→   402→      setNewComment('')
+   403→   403→      toast.success('Comment added')
+   404→   404→    } catch {
+   405→   405→      toast.error('Failed to add comment')
+   406→   406→    } finally {
+   407→   407→      setSendingComment(false)
+   408→   408→    }
+   409→   409→  }
+   410→   410→
+   411→   411→  const statusCfg = getStatusConfig(task.status)
+   412→   412→  const priorityCfg = getPriorityConfig(task.priority)
+   413→   413→
+   414→   414→  return (
+   415→   415→    <>
+   416→   416→      <DialogHeader>
+   417→   417→        <div className="flex items-center gap-2 flex-wrap">
+   418→   418→          <DialogTitle className="text-xl">{task.title}</DialogTitle>
+   419→   419→          <StatusBadge status={task.status} />
+   420→   420→          <PriorityBadge priority={task.priority} />
+   421→   421→        </div>
+   422→   422→        {task.project && (
+   423→   423→          <div className="flex items-center gap-2 mt-1">
+   424→   424→            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: task.project.color }} />
+   425→   425→            <span className="text-sm text-muted-foreground">{task.project.name}</span>
+   426→   426→          </div>
+   427→   427→        )}
+   428→   428→      </DialogHeader>
+   429→   429→
+   430→   430→      <ScrollArea className="flex-1 -mx-6 px-6" ref={scrollRef}>
+   431→   431→        <div className="space-y-5 py-4">
+   432→   432→          {/* Description */}
+   433→   433→          {task.description && (
+   434→   434→            <div>
+   435→   435→              <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
+   436→   436→              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
+   437→   437→            </div>
+   438→   438→          )}
+   439→   439→
+   440→   440→          {/* Details Grid */}
+   441→   441→          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+   442→   442→            {task.dueDate && (
+   443→   443→              <div className="space-y-1">
+   444→   444→                <span className="text-xs text-muted-foreground">Due Date</span>
+   445→   445→                <div className="flex items-center gap-1.5 text-sm font-medium">
+   446→   446→                  <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+   447→   447→                  {formatDate(task.dueDate)}
+   448→   448→                </div>
+   449→   449→              </div>
+   450→   450→            )}
+   451→   451→            <div className="space-y-1">
+   452→   452→              <span className="text-xs text-muted-foreground">Assignees</span>
+   453→   453→              <div className="flex items-center gap-1.5">
+   454→   454→                {task.assignees?.map(a => (
+   455→   455→                  <Avatar key={a.id} className="w-6 h-6">
+   456→   456→                    <AvatarFallback className="text-[10px] bg-muted">
+   457→   457→                      {getInitials(a.user?.name || '?')}
+   458→   458→                    </AvatarFallback>
+   459→   459→                  </Avatar>
+   460→   460→                ))}
+   461→   461→                {(!task.assignees || task.assignees.length === 0) && (
+   462→   462→                  <span className="text-sm text-muted-foreground">Unassigned</span>
+   463→   463→                )}
+   464→   464→              </div>
+   465→   465→            </div>
+   466→   466→            <div className="space-y-1">
+   467→   467→              <span className="text-xs text-muted-foreground">Created</span>
+   468→   468→              <span className="text-sm">{formatRelativeTime(task.createdAt)}</span>
+   469→   469→            </div>
+   470→   470→          </div>
+   471→   471→
+   472→   472→          {/* Subtasks */}
+   473→   473→          {task.subtasks && task.subtasks.length > 0 && (
+   474→   474→            <div className="space-y-2">
+   475→   475→              <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+   476→   476→                <ListTodo className="w-3.5 h-3.5" />
+   477→   477→                Subtasks ({task._count.completedSubtasks}/{task._count.subtasks})
+   478→   478→              </h4>
+   479→   479→              <div className="space-y-1.5">
+   480→   480→                {task.subtasks.map(sub => (
+   481→   481→                  <div key={sub.id} className="flex items-center gap-2 text-sm">
+   482→   482→                    {sub.completed ? (
+   483→   483→                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+   484→   484→                    ) : (
+   485→   485→                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
+   486→   486→                    )}
+   487→   487→                    <span className={sub.completed ? 'line-through text-muted-foreground' : ''}>
+   488→   488→                      {sub.title}
+   489→   489→                    </span>
+   490→   490→                  </div>
+   491→   491→                ))}
+   492→   492→              </div>
+   493→   493→            </div>
+   494→   494→          )}
+   495→   495→
+   496→   496→          <Separator />
+   497→   497→
+   498→   498→          {/* Comments */}
+   499→   499→          <div className="space-y-3">
+   500→   500→            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+   501→   501→              <MessageCircle className="w-3.5 h-3.5" />
+   502→   502→              Comments ({comments.length})
+   503→   503→            </h4>
+   504→   504→            <div className="space-y-3">
+   505→   505→              {comments.map(comment => (
+   506→   506→                <div key={comment.id} className="flex gap-3">
+   507→   507→                  <Avatar className="w-8 h-8 shrink-0">
+   508→   508→                    <AvatarFallback className="text-xs bg-muted">
+   509→   509→                      {getInitials(comment.user?.name || '?')}
+   510→   510→                    </AvatarFallback>
+   511→   511→                  </Avatar>
+   512→   512→                  <div className="min-w-0 flex-1">
+   513→   513→                    <div className="flex items-center gap-2">
+   514→   514→                      <span className="text-sm font-medium">{comment.user?.name || 'Unknown'}</span>
+   515→   515→                      <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.createdAt)}</span>
+   516→   516→                      {comment.user?.role && (
+   517→   517→                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeClasses(comment.user.role)}`}>
+   518→   518→                          {comment.user.role}
+   519→   519→                        </span>
+   520→   520→                      )}
+   521→   521→                    </div>
+   522→   522→                    <p className="text-sm mt-0.5 whitespace-pre-wrap">{comment.content}</p>
+   523→   523→                  </div>
+   524→   524→                </div>
+   525→   525→              ))}
+   526→   526→              {comments.length === 0 && (
+   527→   527→                <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
+   528→   528→              )}
+   529→   529→            </div>
+   530→   530→          </div>
+   531→   531→        </div>
+   532→   532→      </ScrollArea>
+   533→   533→
+   534→   534→      {/* Comment input */}
+   535→   535→      <div className="border-t pt-4 mt-auto">
+   536→   536→        <div className="flex gap-2">
+   537→   537→          <Input
+   538→   538→            value={newComment}
+   539→   539→            onChange={e => setNewComment(e.target.value)}
+   540→   540→            placeholder="Add a comment..."
+   541→   541→            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() } }}
+   542→   542→          />
+   543→   543→          <Button size="icon" onClick={sendComment} disabled={!newComment.trim() || sendingComment}>
+   544→   544→            {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+   545→   545→          </Button>
+   546→   546→        </div>
+   547→   547→      </div>
+   548→   548→    </>
+   549→   549→  )
+   550→   550→}
+   551→   551→
+   552→   552→// ═══════════════════════════════════════════════════════════════════
+   553→   553→// CLIENT MESSAGES
+   554→   554→// ═══════════════════════════════════════════════════════════════════
+   555→   555→export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesPanel'
+   556→   556→
+   557→   557→// ═══════════════════════════════════════════════════════════════════
+   558→   558→// CLIENT PROFILE
+   559→   559→// ═══════════════════════════════════════════════════════════════════
+   560→   560→export function ClientProfile() {
+   561→   561→  const { user, login } = useAuthStore()
+   562→   562→  const [loading, setLoading] = useState(true)
+   563→   563→  const [saving, setSaving] = useState(false)
+   564→   564→  const [savingPassword, setSavingPassword] = useState(false)
+   565→   565→
+   566→   566→  const [name, setName] = useState('')
+   567→   567→  const [email, setEmail] = useState('')
+   568→   568→  const [phone, setPhone] = useState('')
+   569→   569→  const [company, setCompany] = useState('')
+   570→   570→
+   571→   571→  const [currentPassword, setCurrentPassword] = useState('')
+   572→   572→  const [newPassword, setNewPassword] = useState('')
+   573→   573→  const [confirmPassword, setConfirmPassword] = useState('')
+   574→   574→
+   575→   575→  useEffect(() => {
+   576→   576→    if (!user?.id) return
+   577→   577→    const fetchProfile = async () => {
+   578→   578→      try {
+   579→   579→        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+   580→   580→        const data = await res.json()
+   581→   581→        if (data.user) {
+   582→   582→          setName(data.user.name || '')
+   583→   583→          setEmail(data.user.email || '')
+   584→   584→          setPhone(data.user.phone || '')
+   585→   585→          setCompany(data.user.company || '')
+   586→   586→        }
+   587→   587→      } catch {
+   588→   588→        toast.error('Failed to load profile')
+   589→   589→      } finally {
+   590→   590→        setLoading(false)
+   591→   591→      }
+   592→   592→    }
+   593→   593→    fetchProfile()
+   594→   594→  }, [user?.id])
+   595→   595→
+   596→   596→  const saveProfile = async () => {
+   597→   597→    if (!user?.id) return
+   598→   598→    setSaving(true)
+   599→   599→    try {
+   600→   600→      const res = await fetch('/api/user/profile', {
+   601→   601→        method: 'PATCH',
+   602→   602→        headers: { 'Content-Type': 'application/json' },
+   603→   603→        body: JSON.stringify({ userId: user.id, name, email, phone, company })
+   604→   604→      })
+   605→   605→      if (!res.ok) {
+   606→   606→        const data = await res.json()
+   607→   607→        throw new Error(data.error || 'Failed')
+   608→   608→      }
+   609→   609→      const data = await res.json()
+   610→   610→      toast.success('Profile updated successfully')
+   611→   611→      // Update user in store
+   612→   612→      if (data.user && user) {
+   613→   613→        login({ ...user, name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+   614→   614→      }
+   615→   615→    } catch (e: unknown) {
+   616→   616→      const msg = e instanceof Error ? e.message : 'Failed to update profile'
+   617→   617→      toast.error(msg)
+   618→   618→    } finally {
+   619→   619→      setSaving(false)
+   620→   620→    }
+   621→   621→  }
+   622→   622→
+   623→   623→  const changePassword = async () => {
+   624→   624→    if (!user?.id) return
+   625→   625→    if (!currentPassword || !newPassword || !confirmPassword) {
+   626→   626→      toast.error('Please fill in all password fields')
+   627→   627→      return
+   628→   628→    }
+   629→   629→    if (newPassword !== confirmPassword) {
+   630→   630→      toast.error('New passwords do not match')
+   631→   631→      return
+   632→   632→    }
+   633→   633→    if (newPassword.length < 6) {
+   634→   634→      toast.error('Password must be at least 6 characters')
+   635→   635→      return
+   636→   636→    }
+   637→   637→    setSavingPassword(true)
+   638→   638→    try {
+   639→   639→      const res = await fetch('/api/user/profile', {
+   640→   640→        method: 'PATCH',
+   641→   641→        headers: { 'Content-Type': 'application/json' },
+   642→   642→        body: JSON.stringify({
+   643→   643→          userId: user.id,
+   644→   644→          currentPassword,
+   645→   645→          newPassword
+   646→   646→        })
+   647→   647→      })
+   648→   648→      if (!res.ok) {
+   649→   649→        const data = await res.json()
+   650→   650→        throw new Error(data.error || 'Failed')
+   651→   651→      }
+   652→   652→      toast.success('Password changed successfully')
+   653→   653→      setCurrentPassword('')
+   654→   654→      setNewPassword('')
+   655→   655→      setConfirmPassword('')
+   656→   656→    } catch (e: unknown) {
+   657→   657→      const msg = e instanceof Error ? e.message : 'Failed to change password'
+   658→   658→      toast.error(msg)
+   659→   659→    } finally {
+   660→   660→      setSavingPassword(false)
+   661→   661→    }
+   662→   662→  }
+   663→   663→
+   664→   664→  if (loading) return <PageSkeleton />
+   665→   665→
+   666→   666→  return (
+   667→   667→    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
+   668→   668→      <div className="flex items-center gap-3">
+   669→   669→        <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+   670→   670→          <UserCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+   671→   671→        </div>
+   672→   672→        <div>
+   673→   673→          <h1 className="text-2xl font-bold">Profile Settings</h1>
+   674→   674→          <p className="text-sm text-muted-foreground">Manage your account information</p>
+   675→   675→        </div>
+   676→   676→      </div>
+   677→   677→
+   678→   678→      {/* Profile Card */}
+   679→   679→      <motion.div {...fadeSlide}>
+   680→   680→        <Card>
+   681→   681→          <CardHeader>
+   682→   682→            <div className="flex items-center justify-between">
+   683→   683→              <CardTitle className="text-lg">Personal Information</CardTitle>
+   684→   684→              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+   685→   685→                Client
+   686→   686→              </span>
+   687→   687→            </div>
+   688→   688→            {user?.createdAt && (
+   689→   689→              <p className="text-sm text-muted-foreground">
+   690→   690→                Member since {formatDate(user.createdAt)}
+   691→   691→              </p>
+   692→   692→            )}
+   693→   693→          </CardHeader>
+   694→   694→          <CardContent className="space-y-4">
+   695→   695→            <div className="space-y-2">
+   696→   696→              <Label htmlFor="profile-name">Full Name</Label>
+   697→   697→              <Input
+   698→   698→                id="profile-name"
+   699→   699→                value={name}
+   700→   700→                onChange={e => setName(e.target.value)}
+   701→   701→                placeholder="Your full name"
+   702→   702→              />
+   703→   703→            </div>
+   704→   704→            <div className="space-y-2">
+   705→   705→              <Label htmlFor="profile-email">Email Address</Label>
+   706→   706→              <Input
+   707→   707→                id="profile-email"
+   708→   708→                type="email"
+   709→   709→                value={email}
+   710→   710→                onChange={e => setEmail(e.target.value)}
+   711→   711→                placeholder="your@email.com"
+   712→   712→              />
+   713→   713→            </div>
+   714→   714→            <div className="space-y-2">
+   715→   715→              <Label htmlFor="profile-phone">Phone Number</Label>
+   716→   716→              <Input
+   717→   717→                id="profile-phone"
+   718→   718→                type="tel"
+   719→   719→                value={phone}
+   720→   720→                onChange={e => setPhone(e.target.value)}
+   721→   721→                placeholder="+1 (555) 000-0000"
+   722→   722→              />
+   723→   723→            </div>
+   724→   724→            <div className="space-y-2">
+   725→   725→              <Label htmlFor="profile-company">Company</Label>
+   726→   726→              <Input
+   727→   727→                id="profile-company"
+   728→   728→                value={company}
+   729→   729→                onChange={e => setCompany(e.target.value)}
+   730→   730→                placeholder="Your company name"
+   731→   731→              />
+   732→   732→            </div>
+   733→   733→            <div className="pt-2">
+   734→   734→              <Button onClick={saveProfile} disabled={saving} className="w-full sm:w-auto">
+   735→   735→                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+   736→   736→                Save Changes
+   737→   737→              </Button>
+   738→   738→            </div>
+   739→   739→          </CardContent>
+   740→   740→        </Card>
+   741→   741→      </motion.div>
+   742→   742→
+   743→   743→      {/* Change Password */}
+   744→   744→      <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   745→   745→        <Card>
+   746→   746→          <CardHeader>
+   747→   747→            <CardTitle className="text-lg flex items-center gap-2">
+   748→   748→              <Shield className="w-5 h-5 text-muted-foreground" />
+   749→   749→              Change Password
+   750→   750→            </CardTitle>
+   751→   751→            <p className="text-sm text-muted-foreground">
+   752→   752→              Update your password to keep your account secure
+   753→   753→            </p>
+   754→   754→          </CardHeader>
+   755→   755→          <CardContent className="space-y-4">
+   756→   756→            <div className="space-y-2">
+   757→   757→              <Label htmlFor="current-password">Current Password</Label>
+   758→   758→              <div className="relative">
+   759→   759→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   760→   760→                <Input
+   761→   761→                  id="current-password"
+   762→   762→                  type="password"
+   763→   763→                  value={currentPassword}
+   764→   764→                  onChange={e => setCurrentPassword(e.target.value)}
+   765→   765→                  placeholder="Enter current password"
+   766→   766→                  className="pl-9"
+   767→   767→                />
+   768→   768→              </div>
+   769→   769→            </div>
+   770→   770→            <div className="space-y-2">
+   771→   771→              <Label htmlFor="new-password">New Password</Label>
+   772→   772→              <div className="relative">
+   773→   773→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   774→   774→                <Input
+   775→   775→                  id="new-password"
+   776→   776→                  type="password"
+   777→   777→                  value={newPassword}
+   778→   778→                  onChange={e => setNewPassword(e.target.value)}
+   779→   779→                  placeholder="Enter new password"
+   780→   780→                  className="pl-9"
+   781→   781→                />
+   782→   782→              </div>
+   783→   783→            </div>
+   784→   784→            <div className="space-y-2">
+   785→   785→              <Label htmlFor="confirm-password">Confirm New Password</Label>
+   786→   786→              <div className="relative">
+   787→   787→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   788→   788→                <Input
+   789→   789→                  id="confirm-password"
+   790→   790→                  type="password"
+   791→   791→                  value={confirmPassword}
+   792→   792→                  onChange={e => setConfirmPassword(e.target.value)}
+   793→   793→                  placeholder="Confirm new password"
+   794→   794→                  className="pl-9"
+   795→   795→                />
+   796→   796→              </div>
+   797→   797→            </div>
+   798→   798→            <div className="pt-2">
+   799→   799→              <Button onClick={changePassword} disabled={savingPassword} variant="outline" className="w-full sm:w-auto">
+   800→   800→                {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+   801→   801→                Change Password
+   802→   802→              </Button>
+   803→   803→            </div>
+   804→   804→          </CardContent>
+   805→   805→        </Card>
+   806→   806→      </motion.div>
+   807→   807→    </div>
+   808→   808→  )
+   809→   809→}

@@ -1,0 +1,938 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback, useRef } from 'react'
+     4→     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import { useAuthStore } from '@/stores/auth'
+     7→     7→import type { OnboardingForm, Onboarding, User } from '@/types'
+     8→     8→import { getInitials, formatRelativeTime, formatDate } from '@/features/route-guard'
+     9→     9→import { cn } from '@/lib/utils'
+    10→    10→
+    11→    11→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    12→    12→import { Button } from '@/components/ui/button'
+    13→    13→import { Input } from '@/components/ui/input'
+    14→    14→import { Textarea } from '@/components/ui/textarea'
+    15→    15→import { Badge } from '@/components/ui/badge'
+    16→    16→import { Label } from '@/components/ui/label'
+    17→    17→import { Skeleton } from '@/components/ui/skeleton'
+    18→    18→import { Progress } from '@/components/ui/progress'
+    19→    19→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    20→    20→import { Separator } from '@/components/ui/separator'
+    21→    21→import { ScrollArea } from '@/components/ui/scroll-area'
+    22→    22→import {
+    23→    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→    24→} from '@/components/ui/select'
+    25→    25→import {
+    26→    26→  ClipboardList, ChevronLeft, ChevronRight, Building2, Palette, Rocket,
+    27→    27→  FileText, Upload, X, CheckCircle2, XCircle, Clock, Loader2, ArrowLeft,
+    28→    28→  UserCircle, Check, Info,
+    29→    29→} from 'lucide-react'
+    30→    30→
+    31→    31→// ─── Types ──────────────────────────────────────────────────────────────────────
+    32→    32→
+    33→    33→interface UploadedFile {
+    34→    34→  url: string
+    35→    35→  originalName: string
+    36→    36→  filename: string
+    37→    37→  size: number
+    38→    38→  type: string
+    39→    39→}
+    40→    40→
+    41→    41→// ─── Animation Variants ─────────────────────────────────────────────────────────
+    42→    42→
+    43→    43→const fadeSlide = {
+    44→    44→  initial: { opacity: 0, x: 30 },
+    45→    45→  animate: { opacity: 1, x: 0 },
+    46→    46→  exit: { opacity: 0, x: -30 },
+    47→    47→  transition: { duration: 0.3 },
+    48→    48→}
+    49→    49→
+    50→    50→// ─── Step Configuration ────────────────────────────────────────────────────────
+    51→    51→
+    52→    52→const STEP_ICONS = [Building2, Palette, Rocket, FileText]
+    53→    53→const STEP_LABELS = ['Business Info', 'Brand Assets', 'Project Kickoff', 'Documents']
+    54→    54→
+    55→    55→const INDUSTRIES = [
+    56→    56→  'Technology', 'Healthcare', 'Finance', 'Education', 'E-commerce',
+    57→    57→  'Real Estate', 'Manufacturing', 'Media & Entertainment', 'Legal',
+    58→    58→  'Non-Profit', 'Government', 'Consulting', 'Other',
+    59→    59→]
+    60→    60→const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+']
+    61→    61→const BUDGET_RANGES = ['$1k - $5k', '$5k - $15k', '$15k - $50k', '$50k - $100k', '$100k+']
+    62→    62→const TIMELINES = ['1-2 weeks', '2-4 weeks', '1-2 months', '2-3 months', '3-6 months', '6+ months']
+    63→    63→
+    64→    64→// ─── File Upload Zone ───────────────────────────────────────────────────────────
+    65→    65→
+    66→    66→function FileUploadZone({
+    67→    67→  label,
+    68→    68→  required,
+    69→    69→  accept,
+    70→    70→  file,
+    71→    71→  onUpload,
+    72→    72→  onRemove,
+    73→    73→  icon: Icon = Upload,
+    74→    74→  description,
+    75→    75→}: {
+    76→    76→  label: string; required?: boolean; accept?: string
+    77→    77→  file: UploadedFile | null; onUpload: (file: UploadedFile) => void; onRemove: () => void
+    78→    78→  icon?: React.ElementType; description?: string
+    79→    79→}) {
+    80→    80→  const [uploading, setUploading] = useState(false)
+    81→    81→  const inputRef = useRef<HTMLInputElement>(null)
+    82→    82→
+    83→    83→  const handleFile = async (fileObj: File) => {
+    84→    84→    setUploading(true)
+    85→    85→    try {
+    86→    86→      const formData = new FormData()
+    87→    87→      formData.append('file', fileObj)
+    88→    88→      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+    89→    89→      if (!res.ok) {
+    90→    90→        const d = await res.json()
+    91→    91→        throw new Error(d.error || 'Upload failed')
+    92→    92→      }
+    93→    93→      const data = await res.json()
+    94→    94→      onUpload({
+    95→    95→        url: data.url,
+    96→    96→        originalName: data.originalName,
+    97→    97→        filename: data.filename,
+    98→    98→        size: data.size,
+    99→    99→        type: data.type,
+   100→   100→      })
+   101→   101→      toast.success('File uploaded')
+   102→   102→    } catch (e: unknown) {
+   103→   103→      toast.error(e instanceof Error ? e.message : 'Upload failed')
+   104→   104→    } finally {
+   105→   105→      setUploading(false)
+   106→   106→    }
+   107→   107→  }
+   108→   108→
+   109→   109→  const handleDrop = (e: React.DragEvent) => {
+   110→   110→    e.preventDefault()
+   111→   111→    const f = e.dataTransfer.files[0]
+   112→   112→    if (f) handleFile(f)
+   113→   113→  }
+   114→   114→
+   115→   115→  const formatSize = (bytes: number) => {
+   116→   116→    if (bytes < 1024) return `${bytes} B`
+   117→   117→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+   118→   118→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+   119→   119→  }
+   120→   120→
+   121→   121→  return (
+   122→   122→    <div className="space-y-2">
+   123→   123→      <Label className="text-sm font-medium">
+   124→   124→        {label} {required && <span className="text-red-500">*</span>}
+   125→   125→      </Label>
+   126→   126→      {file ? (
+   127→   127→        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   128→   128→          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+   129→   129→            <FileText className="w-5 h-5 text-primary" />
+   130→   130→          </div>
+   131→   131→          <div className="flex-1 min-w-0">
+   132→   132→            <p className="text-sm font-medium truncate">{file.originalName}</p>
+   133→   133→            <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
+   134→   134→          </div>
+   135→   135→          <Button
+   136→   136→            type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+   137→   137→            onClick={onRemove}
+   138→   138→          >
+   139→   139→            <X className="h-4 w-4" />
+   140→   140→          </Button>
+   141→   141→        </div>
+   142→   142→      ) : (
+   143→   143→        <div
+   144→   144→          className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-colors"
+   145→   145→          onClick={() => inputRef.current?.click()}
+   146→   146→          onDragOver={(e) => e.preventDefault()}
+   147→   147→          onDrop={handleDrop}
+   148→   148→        >
+   149→   149→          {uploading ? (
+   150→   150→            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+   151→   151→          ) : (
+   152→   152→            <>
+   153→   153→              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+   154→   154→                <Icon className="w-6 h-6 text-muted-foreground" />
+   155→   155→              </div>
+   156→   156→              <div className="text-center">
+   157→   157→                <p className="text-sm font-medium text-muted-foreground">Click to upload</p>
+   158→   158→                {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+   159→   159→              </div>
+   160→   160→            </>
+   161→   161→          )}
+   162→   162→          <input
+   163→   163→            ref={inputRef}
+   164→   164→            type="file"
+   165→   165→            className="hidden"
+   166→   166→            accept={accept}
+   167→   167→            onChange={(e) => {
+   168→   168→              const f = e.target.files?.[0]
+   169→   169→              if (f) handleFile(f)
+   170→   170→              e.target.value = ''
+   171→   171→            }}
+   172→   172→          />
+   173→   173→        </div>
+   174→   174→      )}
+   175→   175→    </div>
+   176→   176→  )
+   177→   177→}
+   178→   178→
+   179→   179→// ─── Step Indicator Card ────────────────────────────────────────────────────────
+   180→   180→
+   181→   181→function StepCard({
+   182→   182→  step, index, currentStep, isCompleted, onClick,
+   183→   183→}: {
+   184→   184→  step: string; index: number; currentStep: number; isCompleted: boolean; onClick: () => void
+   185→   185→}) {
+   186→   186→  const Icon = STEP_ICONS[index]
+   187→   187→  const isCurrent = index === currentStep
+   188→   188→  const isClickable = isCompleted || index === currentStep
+   189→   189→
+   190→   190→  return (
+   191→   191→    <button
+   192→   192→      type="button"
+   193→   193→      onClick={isClickable ? onClick : undefined}
+   194→   194→      disabled={!isClickable}
+   195→   195→      className={cn(
+   196→   196→        'flex-1 min-w-0 flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl transition-all duration-200 border',
+   197→   197→        isCompleted && 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800',
+   198→   198→        isCurrent && !isCompleted && 'bg-primary/10 border-primary/30',
+   199→   199→        !isCurrent && !isCompleted && 'bg-card border-transparent opacity-50',
+   200→   200→        isClickable && 'cursor-pointer hover:shadow-sm',
+   201→   201→        !isClickable && 'cursor-not-allowed',
+   202→   202→      )}
+   203→   203→    >
+   204→   204→      <div className={cn(
+   205→   205→        'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+   206→   206→        isCompleted && 'bg-emerald-500 text-white',
+   207→   207→        isCurrent && !isCompleted && 'bg-primary text-primary-foreground',
+   208→   208→        !isCurrent && !isCompleted && 'bg-muted text-muted-foreground',
+   209→   209→      )}>
+   210→   210→        {isCompleted ? <Check className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+   211→   211→      </div>
+   212→   212→      <span className={cn(
+   213→   213→        'text-[11px] md:text-xs font-medium text-center leading-tight',
+   214→   214→        isCompleted && 'text-emerald-700 dark:text-emerald-400',
+   215→   215→        isCurrent && !isCompleted && 'text-primary',
+   216→   216→        !isCurrent && !isCompleted && 'text-muted-foreground',
+   217→   217→      )}>
+   218→   218→        {step}
+   219→   219→      </span>
+   220→   220→    </button>
+   221→   221→  )
+   222→   222→}
+   223→   223→
+   224→   224→// ─── Main Component ─────────────────────────────────────────────────────────────
+   225→   225→
+   226→   226→export default function ClientOnboardingWizard() {
+   227→   227→  const { user } = useAuthStore()
+   228→   228→
+   229→   229→  // Form list view state
+   230→   230→  const [forms, setForms] = useState<(OnboardingForm & { _count?: { submissions: number } })[]>([])
+   231→   231→  const [loading, setLoading] = useState(true)
+   232→   232→  const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[]; _count?: { submissions: number } }) | null>(null)
+   233→   233→  const [formLoading, setFormLoading] = useState(false)
+   234→   234→
+   235→   235→  // Wizard state
+   236→   236→  const [currentStep, setCurrentStep] = useState(0)
+   237→   237→  const [responses, setResponses] = useState<Record<string, string>>({})
+   238→   238→  const [files, setFiles] = useState<Record<string, UploadedFile | null>>({})
+   239→   239→  const [submitting, setSubmitting] = useState(false)
+   240→   240→
+   241→   241→  const totalSteps = 4
+   242→   242→
+   243→   243→  const fetchForms = useCallback(async () => {
+   244→   244→    try {
+   245→   245→      const res = await fetch('/api/onboarding')
+   246→   246→      const data = await res.json()
+   247→   247→      setForms(data.forms || [])
+   248→   248→    } catch {
+   249→   249→      toast.error('Failed to load onboarding forms')
+   250→   250→    } finally {
+   251→   251→      setLoading(false)
+   252→   252→    }
+   253→   253→  }, [])
+   254→   254→
+   255→   255→  useEffect(() => { fetchForms() }, [fetchForms])
+   256→   256→
+   257→   257→  const openForm = async (formId: string) => {
+   258→   258→    setFormLoading(true)
+   259→   259→    try {
+   260→   260→      const res = await fetch(`/api/onboarding/${formId}`)
+   261→   261→      const data = await res.json()
+   262→   262→      setSelectedForm(data.form)
+   263→   263→      setCurrentStep(0)
+   264→   264→      setResponses({})
+   265→   265→      setFiles({})
+   266→   266→    } catch {
+   267→   267→      toast.error('Failed to load form')
+   268→   268→    } finally {
+   269→   269→      setFormLoading(false)
+   270→   270→    }
+   271→   271→  }
+   272→   272→
+   273→   273→  const mySubmission = selectedForm?.submissions?.find((s) => s.clientId === user?.id)
+   274→   274→  const isLocked = mySubmission?.status === 'approved' || mySubmission?.status === 'submitted'
+   275→   275→
+   276→   276→  // Load existing responses
+   277→   277→  useEffect(() => {
+   278→   278→    if (mySubmission?.responsesJson) {
+   279→   279→      try {
+   280→   280→        const parsed = JSON.parse(mySubmission.responsesJson)
+   281→   281→        setResponses(parsed.responses || {})
+   282→   282→        setFiles(parsed.files || {})
+   283→   283→      } catch { /* ignore */ }
+   284→   284→    }
+   285→   285→  }, [mySubmission?.id])
+   286→   286→
+   287→   287→  const updateResponse = (name: string, value: string) => {
+   288→   288→    setResponses((prev) => ({ ...prev, [name]: value }))
+   289→   289→  }
+   290→   290→
+   291→   291→  const updateFile = (name: string, file: UploadedFile | null) => {
+   292→   292→    setFiles((prev) => ({ ...prev, [name]: file }))
+   293→   293→  }
+   294→   294→
+   295→   295→  // Validation
+   296→   296→  const isStepValid = (step: number) => {
+   297→   297→    switch (step) {
+   298→   298→      case 0:
+   299→   299→        return !!(responses.businessName?.trim() && responses.businessEmail?.trim())
+   300→   300→      case 1:
+   301→   301→        return !!files.companyLogo
+   302→   302→      case 2:
+   303→   303→        return !!(responses.projectGoals?.trim() && responses.targetAudience?.trim())
+   304→   304→      case 3:
+   305→   305→        return !!(files.contractForm && files.paymentForm && files.workOrderAgreement)
+   306→   306→      default:
+   307→   307→        return true
+   308→   308→    }
+   309→   309→  }
+   310→   310→
+   311→   311→  const currentStepValid = isStepValid(currentStep)
+   312→   312→  const progress = ((currentStep + (currentStepValid ? 1 : 0.5)) / totalSteps) * 100
+   313→   313→
+   314→   314→  const goToStep = (step: number) => {
+   315→   315→    if (isLocked) return
+   316→   316→    if (step <= currentStep) setCurrentStep(step)
+   317→   317→  }
+   318→   318→
+   319→   319→  const handleNext = () => {
+   320→   320→    if (currentStep < totalSteps - 1 && currentStepValid) {
+   321→   321→      setCurrentStep(currentStep + 1)
+   322→   322→    }
+   323→   323→  }
+   324→   324→
+   325→   325→  const handlePrev = () => {
+   326→   326→    if (currentStep > 0) setCurrentStep(currentStep - 1)
+   327→   327→  }
+   328→   328→
+   329→   329→  const handleSubmit = async () => {
+   330→   330→    if (!selectedForm || !user?.id) return
+   331→   331→    setSubmitting(true)
+   332→   332→    try {
+   333→   333→      const submissionData = JSON.stringify({ responses, files })
+   334→   334→      const submissionId = mySubmission?.id
+   335→   335→      const res = await fetch(`/api/onboarding/${submissionId || selectedForm.id}`, {
+   336→   336→        method: 'PATCH',
+   337→   337→        headers: { 'Content-Type': 'application/json' },
+   338→   338→        body: JSON.stringify({
+   339→   339→          action: 'submit',
+   340→   340→          responsesJson: submissionData,
+   341→   341→          ...(submissionId ? {} : { formId: selectedForm.id, clientId: user.id }),
+   342→   342→        }),
+   343→   343→      })
+   344→   344→      if (!res.ok) throw new Error()
+   345→   345→      toast.success('Onboarding submitted successfully!')
+   346→   346→      setSelectedForm(null)
+   347→   347→      fetchForms()
+   348→   348→    } catch {
+   349→   349→      toast.error('Failed to submit onboarding')
+   350→   350→    } finally {
+   351→   351→      setSubmitting(false)
+   352→   352→    }
+   353→   353→  }
+   354→   354→
+   355→   355→  // ─── Render Review Result ───────────────────────────────────
+   356→   356→  const renderReviewBanner = () => {
+   357→   357→    if (!mySubmission) return null
+   358→   358→    if (mySubmission.status === 'approved') return (
+   359→   359→      <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+   360→   360→        <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+   361→   361→        <div>
+   362→   362→          <p className="font-medium text-emerald-800 dark:text-emerald-300">Approved</p>
+   363→   363→          {mySubmission.reviewNotes && <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-1">{mySubmission.reviewNotes}</p>}
+   364→   364→          {mySubmission.reviewedAt && <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">Reviewed {formatRelativeTime(mySubmission.reviewedAt)}</p>}
+   365→   365→        </div>
+   366→   366→      </div>
+   367→   367→    )
+   368→   368→    if (mySubmission.status === 'rejected') return (
+   369→   369→      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+   370→   370→        <XCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+   371→   371→        <div>
+   372→   372→          <p className="font-medium text-red-800 dark:text-red-300">Needs Revision</p>
+   373→   373→          {mySubmission.reviewNotes && <p className="text-sm text-red-700 dark:text-red-400 mt-1">{mySubmission.reviewNotes}</p>}
+   374→   374→          {mySubmission.reviewedAt && <p className="text-xs text-red-600 dark:text-red-500 mt-1">Reviewed {formatRelativeTime(mySubmission.reviewedAt)}</p>}
+   375→   375→        </div>
+   376→   376→      </div>
+   377→   377→    )
+   378→   378→    if (mySubmission.status === 'submitted') return (
+   379→   379→      <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+   380→   380→        <Clock className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+   381→   381→        <div>
+   382→   382→          <p className="font-medium text-amber-800 dark:text-amber-300">Under Review</p>
+   383→   383→          <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Your submission is being reviewed by the team.</p>
+   384→   384→          {mySubmission.submittedAt && <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Submitted {formatRelativeTime(mySubmission.submittedAt)}</p>}
+   385→   385→        </div>
+   386→   386→      </div>
+   387→   387→    )
+   388→   388→    return null
+   389→   389→  }
+   390→   390→
+   391→   391→  // ─── Render Read-Only Review ───────────────────────────────
+   392→   392→  const renderReadOnlyView = () => (
+   393→   393→    <ScrollArea className="max-h-[calc(100vh-20rem)]">
+   394→   394→      <div className="space-y-8 pb-4">
+   395→   395→        {/* Business Info */}
+   396→   396→        <div className="space-y-3">
+   397→   397→          <h3 className="text-base font-semibold flex items-center gap-2">
+   398→   398→            <Building2 className="w-4 h-4 text-primary" /> Business Information
+   399→   399→          </h3>
+   400→   400→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   401→   401→            {[
+   402→   402→              { label: 'Business Name', value: responses.businessName },
+   403→   403→              { label: 'Business Email', value: responses.businessEmail },
+   404→   404→              { label: 'Business Phone', value: responses.businessPhone },
+   405→   405→              { label: 'Business Address', value: responses.businessAddress },
+   406→   406→              { label: 'Industry', value: responses.industry },
+   407→   407→              { label: 'Company Size', value: responses.companySize },
+   408→   408→            ].map((field) => (
+   409→   409→              <div key={field.label} className="space-y-1">
+   410→   410→                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   411→   411→                <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   412→   412→              </div>
+   413→   413→            ))}
+   414→   414→          </div>
+   415→   415→        </div>
+   416→   416→
+   417→   417→        <Separator />
+   418→   418→
+   419→   419→        {/* Brand Assets */}
+   420→   420→        <div className="space-y-3">
+   421→   421→          <h3 className="text-base font-semibold flex items-center gap-2">
+   422→   422→            <Palette className="w-4 h-4 text-primary" /> Brand Assets
+   423→   423→          </h3>
+   424→   424→          {files.companyLogo && (
+   425→   425→            <div className="space-y-1">
+   426→   426→              <p className="text-xs font-medium text-muted-foreground">Company Logo</p>
+   427→   427→              <div className="w-20 h-20 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
+   428→   428→                {/* eslint-disable-next-line @next/next/no-img-element */}
+   429→   429→                <img src={files.companyLogo.url} alt="Logo" className="w-full h-full object-contain" />
+   430→   430→              </div>
+   431→   431→            </div>
+   432→   432→          )}
+   433→   433→          {[
+   434→   434→            { label: 'Brand Colors', value: responses.brandColors },
+   435→   435→            { label: 'Typography / Fonts', value: responses.typography },
+   436→   436→          ].map((field) => (
+   437→   437→            <div key={field.label} className="space-y-1">
+   438→   438→              <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   439→   439→              <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   440→   440→            </div>
+   441→   441→          ))}
+   442→   442→          {files.brandGuidelines && (
+   443→   443→            <div className="space-y-1">
+   444→   444→              <p className="text-xs font-medium text-muted-foreground">Brand Guidelines</p>
+   445→   445→              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+   446→   446→                <FileText className="w-4 h-4 text-primary" />
+   447→   447→                <span className="text-sm">{files.brandGuidelines.originalName}</span>
+   448→   448→              </div>
+   449→   449→            </div>
+   450→   450→          )}
+   451→   451→        </div>
+   452→   452→
+   453→   453→        <Separator />
+   454→   454→
+   455→   455→        {/* Project Kickoff */}
+   456→   456→        <div className="space-y-3">
+   457→   457→          <h3 className="text-base font-semibold flex items-center gap-2">
+   458→   458→            <Rocket className="w-4 h-4 text-primary" /> Project Kickoff
+   459→   459→          </h3>
+   460→   460→          {[
+   461→   461→            { label: 'Project Goals', value: responses.projectGoals },
+   462→   462→            { label: 'Target Audience', value: responses.targetAudience },
+   463→   463→            { label: 'Main Competitors', value: responses.mainCompetitors },
+   464→   464→          ].map((field) => (
+   465→   465→            <div key={field.label} className="space-y-1">
+   466→   466→              <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   467→   467→              <p className="text-sm p-2.5 rounded-lg bg-muted/50 border whitespace-pre-wrap">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   468→   468→            </div>
+   469→   469→          ))}
+   470→   470→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   471→   471→            {[
+   472→   472→              { label: 'Budget Range', value: responses.budgetRange },
+   473→   473→              { label: 'Expected Timeline', value: responses.expectedTimeline },
+   474→   474→            ].map((field) => (
+   475→   475→              <div key={field.label} className="space-y-1">
+   476→   476→                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   477→   477→                <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   478→   478→              </div>
+   479→   479→            ))}
+   480→   480→          </div>
+   481→   481→        </div>
+   482→   482→
+   483→   483→        <Separator />
+   484→   484→
+   485→   485→        {/* Documents */}
+   486→   486→        <div className="space-y-3">
+   487→   487→          <h3 className="text-base font-semibold flex items-center gap-2">
+   488→   488→            <FileText className="w-4 h-4 text-primary" /> Submitted Documents
+   489→   489→          </h3>
+   490→   490→          <div className="space-y-2">
+   491→   491→            {([
+   492→   492→              { key: 'contractForm', label: 'Contract Form' },
+   493→   493→              { key: 'paymentForm', label: 'Payment Form' },
+   494→   494→              { key: 'workOrderAgreement', label: 'Work Order Agreement' },
+   495→   495→            ] as const).map((doc) => {
+   496→   496→              const f = files[doc.key]
+   497→   497→              return (
+   498→   498→                <div key={doc.key} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   499→   499→                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+   500→   500→                    <FileText className="w-5 h-5 text-primary" />
+   501→   501→                  </div>
+   502→   502→                  <div>
+   503→   503→                    <p className="text-sm font-medium">{doc.label}</p>
+   504→   504→                    {f ? (
+   505→   505→                      <p className="text-xs text-muted-foreground">{f.originalName}</p>
+   506→   506→                    ) : (
+   507→   507→                      <p className="text-xs text-muted-foreground italic">Not uploaded</p>
+   508→   508→                    )}
+   509→   509→                  </div>
+   510→   510→                </div>
+   511→   511→              )
+   512→   512→            })}
+   513→   513→          </div>
+   514→   514→        </div>
+   515→   515→      </div>
+   516→   516→    </ScrollArea>
+   517→   517→  )
+   518→   518→
+   519→   519→  // ─── Step 1: Business Information ─────────────────────────
+   520→   520→  const renderStep1 = () => (
+   521→   521→    <div className="space-y-5">
+   522→   522→      <div className="space-y-2">
+   523→   523→        <h3 className="text-lg font-semibold">Business Information</h3>
+   524→   524→        <p className="text-sm text-muted-foreground">Tell us about your company and business details.</p>
+   525→   525→      </div>
+   526→   526→
+   527→   527→      <div className="space-y-4">
+   528→   528→        <div className="space-y-1.5">
+   529→   529→          <Label htmlFor="businessName" className="text-sm">Business Name <span className="text-red-500">*</span></Label>
+   530→   530→          <Input id="businessName" placeholder="Enter business name" value={responses.businessName || ''} onChange={(e) => updateResponse('businessName', e.target.value)} />
+   531→   531→        </div>
+   532→   532→
+   533→   533→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   534→   534→          <div className="space-y-1.5">
+   535→   535→            <Label htmlFor="businessEmail" className="text-sm">Business Email <span className="text-red-500">*</span></Label>
+   536→   536→            <Input id="businessEmail" type="email" placeholder="name@company.com" value={responses.businessEmail || ''} onChange={(e) => updateResponse('businessEmail', e.target.value)} />
+   537→   537→          </div>
+   538→   538→          <div className="space-y-1.5">
+   539→   539→            <Label htmlFor="businessPhone" className="text-sm">Business Phone</Label>
+   540→   540→            <Input id="businessPhone" placeholder="+1 (555) 000-0000" value={responses.businessPhone || ''} onChange={(e) => updateResponse('businessPhone', e.target.value)} />
+   541→   541→          </div>
+   542→   542→        </div>
+   543→   543→
+   544→   544→        <div className="space-y-1.5">
+   545→   545→          <Label htmlFor="businessAddress" className="text-sm">Business Address</Label>
+   546→   546→          <Input id="businessAddress" placeholder="Enter full business address" value={responses.businessAddress || ''} onChange={(e) => updateResponse('businessAddress', e.target.value)} />
+   547→   547→        </div>
+   548→   548→
+   549→   549→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   550→   550→          <div className="space-y-1.5">
+   551→   551→            <Label className="text-sm">Industry</Label>
+   552→   552→            <Select value={responses.industry || ''} onValueChange={(v) => updateResponse('industry', v)}>
+   553→   553→              <SelectTrigger className="w-full"><SelectValue placeholder="Select industry" /></SelectTrigger>
+   554→   554→              <SelectContent>
+   555→   555→                {INDUSTRIES.map((ind) => <SelectItem key={ind} value={ind}>{ind}</SelectItem>)}
+   556→   556→              </SelectContent>
+   557→   557→            </Select>
+   558→   558→          </div>
+   559→   559→          <div className="space-y-1.5">
+   560→   560→            <Label className="text-sm">Company Size</Label>
+   561→   561→            <Select value={responses.companySize || ''} onValueChange={(v) => updateResponse('companySize', v)}>
+   562→   562→              <SelectTrigger className="w-full"><SelectValue placeholder="Select company size" /></SelectTrigger>
+   563→   563→              <SelectContent>
+   564→   564→                {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s} employees</SelectItem>)}
+   565→   565→              </SelectContent>
+   566→   566→            </Select>
+   567→   567→          </div>
+   568→   568→        </div>
+   569→   569→      </div>
+   570→   570→    </div>
+   571→   571→  )
+   572→   572→
+   573→   573→  // ─── Step 2: Brand Assets ─────────────────────────────────
+   574→   574→  const renderStep2 = () => (
+   575→   575→    <div className="space-y-5">
+   576→   576→      <div className="space-y-2">
+   577→   577→        <h3 className="text-lg font-semibold">Brand Assets</h3>
+   578→   578→        <p className="text-sm text-muted-foreground">Upload your brand materials and specify your visual identity.</p>
+   579→   579→      </div>
+   580→   580→
+   581→   581→      <div className="space-y-5">
+   582→   582→        <FileUploadZone
+   583→   583→          label="Company Logo"
+   584→   584→          required
+   585→   585→          accept="image/*"
+   586→   586→          file={files.companyLogo || null}
+   587→   587→          onUpload={(f) => updateFile('companyLogo', f)}
+   588→   588→          onRemove={() => updateFile('companyLogo', null)}
+   589→   589→          icon={Building2}
+   590→   590→          description="PNG, JPG or SVG. Recommended 512x512px."
+   591→   591→        />
+   592→   592→
+   593→   593→        <div className="space-y-1.5">
+   594→   594→          <Label htmlFor="brandColors" className="text-sm">Brand Colors</Label>
+   595→   595→          <Input id="brandColors" placeholder="e.g., #0142A0, #AA0C5B" value={responses.brandColors || ''} onChange={(e) => updateResponse('brandColors', e.target.value)} />
+   596→   596→        </div>
+   597→   597→
+   598→   598→        <div className="space-y-1.5">
+   599→   599→          <Label htmlFor="typography" className="text-sm">Typography / Fonts</Label>
+   600→   600→          <Input id="typography" placeholder="e.g., Inter, Poppins" value={responses.typography || ''} onChange={(e) => updateResponse('typography', e.target.value)} />
+   601→   601→        </div>
+   602→   602→
+   603→   603→        <FileUploadZone
+   604→   604→          label="Brand Guidelines Document"
+   605→   605→          accept=".pdf,.doc,.docx"
+   606→   606→          file={files.brandGuidelines || null}
+   607→   607→          onUpload={(f) => updateFile('brandGuidelines', f)}
+   608→   608→          onRemove={() => updateFile('brandGuidelines', null)}
+   609→   609→          description="PDF or Word document."
+   610→   610→        />
+   611→   611→      </div>
+   612→   612→    </div>
+   613→   613→  )
+   614→   614→
+   615→   615→  // ─── Step 3: Project Kickoff ──────────────────────────────
+   616→   616→  const renderStep3 = () => (
+   617→   617→    <div className="space-y-5">
+   618→   618→      <div className="space-y-2">
+   619→   619→        <h3 className="text-lg font-semibold">Project Kickoff</h3>
+   620→   620→        <p className="text-sm text-muted-foreground">Help us understand your project goals and requirements.</p>
+   621→   621→      </div>
+   622→   622→
+   623→   623→      <div className="space-y-5">
+   624→   624→        <div className="space-y-1.5">
+   625→   625→          <Label htmlFor="projectGoals" className="text-sm">Project Goals <span className="text-red-500">*</span></Label>
+   626→   626→          <Textarea id="projectGoals" placeholder="Describe your main project goals and objectives" rows={4} value={responses.projectGoals || ''} onChange={(e) => updateResponse('projectGoals', e.target.value)} />
+   627→   627→        </div>
+   628→   628→
+   629→   629→        <div className="space-y-1.5">
+   630→   630→          <Label htmlFor="targetAudience" className="text-sm">Target Audience <span className="text-red-500">*</span></Label>
+   631→   631→          <Textarea id="targetAudience" placeholder="Describe your target audience" rows={3} value={responses.targetAudience || ''} onChange={(e) => updateResponse('targetAudience', e.target.value)} />
+   632→   632→        </div>
+   633→   633→
+   634→   634→        <div className="space-y-1.5">
+   635→   635→          <Label htmlFor="mainCompetitors" className="text-sm">Main Competitors</Label>
+   636→   636→          <Textarea id="mainCompetitors" placeholder="List your main competitors" rows={3} value={responses.mainCompetitors || ''} onChange={(e) => updateResponse('mainCompetitors', e.target.value)} />
+   637→   637→        </div>
+   638→   638→
+   639→   639→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   640→   640→          <div className="space-y-1.5">
+   641→   641→            <Label className="text-sm">Budget Range</Label>
+   642→   642→            <Select value={responses.budgetRange || ''} onValueChange={(v) => updateResponse('budgetRange', v)}>
+   643→   643→              <SelectTrigger className="w-full"><SelectValue placeholder="Select budget range" /></SelectTrigger>
+   644→   644→              <SelectContent>
+   645→   645→                {BUDGET_RANGES.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+   646→   646→              </SelectContent>
+   647→   647→            </Select>
+   648→   648→          </div>
+   649→   649→          <div className="space-y-1.5">
+   650→   650→            <Label className="text-sm">Expected Timeline</Label>
+   651→   651→            <Select value={responses.expectedTimeline || ''} onValueChange={(v) => updateResponse('expectedTimeline', v)}>
+   652→   652→              <SelectTrigger className="w-full"><SelectValue placeholder="Select timeline" /></SelectTrigger>
+   653→   653→              <SelectContent>
+   654→   654→                {TIMELINES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   655→   655→              </SelectContent>
+   656→   656→            </Select>
+   657→   657→          </div>
+   658→   658→        </div>
+   659→   659→      </div>
+   660→   660→    </div>
+   661→   661→  )
+   662→   662→
+   663→   663→  // ─── Step 4: Document Submission ──────────────────────────
+   664→   664→  const renderStep4 = () => (
+   665→   665→    <div className="space-y-5">
+   666→   666→      <div className="space-y-2">
+   667→   667→        <h3 className="text-lg font-semibold">Document Submission</h3>
+   668→   668→      </div>
+   669→   669→
+   670→   670→      {/* Info box */}
+   671→   671→      <div className="flex items-start gap-3 p-4 rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800">
+   672→   672→        <Info className="w-5 h-5 text-sky-600 mt-0.5 shrink-0" />
+   673→   673→        <div>
+   674→   674→          <p className="font-medium text-sky-800 dark:text-sky-300 text-sm">Required Documents</p>
+   675→   675→          <p className="text-sm text-sky-700 dark:text-sky-400 mt-0.5">Please upload the following documents to complete your onboarding. All files should be in PDF format.</p>
+   676→   676→        </div>
+   677→   677→      </div>
+   678→   678→
+   679→   679→      <div className="space-y-5">
+   680→   680→        <FileUploadZone
+   681→   681→          label="Contract Form"
+   682→   682→          required
+   683→   683→          accept=".pdf,.doc,.docx"
+   684→   684→          file={files.contractForm || null}
+   685→   685→          onUpload={(f) => updateFile('contractForm', f)}
+   686→   686→          onRemove={() => updateFile('contractForm', null)}
+   687→   687→          icon={FileText}
+   688→   688→          description="Click to upload contract"
+   689→   689→        />
+   690→   690→        <FileUploadZone
+   691→   691→          label="Payment Form"
+   692→   692→          required
+   693→   693→          accept=".pdf,.doc,.docx"
+   694→   694→          file={files.paymentForm || null}
+   695→   695→          onUpload={(f) => updateFile('paymentForm', f)}
+   696→   696→          onRemove={() => updateFile('paymentForm', null)}
+   697→   697→          icon={FileText}
+   698→   698→          description="Click to upload payment form"
+   699→   699→        />
+   700→   700→        <FileUploadZone
+   701→   701→          label="Work Order Agreement"
+   702→   702→          required
+   703→   703→          accept=".pdf,.doc,.docx"
+   704→   704→          file={files.workOrderAgreement || null}
+   705→   705→          onUpload={(f) => updateFile('workOrderAgreement', f)}
+   706→   706→          onRemove={() => updateFile('workOrderAgreement', null)}
+   707→   707→          icon={FileText}
+   708→   708→          description="Click to upload work order"
+   709→   709→        />
+   710→   710→      </div>
+   711→   711→    </div>
+   712→   712→  )
+   713→   713→
+   714→   714→  const stepRenderers = [renderStep1, renderStep2, renderStep3, renderStep4]
+   715→   715→
+   716→   716→  // ─── Form Wizard View ─────────────────────────────────────
+   717→   717→  if (selectedForm) {
+   718→   718→    return (
+   719→   719→      <div className="p-4 md:p-6 space-y-5">
+   720→   720→        {/* Header */}
+   721→   721→        <div className="flex items-center justify-between">
+   722→   722→          <div className="flex items-center gap-3">
+   723→   723→            <Button variant="ghost" size="icon" onClick={() => { setSelectedForm(null); fetchForms() }} className="shrink-0">
+   724→   724→              <ArrowLeft className="w-5 h-5" />
+   725→   725→            </Button>
+   726→   726→            <div className="min-w-0">
+   727→   727→              <h1 className="text-2xl font-bold truncate">Client Onboarding</h1>
+   728→   728→              <p className="text-sm text-muted-foreground truncate">Complete the onboarding process to get started with your project</p>
+   729→   729→            </div>
+   730→   730→          </div>
+   731→   731→        </div>
+   732→   732→
+   733→   733→        {/* Project badge */}
+   734→   734→        {selectedForm.project && (
+   735→   735→          <Badge variant="outline" style={{ borderColor: selectedForm.project.color, color: selectedForm.project.color }}>
+   736→   736→            {selectedForm.project.name}
+   737→   737→          </Badge>
+   738→   738→        )}
+   739→   739→
+   740→   740→        {/* Review banner */}
+   741→   741→        {renderReviewBanner()}
+   742→   742→
+   743→   743→        {/* Status + Progress */}
+   744→   744→        <div className="bg-card border rounded-xl p-4 md:p-5 space-y-4">
+   745→   745→          <div className="flex items-center justify-between">
+   746→   746→            <div className="flex items-center gap-3">
+   747→   747→              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+   748→   748→                <UserCircle className="w-5 h-5 text-muted-foreground" />
+   749→   749→              </div>
+   750→   750→              <div>
+   751→   751→                <p className="text-sm font-medium text-muted-foreground">Onboarding Status</p>
+   752→   752→              </div>
+   753→   753→            </div>
+   754→   754→            <Badge className={cn(
+   755→   755→              mySubmission?.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+   756→   756→              mySubmission?.status === 'submitted' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' :
+   757→   757→              mySubmission?.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+   758→   758→              'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+   759→   759→            )}>
+   760→   760→              {mySubmission?.status === 'approved' ? 'Completed' :
+   761→   761→               mySubmission?.status === 'submitted' ? 'Submitted' :
+   762→   762→               mySubmission?.status === 'rejected' ? 'Revision Needed' :
+   763→   763→               'In Progress'}
+   764→   764→            </Badge>
+   765→   765→          </div>
+   766→   766→          <Progress value={isLocked ? 100 : progress} className="h-2" />
+   767→   767→          <p className="text-xs text-muted-foreground text-right">
+   768→   768→            Step {Math.min(currentStep + 1, totalSteps)} of {totalSteps}
+   769→   769→          </p>
+   770→   770→        </div>
+   771→   771→
+   772→   772→        {/* Step Navigation */}
+   773→   773→        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+   774→   774→          {STEP_LABELS.map((label, i) => (
+   775→   775→            <StepCard
+   776→   776→              key={label}
+   777→   777→              step={label}
+   778→   778→              index={i}
+   779→   779→              currentStep={currentStep}
+   780→   780→              isCompleted={i < currentStep || isLocked}
+   781→   781→              onClick={() => goToStep(i)}
+   782→   782→            />
+   783→   783→          ))}
+   784→   784→        </div>
+   785→   785→
+   786→   786→        {/* Step Content */}
+   787→   787→        <Card>
+   788→   788→          <CardContent className="p-5 md:p-6">
+   789→   789→            {isLocked ? (
+   790→   790→              renderReadOnlyView()
+   791→   791→            ) : (
+   792→   792→              <AnimatePresence mode="wait">
+   793→   793→                <motion.div key={currentStep} {...fadeSlide}>
+   794→   794→                  {stepRenderers[currentStep]()}
+   795→   795→                </motion.div>
+   796→   796→              </AnimatePresence>
+   797→   797→            )}
+   798→   798→          </CardContent>
+   799→   799→        </Card>
+   800→   800→
+   801→   801→        {/* Navigation Buttons */}
+   802→   802→        {!isLocked && (
+   803→   803→          <div className="flex items-center justify-between">
+   804→   804→            <Button
+   805→   805→              variant="outline"
+   806→   806→              onClick={handlePrev}
+   807→   807→              disabled={currentStep === 0}
+   808→   808→            >
+   809→   809→              <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+   810→   810→            </Button>
+   811→   811→
+   812→   812→            <div className="text-sm text-muted-foreground">
+   813→   813→              Step {currentStep + 1} of {totalSteps}
+   814→   814→            </div>
+   815→   815→
+   816→   816→            {currentStep < totalSteps - 1 ? (
+   817→   817→              <Button onClick={handleNext} disabled={!currentStepValid} className="bg-primary hover:bg-primary/90">
+   818→   818→                Next Step <ChevronRight className="w-4 h-4 ml-1" />
+   819→   819→              </Button>
+   820→   820→            ) : (
+   821→   821→              <Button
+   822→   822→                onClick={handleSubmit}
+   823→   823→                disabled={!currentStepValid || submitting}
+   824→   824→                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   825→   825→              >
+   826→   826→                {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+   827→   827→                Submit Onboarding
+   828→   828→              </Button>
+   829→   829→            )}
+   830→   830→          </div>
+   831→   831→        )}
+   832→   832→
+   833→   833→        {formLoading && (
+   834→   834→          <div className="fixed inset-0 bg-background/60 flex items-center justify-center z-50">
+   835→   835→            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+   836→   836→          </div>
+   837→   837→        )}
+   838→   838→      </div>
+   839→   839→    )
+   840→   840→  }
+   841→   841→
+   842→   842→  // ─── Form List View (default) ─────────────────────────────
+   843→   843→  return (
+   844→   844→    <div className="p-4 md:p-6 space-y-6">
+   845→   845→      <div className="flex items-center gap-3">
+   846→   846→        <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+   847→   847→          <ClipboardList className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+   848→   848→        </div>
+   849→   849→        <div>
+   850→   850→          <h1 className="text-2xl font-bold">Onboarding</h1>
+   851→   851→          <p className="text-sm text-muted-foreground">Complete your onboarding forms to get started</p>
+   852→   852→        </div>
+   853→   853→      </div>
+   854→   854→
+   855→   855→      {loading ? (
+   856→   856→        <div className="space-y-4">
+   857→   857→          <Skeleton className="h-8 w-64" />
+   858→   858→          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+   859→   859→            {Array.from({ length: 3 }).map((_, i) => (
+   860→   860→              <Skeleton key={i} className="h-48 rounded-xl" />
+   861→   861→            ))}
+   862→   862→          </div>
+   863→   863→        </div>
+   864→   864→      ) : forms.length === 0 ? (
+   865→   865→        <div className="flex flex-col items-center justify-center py-16 text-center">
+   866→   866→          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   867→   867→            <ClipboardList className="w-8 h-8 text-muted-foreground" />
+   868→   868→          </div>
+   869→   869→          <h3 className="text-lg font-semibold mb-1">No onboarding forms</h3>
+   870→   870→          <p className="text-sm text-muted-foreground max-w-sm">There are no onboarding forms assigned to you yet.</p>
+   871→   871→        </div>
+   872→   872→      ) : (
+   873→   873→        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+   874→   874→          {forms.map((form, i) => {
+   875→   875→            const formWithSubs = form as unknown as { submissions?: Onboarding[] }
+   876→   876→            const submission = formWithSubs.submissions?.find((s: Onboarding) => s.clientId === user?.id)
+   877→   877→            const project = form.project as { color?: string; name?: string } | undefined
+   878→   878→            return (
+   879→   879→              <motion.div
+   880→   880→                key={form.id}
+   881→   881→                initial={{ opacity: 0, y: 16 }}
+   882→   882→                animate={{ opacity: 1, y: 0 }}
+   883→   883→                transition={{ delay: i * 0.05 }}
+   884→   884→              >
+   885→   885→                <Card
+   886→   886→                  className="cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-500"
+   887→   887→                  onClick={() => openForm(form.id)}
+   888→   888→                >
+   889→   889→                  <CardHeader className="pb-3">
+   890→   890→                    <div className="flex items-start justify-between">
+   891→   891→                      <CardTitle className="text-base font-semibold leading-tight">{form.title}</CardTitle>
+   892→   892→                      {project?.name && (
+   893→   893→                        <Badge variant="outline" className="ml-2 shrink-0 text-xs" style={{ borderColor: project.color, color: project.color }}>
+   894→   894→                          {project.name}
+   895→   895→                        </Badge>
+   896→   896→                      )}
+   897→   897→                    </div>
+   898→   898→                  </CardHeader>
+   899→   899→                  <CardContent>
+   900→   900→                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+   901→   901→                      {form.description || 'Complete this onboarding form to proceed with your project.'}
+   902→   902→                    </p>
+   903→   903→                    <div className="flex items-center justify-between">
+   904→   904→                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   905→   905→                        <FileText className="w-3.5 h-3.5" />
+   906→   906→                        <span>{form._count?.submissions || 0} submission{((form._count?.submissions || 0) !== 1) ? 's' : ''}</span>
+   907→   907→                      </div>
+   908→   908→                      {submission && (
+   909→   909→                        <Badge variant="secondary" className={cn(
+   910→   910→                          'text-[10px]',
+   911→   911→                          submission.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+   912→   912→                          submission.status === 'submitted' ? 'bg-sky-100 text-sky-700' :
+   913→   913→                          submission.status === 'rejected' ? 'bg-red-100 text-red-700' :
+   914→   914→                          'bg-amber-100 text-amber-700'
+   915→   915→                        )}>
+   916→   916→                          {submission.status === 'approved' ? 'Completed' :
+   917→   917→                           submission.status === 'submitted' ? 'Submitted' :
+   918→   918→                           submission.status === 'rejected' ? 'Revision Needed' :
+   919→   919→                           'In Progress'}
+   920→   920→                        </Badge>
+   921→   921→                      )}
+   922→   922→                    </div>
+   923→   923→                  </CardContent>
+   924→   924→                </Card>
+   925→   925→              </motion.div>
+   926→   926→            )
+   927→   927→          })}
+   928→   928→        </div>
+   929→   929→      )}
+   930→   930→
+   931→   931→      {formLoading && (
+   932→   932→        <div className="fixed inset-0 bg-background/60 flex items-center justify-center z-50">
+   933→   933→          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+   934→   934→        </div>
+   935→   935→      )}
+   936→   936→    </div>
+   937→   937→  )
+   938→   938→}

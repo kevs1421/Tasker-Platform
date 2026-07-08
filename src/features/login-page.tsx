@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
@@ -8,12 +8,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { CheckCircle2, LayoutDashboard, Users, Eye, Loader2 } from 'lucide-react'
+import { CheckCircle2, LayoutDashboard, Users, Eye, Loader2, Sun, Moon, Monitor } from 'lucide-react'
+import { useTheme } from 'next-themes'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [loginData, setLoginData] = useState({ email: '', password: '' })
   const { login } = useAuthStore()
+  const { theme, setTheme } = useTheme()
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,13 +33,31 @@ export default function LoginPage() {
   }
 
   const demoAccounts = [
-    { email: 'admin@taskflow.com', password: 'admin123', role: 'Admin', icon: LayoutDashboard, color: 'text-emerald-600 bg-emerald-50' },
-    { email: 'sarah@taskflow.com', password: 'team123', role: 'Team', icon: Users, color: 'text-amber-600 bg-amber-50' },
-    { email: 'john@client.com', password: 'client123', role: 'Client', icon: Eye, color: 'text-rose-600 bg-rose-50' },
+    { email: 'admin@taskflow.com', password: 'admin123', role: 'Admin', icon: LayoutDashboard, color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30' },
+    { email: 'sarah@taskflow.com', password: 'team123', role: 'Team', icon: Users, color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/30' },
+    { email: 'john@client.com', password: 'client123', role: 'Client', icon: Eye, color: 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-900/30' },
   ]
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+    <div className="min-h-screen flex flex-col bg-background relative">
+      {/* Theme toggle */}
+      {mounted && (
+        <div className="fixed top-4 right-4 z-50">
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-full w-9 h-9 bg-card/80 backdrop-blur border-border/50 shadow-sm"
+            onClick={() => {
+              if (theme === 'dark') setTheme('light')
+              else if (theme === 'light') setTheme('system')
+              else setTheme('dark')
+            }}
+          >
+            {theme === 'dark' ? <Moon className="w-4 h-4" /> : theme === 'light' ? <Sun className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+          </Button>
+        </div>
+      )}
+
       <main className="flex-1 flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
           <div className="text-center mb-8">
@@ -88,7 +109,7 @@ export default function LoginPage() {
           </motion.div>
 
           <div className="mt-8 flex items-center justify-center gap-6 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /><span>Admin Panel</span></div>
+            <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-primary" /><span>Admin Panel</span></div>
             <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-amber-500" /><span>Kanban Board</span></div>
             <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-rose-500" /><span>Client Portal</span></div>
           </div>

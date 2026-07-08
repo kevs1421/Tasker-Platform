@@ -7,15 +7,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users } from 'lucide-react'
+import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useTheme } from 'next-themes'
 
 // ─── Header ─────────────────────────────────────────────
 export function AppHeader() {
   const { user, logout } = useAuthStore()
+  const { theme, setTheme } = useTheme()
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
@@ -43,7 +46,27 @@ export function AppHeader() {
           <span className="font-semibold text-lg hidden sm:block">TaskFlow</span>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        {mounted && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative">
+                {theme === 'dark' ? <Moon className="w-4 h-4" /> : theme === 'light' ? <Sun className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem onClick={() => setTheme('light')} className={cn(theme === 'light' && 'bg-accent')}>
+                <Sun className="mr-2 h-4 w-4" />Light
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme('dark')} className={cn(theme === 'dark' && 'bg-accent')}>
+                <Moon className="mr-2 h-4 w-4" />Dark
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme('system')} className={cn(theme === 'system' && 'bg-accent')}>
+                <Monitor className="mr-2 h-4 w-4" />System
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <Button variant="ghost" size="icon" className="relative" onClick={() => useAuthStore.getState().setRoute(
           user.role === 'admin' ? { page: 'admin-dashboard', tab: 'messages' } :
           user.role === 'team' ? { page: 'team-dashboard', tab: 'messages' } :
@@ -165,7 +188,7 @@ export function AppSidebar() {
         <>
           <Separator />
           <div className="p-4 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-emerald-600" />
+            <Shield className="w-4 h-4 text-primary" />
             <span className="text-xs text-muted-foreground">Admin Access</span>
           </div>
         </>

@@ -102,7 +102,7 @@ export function AdminOverview() {
 
   const chartData = stats ? [
     { name: 'To Do', count: stats.todoTasks, fill: '#94a3b8' },
-    { name: 'In Progress', count: stats.inProgressTasks, fill: '#f59e0b' },
+    { name: 'In Progress', count: stats.inProgressTasks, fill: '#3b82f6' },
     { name: 'In Review', count: stats.inReviewTasks, fill: '#a855f7' },
     { name: 'Done', count: stats.completedTasks, fill: '#10b981' },
   ] : []
@@ -112,10 +112,10 @@ export function AdminOverview() {
   if (!stats) return <p className="text-muted-foreground">No data available.</p>
 
   const mainCards = [
-    { label: 'Total Tasks', value: stats.totalTasks, sub: `${stats.completedTasks} completed`, icon: ListTodo, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
-    { label: 'Active Projects', value: stats.activeProjects, sub: `${stats.totalProjects} total`, icon: FolderKanban, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
-    { label: 'Team Members', value: stats.totalMembers, sub: 'Internal team', icon: Users, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
-    { label: 'Total Clients', value: stats.totalClients, sub: 'External users', icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+    { label: 'Total Tasks', value: stats.totalTasks, sub: `${stats.completedTasks} completed`, icon: ListTodo, color: 'text-primary', bg: 'bg-primary/10' },
+    { label: 'Active Projects', value: stats.activeProjects, sub: `${stats.totalProjects} total`, icon: FolderKanban, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+    { label: 'Team Members', value: stats.totalMembers, sub: 'Internal team', icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+    { label: 'Total Clients', value: stats.totalClients, sub: 'External users', icon: Briefcase, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/30' },
   ]
 
   const smallCards = [
@@ -451,7 +451,7 @@ export function AdminOnboarding() {
           <h2 className="text-xl font-semibold">Onboarding Management</h2>
           <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
           <Plus className="h-4 w-4 mr-2" /> Create Onboarding
         </Button>
       </div>
@@ -681,7 +681,7 @@ export function AdminOnboarding() {
                           <div className="flex gap-2">
                             <Button
                               size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground"
                               onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
                               disabled={reviewing === sub.id}
                             >
@@ -821,7 +821,7 @@ export function AdminOnboarding() {
             <Button
               onClick={handleCreateOnboarding}
               disabled={!createForm.title.trim() || !createForm.projectId || createForm.selectedSteps.length === 0 || creating}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               <ClipboardList className="h-4 w-4 mr-2" />
@@ -943,7 +943,7 @@ export function AdminProjects() {
           <h2 className="text-xl font-semibold">Projects</h2>
           <p className="text-sm text-muted-foreground">Manage all projects across the platform</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
           <Plus className="h-4 w-4 mr-2" /> New Project
         </Button>
       </div>
@@ -1098,7 +1098,7 @@ export function AdminProjects() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.name.trim() || creating} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button onClick={handleCreate} disabled={!form.name.trim() || creating} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {creating ? 'Creating...' : 'Create Project'}
             </Button>
           </DialogFooter>
@@ -1682,7 +1682,7 @@ export function AdminUsers() {
           <h2 className="text-xl font-semibold">User Management</h2>
           <p className="text-sm text-muted-foreground">Create and manage all user accounts</p>
         </div>
-        <Button onClick={() => setShowAddDialog(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button onClick={() => setShowAddDialog(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
           <UserPlus className="w-4 h-4 mr-2" />
           Add User
         </Button>
@@ -1936,7 +1936,7 @@ export function AdminUsers() {
               <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={adding} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button type="submit" disabled={adding} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Create User
               </Button>
@@ -2101,7 +2101,7 @@ export function AdminProfile() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
