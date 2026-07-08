@@ -124,3 +124,47 @@ Stage Summary:
 - Key files modified: prisma/schema.prisma, src/types/index.ts, src/app/api/messages/route.ts, src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx, src/features/client-dashboard.tsx
 - All 3 dashboards now share a single, consistent messaging component with group chat support
 - Date serialization fix applied to /api/messages conversation list endpoint
+
+---
+Task ID: 5
+Agent: upload-api-agent
+Task: Create file upload API for onboarding documents
+
+Work Log:
+- Created /home/z/my-project/src/app/api/upload/route.ts
+- Handles POST multipart form data uploads
+- Validates file types (pdf, png, jpg, jpeg, gif, webp, doc, docx, txt, svg) by MIME type and extension
+- Limits file size to 10MB
+- Saves to public/uploads/onboarding/ with unique filenames (timestamp + random hex)
+- Creates uploads directory if it doesn't exist using fs/promises mkdir with recursive option
+- Uses only standard Node.js APIs (fs/promises, crypto, path) and Next.js NextRequest
+- Returns JSON with url, filename, originalName, size, and type on success
+
+Stage Summary:
+- Upload API ready at /api/upload
+- Returns file URL path on success
+---
+Task ID: 1
+Agent: main
+Task: Fix Dialog z-index, redesign Client Onboarding, add file uploads, update admin review
+
+Work Log:
+- Fixed Dialog and AlertDialog z-index: bumped overlay to z-[100] and content to z-[101] in base components
+- Removed redundant z-[100] from MessagesPanel dialog instances
+- Created /src/components/onboarding/ClientOnboardingWizard.tsx with 4-step wizard UI
+- Step 1: Business Information (name, email, phone, address, industry, company size)
+- Step 2: Brand Assets (logo upload, brand colors, typography, brand guidelines upload)
+- Step 3: Project Kickoff (goals, target audience, competitors, budget, timeline)
+- Step 4: Document Submission (contract, payment, work order - all required PDF uploads)
+- Created /api/upload route for file handling (POST multipart, type/size validation, unique filenames)
+- Updated client-dashboard.tsx: replaced old ClientOnboarding with re-export of new wizard
+- Updated admin-dashboard.tsx: submissions dialog now shows structured response fields and file attachments
+- Added FileText to admin-dashboard icon imports
+
+Stage Summary:
+- Dialog z-index fix ensures all modals appear above DevTools overlay
+- Client onboarding now matches reference UI: step navigation cards, progress bar, file upload zones, select dropdowns
+- Admin can view structured field responses and click to download uploaded documents
+- Upload API saves files to public/uploads/onboarding/ with unique names
+- Verified: New Message dialog, Create Group dialog, message/conversation deletion all functional
+- Lint passes with 0 errors (4 warnings for unused eslint-disable directives)

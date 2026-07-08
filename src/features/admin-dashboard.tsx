@@ -35,7 +35,7 @@ import { format } from 'date-fns'
 
 // icons
 import {
-  FileCheck, FolderKanban, ListTodo, MessageSquare,
+  FileCheck, FileText, FolderKanban, ListTodo, MessageSquare,
   CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
   Plus, Trash2, Eye, Send, ChevronDown, Check,
   Search, ArrowUpRight, CircleDot,
@@ -402,7 +402,7 @@ export function AdminOnboarding() {
 
       {/* Submissions Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
             <DialogDescription>
@@ -414,68 +414,106 @@ export function AdminOnboarding() {
               {selectedForm?.submissions?.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-6">No submissions yet</p>
               )}
-              {selectedForm?.submissions?.map((sub) => (
-                <Card key={sub.id} className="border">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
-                          <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
-                          <p className="text-xs text-muted-foreground">{sub.client?.company ?? 'No company'}</p>
+              {selectedForm?.submissions?.map((sub) => {
+                let parsedResponses: Record<string, string> = {}
+                let parsedFiles: Record<string, { url: string; originalName: string } | null> = {}
+                try {
+                  const raw = JSON.parse(sub.responsesJson)
+                  parsedResponses = raw.responses || {}
+                  parsedFiles = raw.files || {}
+                } catch { /* old format fallback */ }
+
+                return (
+                  <Card key={sub.id} className="border">
+                    <CardContent className="p-4 space-y-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+                            <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
+                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? 'No company'}</p>
+                          </div>
                         </div>
+                        <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
+                          {getOnboardingStatusLabel(sub.status)}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
-                        {getOnboardingStatusLabel(sub.status)}
-                      </Badge>
-                    </div>
 
-                    {sub.submittedAt && (
-                      <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
-                    )}
+                      {sub.submittedAt && (
+                        <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
+                      )}
 
-                    {sub.reviewNotes && (
-                      <div className="bg-muted/50 rounded-md p-2 text-xs">
-                        <span className="font-medium">Review notes:</span> {sub.reviewNotes}
-                        {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
-                      </div>
-                    )}
-
-                    {sub.status === 'submitted' && (
-                      <div className="space-y-2">
-                        <Textarea
-                          placeholder="Add review notes..."
-                          value={reviewNotes[sub.id] ?? ''}
-                          onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
-                          className="text-sm"
-                          rows={2}
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
-                            disabled={reviewing === sub.id}
-                          >
-                            {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsUp className="h-3 w-3 mr-1" /> Approve</>}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
-                            disabled={reviewing === sub.id}
-                          >
-                            {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsDown className="h-3 w-3 mr-1" /> Reject</>}
-                          </Button>
+                      {Object.keys(parsedResponses).length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {Object.entries(parsedResponses).filter(([_, v]) => v?.trim()).map(([key, value]) => (
+                            <div key={key} className="p-2.5 rounded-lg bg-muted/50 border">
+                              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase())}
+                              </p>
+                              <p className="text-sm whitespace-pre-wrap line-clamp-3">{value}</p>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                      )}
+
+                      {Object.keys(parsedFiles).length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Documents</p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(parsedFiles).filter(([_, f]) => f).map(([key, f]) => (
+                              <a key={key} href={f!.url} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm">
+                                <FileText className="h-3.5 w-3.5 text-primary" />
+                                <span className="max-w-[180px] truncate">{f!.originalName}</span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {sub.reviewNotes && (
+                        <div className="bg-muted/50 rounded-md p-2 text-xs">
+                          <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+                          {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+                        </div>
+                      )}
+
+                      {sub.status === 'submitted' && (
+                        <div className="space-y-2">
+                          <Textarea
+                            placeholder="Add review notes..."
+                            value={reviewNotes[sub.id] ?? ''}
+                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                            className="text-sm"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
+                              disabled={reviewing === sub.id}
+                            >
+                              {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsUp className="h-3 w-3 mr-1" /> Approve</>}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
+                              disabled={reviewing === sub.id}
+                            >
+                              {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsDown className="h-3 w-3 mr-1" /> Reject</>}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           </ScrollArea>
         </DialogContent>
@@ -1000,7 +1038,7 @@ export function AdminTasks() {
 
       {/* Task Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           {selectedTask && (
             <>
               <DialogHeader>
