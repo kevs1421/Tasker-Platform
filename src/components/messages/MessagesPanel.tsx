@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { Message, User, MessageGroup, GroupMember } from '@/types'
 import { getRoleBadgeClasses, getInitials, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,14 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
+  Pencil, MoreVertical, SquarePen, MessageCirclePlus,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -46,7 +53,7 @@ interface GroupConversation {
 
 type Conversation = DirectConversation | GroupConversation
 
-// ─── Avatar helper ─────────────────────────────────────────────────────────────
+// ─── Avatar helpers ─────────────────────────────────────────────────────────────
 
 function UserAvatar({ user, size = 'md', className }: { user?: User | null; size?: 'sm' | 'md' | 'lg'; className?: string }) {
   const sizeMap = { sm: 'h-8 w-8 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-12 w-12 text-sm' }
@@ -81,25 +88,34 @@ function CreateGroupDialog({
   const [name, setName] = useState('')
   const [users, setUsers] = useState<User[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const openCountRef = useRef(0)
+  const prevIsOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !prevIsOpen.current) {
+      openCountRef.current++
+    }
+    prevIsOpen.current = open
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     setLoading(true)
+    setName('')
+    setSelectedIds([])
+    setSearch('')
     fetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
-        // Exclude current user from the list
         setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-    setName('')
-    setSelectedIds([])
-    setSearch('')
-  }, [open, currentUser.id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentUser.id, openCountRef.current])
 
   const toggleUser = (userId: string) => {
     setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId])
@@ -131,8 +147,8 @@ function CreateGroupDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <DialogContent className="sm:max-w-md z-[100]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-violet-600" /> Create Group
@@ -142,7 +158,7 @@ function CreateGroupDialog({
 
         <div className="space-y-4 py-2">
           <div>
-            <Input placeholder="Group name..." value={name} onChange={(e) => setName(e.target.value)} />
+            <Input placeholder="Group name..." value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
 
           <div>
@@ -162,6 +178,7 @@ function CreateGroupDialog({
                   {filteredUsers.map((u) => (
                     <button
                       key={u.id}
+                      type="button"
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
                       onClick={() => toggleUser(u.id)}
                     >
@@ -184,8 +201,9 @@ function CreateGroupDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
+            type="button"
             onClick={handleCreate} disabled={!name.trim() || selectedIds.length === 0 || creating}
             className="bg-violet-600 hover:bg-violet-700 text-white"
           >
@@ -193,6 +211,92 @@ function CreateGroupDialog({
             Create Group
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── New Message Dialog ────────────────────────────────────────────────────────
+
+function NewMessageDialog({
+  open, onOpenChange, onUserSelected, currentUser,
+}: {
+  open: boolean; onOpenChange: (open: boolean) => void
+  onUserSelected: (user: User) => void; currentUser: User;
+}) {
+  const [users, setUsers] = useState<User[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const openCountRef = useRef(0)
+  const prevIsOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !prevIsOpen.current) {
+      openCountRef.current++
+    }
+    prevIsOpen.current = open
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((d) => {
+        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentUser.id, openCountRef.current])
+
+  const filteredUsers = users.filter(
+    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <DialogContent className="sm:max-w-md z-[100]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <SquarePen className="h-5 w-5 text-emerald-600" /> New Message
+          </DialogTitle>
+          <DialogDescription>Choose a person to start a conversation</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search by name or email..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+          </div>
+          <ScrollArea className="max-h-72 rounded-md border">
+            {loading ? (
+              <div className="p-3 space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No users found</p>
+            ) : (
+              <div className="p-1">
+                {filteredUsers.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors text-left"
+                    onClick={() => { onUserSelected(u); onOpenChange(false) }}
+                  >
+                    <UserAvatar user={u} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{u.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                    </div>
+                    <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>{u.role}</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -212,10 +316,21 @@ function GroupInfoDialog({
   const [loading, setLoading] = useState(false)
   const [showAddUser, setShowAddUser] = useState(false)
   const [search, setSearch] = useState('')
+  const openCountRef = useRef(0)
+  const prevIsOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !prevIsOpen.current) {
+      openCountRef.current++
+    }
+    prevIsOpen.current = open
+  }, [open])
 
   useEffect(() => {
     if (!open || !group) return
     setLoading(true)
+    setSearch('')
+    setShowAddUser(false)
     fetch(`/api/message-groups/${group.id}?userId=${currentUserId}`)
       .then((r) => r.json())
       .then((d) => {
@@ -223,9 +338,8 @@ function GroupInfoDialog({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-    setSearch('')
-    setShowAddUser(false)
-  }, [open, group, currentUserId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, group, currentUserId, openCountRef.current])
 
   const handleAddMember = async (userId: string) => {
     if (!group) return
@@ -277,8 +391,8 @@ function GroupInfoDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <DialogContent className="sm:max-w-md z-[100]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-violet-600" /> Group Info
@@ -302,7 +416,7 @@ function GroupInfoDialog({
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Members</p>
               {!showAddUser && (
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleLoadUsers}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" type="button" onClick={handleLoadUsers}>
                   <UserPlus className="h-3.5 w-3.5" /> Add
                 </Button>
               )}
@@ -319,6 +433,7 @@ function GroupInfoDialog({
                     {filteredUsers.slice(0, 8).map((u) => (
                       <button
                         key={u.id}
+                        type="button"
                         className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
                         onClick={() => handleAddMember(u.id)}
                       >
@@ -331,7 +446,7 @@ function GroupInfoDialog({
                     ))}
                   </div>
                 </ScrollArea>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowAddUser(false)}>Done</Button>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" type="button" onClick={() => setShowAddUser(false)}>Done</Button>
               </div>
             )}
 
@@ -350,7 +465,7 @@ function GroupInfoDialog({
                         <p className="text-xs text-muted-foreground">{m.role === 'admin' ? 'Admin' : 'Member'}</p>
                       </div>
                       {m.userId !== currentUserId && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.userId)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" type="button" onClick={() => handleRemoveMember(m.userId)}>
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -379,7 +494,9 @@ export function MessagesPanel() {
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [showNewMessage, setShowNewMessage] = useState(false)
   const [showGroupInfo, setShowGroupInfo] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'message' | 'conversation'; id: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const fetchConversations = useCallback(async () => {
@@ -441,18 +558,14 @@ export function MessagesPanel() {
   }
 
   const sendMessage = async () => {
-    if (!user?.id || !msgText.trim()) return
-    if (!selectedConvo) return
+    if (!user?.id || !msgText.trim() || !selectedConvo) return
 
     setSending(true)
     const text = msgText.trim()
     setMsgText('')
 
     try {
-      const body: Record<string, string> = {
-        content: text,
-        senderId: user.id,
-      }
+      const body: Record<string, string> = { content: text, senderId: user.id }
 
       if (selectedConvo.type === 'group') {
         body.groupId = selectedConvo.group.id
@@ -485,6 +598,63 @@ export function MessagesPanel() {
     }
   }
 
+  // Delete a single message
+  const deleteMessage = async (messageId: string) => {
+    if (!user?.id) return
+    try {
+      const res = await fetch(`/api/messages?id=${messageId}&userId=${user.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+      toast.success('Message deleted')
+    } catch {
+      toast.error('Failed to delete message')
+    }
+    setDeleteConfirm(null)
+  }
+
+  // Delete an entire conversation
+  const deleteConversation = async () => {
+    if (!user?.id || !selectedConvo || !deleteConfirm) return
+    try {
+      let url = `/api/messages?deleteConversation=true&userId=${user.id}`
+      if (selectedConvo.type === 'group') {
+        url += `&groupId=${selectedConvo.group.id}`
+      } else if (selectedConvo.user) {
+        url += `&otherId=${selectedConvo.user.id}`
+      }
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setSelectedConvo(null)
+      setMessages([])
+      fetchConversations()
+      toast.success('Conversation deleted')
+    } catch {
+      toast.error('Failed to delete conversation')
+    }
+    setDeleteConfirm(null)
+  }
+
+  // Handle selecting a user from New Message dialog
+  const handleNewMessageUser = async (selectedUser: User) => {
+    // Check if a conversation already exists
+    const existing = conversations.find(
+      (c) => c.type === 'direct' && c.user?.id === selectedUser.id
+    )
+    if (existing) {
+      await selectConversation(existing)
+      return
+    }
+    // Create a new direct conversation object and select it
+    const newConvo: DirectConversation = {
+      type: 'direct',
+      user: selectedUser,
+      lastMessage: null,
+      unread: 0,
+    }
+    setSelectedConvo(newConvo)
+    setMessages([])
+  }
+
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
     if (!searchQuery.trim()) return true
@@ -494,19 +664,10 @@ export function MessagesPanel() {
   })
 
   // Conversation display helpers
-  const getConvoTitle = (c: Conversation) => c.type === 'direct' ? (c.user?.name ?? 'Unknown') : c.group.name
-  const getConvoSubtitle = (c: Conversation) => {
-    if (c.type === 'group') {
-      return `${c.group._count.members} members`
-    }
-    return c.user?.company ?? c.user?.email ?? ''
-  }
   const getConvoPreview = (c: Conversation) => {
     if (!c.lastMessage) return 'No messages yet'
     const senderName = c.lastMessage.senderId === user?.id ? 'You' : (c.lastMessage.sender?.name ?? 'Someone')
-    if (c.type === 'group') {
-      return `${senderName}: ${c.lastMessage.content}`
-    }
+    if (c.type === 'group') return `${senderName}: ${c.lastMessage.content}`
     return `${c.lastMessage.senderId === user?.id ? 'You: ' : ''}${c.lastMessage.content}`
   }
 
@@ -539,13 +700,22 @@ export function MessagesPanel() {
         <div className="p-3 border-b space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Messages</h2>
-            <Button
-              variant="ghost" size="icon" className="h-8 w-8"
-              onClick={() => setShowCreateGroup(true)}
-              title="Create Group"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost" size="icon" className="h-8 w-8"
+                onClick={() => setShowNewMessage(true)}
+                title="New Message"
+              >
+                <MessageCirclePlus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost" size="icon" className="h-8 w-8"
+                onClick={() => setShowCreateGroup(true)}
+                title="Create Group"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -570,43 +740,57 @@ export function MessagesPanel() {
                   ? selectedDirectUser?.id === convo.user?.id
                   : selectedGroup?.id === convo.group.id
               return (
-                <button
+                <div
                   key={convo.type === 'direct' ? convo.user?.id ?? idx : convo.group.id}
                   className={cn(
-                    'w-full text-left px-3 py-3 rounded-md flex items-start gap-3 transition-colors',
+                    'group flex items-center rounded-md transition-colors',
                     isSelected ? 'bg-muted' : 'hover:bg-muted/50'
                   )}
-                  onClick={() => selectConversation(convo)}
                 >
-                  {convo.type === 'direct' ? (
-                    <UserAvatar user={convo.user} size="md" className="mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <GroupAvatar name={convo.group.name} size="md" className="mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-sm font-medium truncate">{getConvoTitle(convo)}</span>
-                        {convo.type === 'group' && (
-                          <Users className="h-3 w-3 text-violet-500 flex-shrink-0" />
+                  <button
+                    className="w-full text-left px-3 py-3 flex items-start gap-3 flex-1 min-w-0"
+                    onClick={() => selectConversation(convo)}
+                  >
+                    {convo.type === 'direct' ? (
+                      <UserAvatar user={convo.user} size="md" className="mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <GroupAvatar name={convo.group.name} size="md" className="mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-sm font-medium truncate">{convo.type === 'direct' ? (convo.user?.name ?? 'Unknown') : convo.group.name}</span>
+                          {convo.type === 'group' && (
+                            <Users className="h-3 w-3 text-violet-500 flex-shrink-0" />
+                          )}
+                        </div>
+                        {convo.lastMessage && (
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
+                            {formatRelativeTime(convo.lastMessage.createdAt)}
+                          </span>
                         )}
                       </div>
-                      {convo.lastMessage && (
-                        <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
-                          {formatRelativeTime(convo.lastMessage.createdAt)}
-                        </span>
-                      )}
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        {getConvoPreview(convo)}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {getConvoPreview(convo)}
-                    </p>
-                  </div>
-                  {convo.unread > 0 && (
-                    <div className="h-5 w-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-1">
-                      {convo.unread}
-                    </div>
-                  )}
-                </button>
+                    {convo.unread > 0 && (
+                      <div className="h-5 w-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                        {convo.unread}
+                      </div>
+                    )}
+                  </button>
+                  {/* Delete conversation button — shows on hover */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 mr-1 mt-1"
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'conversation', id: convo.type === 'direct' ? (convo as DirectConversation).user?.id ?? '' : convo.group.id }) }}
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               )
             })}
           </div>
@@ -620,34 +804,41 @@ export function MessagesPanel() {
             {/* Chat Header */}
             <div className="p-3 border-b flex items-center gap-3">
               {isGroupSelected ? (
-                <>
-                  <button onClick={() => setShowGroupInfo(true)} className="flex items-center gap-3 hover:bg-muted/50 rounded-md px-1 -ml-1 py-0.5 transition-colors">
-                    <GroupAvatar name={selectedGroup!.name} size="md" />
-                    <div>
-                      <p className="text-sm font-medium flex items-center gap-1.5">
-                        {selectedGroup!.name}
-                        <Users className="h-3.5 w-3.5 text-violet-500" />
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedGroup!._count.members} members
-                      </p>
-                    </div>
-                  </button>
-                </>
+                <button onClick={() => setShowGroupInfo(true)} className="flex items-center gap-3 hover:bg-muted/50 rounded-md px-1 -ml-1 py-0.5 transition-colors">
+                  <GroupAvatar name={selectedGroup!.name} size="md" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      {selectedGroup!.name}
+                      <Users className="h-3.5 w-3.5 text-violet-500" />
+                    </p>
+                    <p className="text-xs text-muted-foreground">{selectedGroup!._count.members} members</p>
+                  </div>
+                </button>
               ) : selectedDirectUser ? (
                 <>
                   <UserAvatar user={selectedDirectUser} size="md" />
-                  <div>
-                    <p className="text-sm font-medium">{selectedDirectUser.name}</p>
-                    <p className="text-xs text-muted-foreground">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{selectedDirectUser.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
                       {selectedDirectUser.company ?? selectedDirectUser.email}
                     </p>
                   </div>
-                  <Badge variant="secondary" className={cn('ml-auto text-xs', getRoleBadgeClasses(selectedDirectUser.role))}>
+                  <Badge variant="secondary" className={cn('ml-auto text-xs flex-shrink-0', getRoleBadgeClasses(selectedDirectUser.role))}>
                     {selectedDirectUser.role}
                   </Badge>
                 </>
               ) : null}
+
+              {/* Delete conversation button in header */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive flex-shrink-0"
+                onClick={() => setDeleteConfirm({ type: 'conversation', id: '' })}
+                title="Delete conversation"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
 
             {/* Messages */}
@@ -677,25 +868,41 @@ export function MessagesPanel() {
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(idx * 0.015, 0.2) }}
-                        className={cn('flex gap-2.5', isSent ? 'justify-end' : 'justify-start')}
+                        className={cn('group/msg flex gap-2.5', isSent ? 'justify-end' : 'justify-start')}
                       >
                         {!isSent && (
                           <UserAvatar user={msg.sender} size="sm" className="mt-auto" />
                         )}
                         <div className={cn('max-w-[70%]', isSent ? 'text-right' : '')}>
-                          {/* Show sender name in group chats */}
                           {isGroupSelected && !isSent && (
                             <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
                               {msg.sender?.name ?? 'Unknown'}
                             </p>
                           )}
-                          <div className={cn(
-                            'inline-block rounded-2xl px-4 py-2.5 text-sm',
-                            isSent
-                              ? 'bg-emerald-600 text-white rounded-br-md'
-                              : 'bg-muted rounded-bl-md',
-                          )}>
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          <div className="relative">
+                            <div className={cn(
+                              'inline-block rounded-2xl px-4 py-2.5 text-sm',
+                              isSent
+                                ? 'bg-emerald-600 text-white rounded-br-md'
+                                : 'bg-muted rounded-bl-md',
+                            )}>
+                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            </div>
+                            {/* Delete message button — shows on hover */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                'h-6 w-6 absolute opacity-0 group-hover/msg:opacity-100 transition-opacity',
+                                isSent
+                                  ? '-left-8 top-1/2 -translate-y-1/2'
+                                  : '-right-8 top-1/2 -translate-y-1/2'
+                              )}
+                              onClick={() => setDeleteConfirm({ type: 'message', id: msg.id })}
+                              title="Delete message"
+                            >
+                              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                            </Button>
                           </div>
                           <div className={cn(
                             'flex items-center gap-1 mt-1 text-[10px] text-muted-foreground',
@@ -741,18 +948,32 @@ export function MessagesPanel() {
               </div>
               <h3 className="font-semibold text-lg">Select a conversation</h3>
               <p className="text-sm text-muted-foreground max-w-xs">
-                Choose a conversation from the sidebar or create a new group.
+                Choose a conversation from the sidebar, or start a new one.
               </p>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowNewMessage(true)}>
+                  <MessageCirclePlus className="h-4 w-4" /> New Message
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCreateGroup(true)}>
+                  <Users className="h-4 w-4" /> Create Group
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Dialogs */}
+      {/* ─── Dialogs ──────────────────────────────────── */}
       <CreateGroupDialog
         open={showCreateGroup}
         onOpenChange={setShowCreateGroup}
         onCreated={() => { fetchConversations(); setShowCreateGroup(false) }}
+        currentUser={user!}
+      />
+      <NewMessageDialog
+        open={showNewMessage}
+        onOpenChange={setShowNewMessage}
+        onUserSelected={handleNewMessageUser}
         currentUser={user!}
       />
       <GroupInfoDialog
@@ -761,6 +982,39 @@ export function MessagesPanel() {
         group={selectedGroup ? { id: selectedGroup.id, name: selectedGroup.name, _count: selectedGroup._count } : null}
         currentUserId={user?.id ?? ''}
       />
+
+      {/* ─── Delete Confirmation ─────────────────────── */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm?.type === 'message' ? 'Delete Message' : 'Delete Conversation'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.type === 'message'
+                ? 'Are you sure you want to delete this message? This action cannot be undone.'
+                : 'Are you sure you want to delete this entire conversation? All messages will be permanently removed. This action cannot be undone.'
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (!deleteConfirm) return
+                if (deleteConfirm.type === 'message') {
+                  deleteMessage(deleteConfirm.id)
+                } else {
+                  deleteConversation()
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   )
 }
