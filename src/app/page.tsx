@@ -3,7 +3,7 @@
 import { useAuthStore } from '@/stores/auth'
 import { DashboardShell } from '@/features/app-shell'
 import LoginPage from '@/features/login-page'
-import { AdminOverview, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile } from '@/features/admin-dashboard'
+import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile } from '@/features/admin-dashboard'
 import { TeamProjects, TeamTasks, TeamMessages, TeamProfile } from '@/features/team-dashboard'
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -15,6 +15,7 @@ function AdminDashboard() {
     <AnimatePresence mode="wait">
       <motion.div key={route.tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
         {route.tab === 'overview' && <AdminOverview />}
+        {route.tab === 'users' && <AdminUsers />}
         {route.tab === 'onboarding' && <AdminOnboarding />}
         {route.tab === 'project' && <AdminProjects />}
         {route.tab === 'task' && <AdminTasks />}

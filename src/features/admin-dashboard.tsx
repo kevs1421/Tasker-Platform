@@ -38,7 +38,8 @@ import {
   CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
   Plus, Trash2, Eye, Send, ChevronDown,
   Search, ArrowUpRight, CircleDot,
-  MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon
+  MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
+  UserPlus, UserCog, MoreHorizontal, X, Loader2
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -1289,6 +1290,411 @@ export function AdminMessages() {
           </div>
         )}
       </div>
+    </motion.div>
+  )
+}
+
+// ─── AdminUsers ────────────────────────────────────────────────────────────────
+
+export function AdminUsers() {
+  const { user: adminUser } = useAuthStore()
+  const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState<User[]>([])
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<string>('all')
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newUser, setNewUser] = useState({
+    name: '', email: '', password: '', confirmPassword: '',
+    role: 'team' as 'admin' | 'team' | 'client',
+    phone: '', company: ''
+  })
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/users')
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setUsers(data.users ?? [])
+    } catch {
+      toast.error('Failed to load users')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchUsers() }, [fetchUsers])
+
+  const filteredUsers = users.filter((u) => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.company ?? '').toLowerCase().includes(q)
+    }
+    return true
+  })
+
+  const adminCount = users.filter(u => u.role === 'admin').length
+  const teamCount = users.filter(u => u.role === 'team').length
+  const clientCount = users.filter(u => u.role === 'client').length
+
+  async function handleAddUser(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newUser.name || !newUser.email || !newUser.password) {
+      toast.error('Name, email, and password are required')
+      return
+    }
+    if (newUser.password.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    if (newUser.password !== newUser.confirmPassword) {
+      toast.error('Passwords do not match')
+      return
+    }
+    setAdding(true)
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newUser.name,
+          email: newUser.email,
+          password: newUser.password,
+          role: newUser.role,
+          phone: newUser.phone || undefined,
+          company: newUser.company || undefined,
+          adminUserId: adminUser?.id,
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`User "${newUser.name}" created successfully`)
+      setShowAddDialog(false)
+      setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'team', phone: '', company: '' })
+      fetchUsers()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create user')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  async function handleToggleStatus(u: User) {
+    const newStatus = u.status === 'active' ? 'inactive' : 'active'
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: u.id, status: newStatus })
+      })
+      if (!res.ok) throw new Error()
+      toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`)
+      fetchUsers()
+    } catch {
+      toast.error('Failed to update user status')
+    }
+  }
+
+  async function handleChangeRole(u: User, newRole: string) {
+    if (newRole === u.role) return
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: u.id, role: newRole })
+      })
+      if (!res.ok) throw new Error()
+      toast.success(`Role updated to ${newRole}`)
+      fetchUsers()
+    } catch {
+      toast.error('Failed to update user role')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <div className="grid grid-cols-3 gap-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
+  return (
+    <motion.div {...fadeIn} className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold">User Management</h2>
+          <p className="text-sm text-muted-foreground">Create and manage all user accounts</p>
+        </div>
+        <Button onClick={() => setShowAddDialog(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <UserPlus className="w-4 h-4 mr-2" />
+          Add User
+        </Button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Admins', count: adminCount, icon: Shield, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+          { label: 'Team Members', count: teamCount, icon: UserCog, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+          { label: 'Clients', count: clientCount, icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+        ].map((c) => (
+          <Card key={c.label}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+                <c.icon className={`h-5 w-5 ${c.color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{c.count}</p>
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, or company..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue placeholder="Filter by role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+                <SelectItem value="client">Client</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Users Table */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[250px]">User</TableHead>
+                  <TableHead className="hidden sm:table-cell">Role</TableHead>
+                  <TableHead className="hidden md:table-cell">Status</TableHead>
+                  <TableHead className="hidden lg:table-cell">Company</TableHead>
+                  <TableHead className="hidden lg:table-cell">Tasks</TableHead>
+                  <TableHead className="hidden xl:table-cell">Joined</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                      {search || roleFilter !== 'all' ? 'No users match your filters' : 'No users found'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredUsers.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {getInitials(u.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">{u.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <Select
+                          value={u.role}
+                          onValueChange={(val) => handleChangeRole(u, val)}
+                          disabled={u.id === adminUser?.id}
+                        >
+                          <SelectTrigger className="w-28 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="team">Team</SelectItem>
+                            <SelectItem value="client">Client</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Badge
+                          variant="secondary"
+                          className={u.status === 'active'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }
+                        >
+                          {u.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                        {u.company || '—'}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-sm">
+                        {u._count ? (u._count.assignedTasks + u._count.createdTasks) : 0}
+                      </TableCell>
+                      <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
+                        {formatDate(u.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={u.id === adminUser?.id}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
+                              {u.status === 'active' ? (
+                                <>
+                                  <X className="h-4 w-4 mr-2" />
+                                  Deactivate
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                                  Activate
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add User Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>Add a new member to the platform. They will receive their credentials from you.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddUser} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-name">Full Name *</Label>
+              <Input
+                id="add-name"
+                placeholder="John Doe"
+                value={newUser.name}
+                onChange={(e) => setNewUser(p => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-email">Email *</Label>
+              <Input
+                id="add-email"
+                type="email"
+                placeholder="name@company.com"
+                value={newUser.email}
+                onChange={(e) => setNewUser(p => ({ ...p, email: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="add-role">Role *</Label>
+                <Select value={newUser.role} onValueChange={(val: 'admin' | 'team' | 'client') => setNewUser(p => ({ ...p, role: val }))}>
+                  <SelectTrigger id="add-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="client">Client</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-phone">Phone</Label>
+                <Input
+                  id="add-phone"
+                  placeholder="+1 (555) 000"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser(p => ({ ...p, phone: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-company">Company</Label>
+              <Input
+                id="add-company"
+                placeholder="Acme Inc."
+                value={newUser.company}
+                onChange={(e) => setNewUser(p => ({ ...p, company: e.target.value }))}
+              />
+            </div>
+            <Separator />
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Set Password</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="add-password">Password *</Label>
+                  <Input
+                    id="add-password"
+                    type="password"
+                    placeholder="Min. 6 characters"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser(p => ({ ...p, password: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="add-confirm">Confirm *</Label>
+                  <Input
+                    id="add-confirm"
+                    type="password"
+                    placeholder="Re-enter"
+                    value={newUser.confirmPassword}
+                    onChange={(e) => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Share the credentials with the new user after creation.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={adding} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create User
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }

@@ -1,20 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { CheckCircle2, LayoutDashboard, Users, Eye, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [loginData, setLoginData] = useState({ email: '', password: '' })
-  const [registerData, setRegisterData] = useState({ email: '', password: '', name: '', confirmPassword: '', phone: '', company: '' })
   const { login } = useAuthStore()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -28,22 +26,6 @@ export default function LoginPage() {
       login(data.user)
       toast.success(`Welcome back, ${data.user.name}!`)
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Login failed') }
-    finally { setLoading(false) }
-  }
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!registerData.email || !registerData.password || !registerData.name) { toast.error('Please fill in required fields'); return }
-    if (registerData.password !== registerData.confirmPassword) { toast.error('Passwords do not match'); return }
-    if (registerData.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
-    setLoading(true)
-    try {
-      const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(registerData) })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      login(data.user)
-      toast.success('Account created successfully!')
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Registration failed') }
     finally { setLoading(false) }
   }
 
@@ -66,66 +48,26 @@ export default function LoginPage() {
           </div>
 
           <Card className="shadow-lg">
-            <Tabs defaultValue="login">
-              <CardContent className="pt-6 pb-2">
-                <TabsList className="w-full">
-                  <TabsTrigger value="login" className="flex-1">Sign In</TabsTrigger>
-                  <TabsTrigger value="register" className="flex-1">Register</TabsTrigger>
-                </TabsList>
-              </CardContent>
-
-              <TabsContent value="login">
-                <form onSubmit={handleLogin} className="px-6 pb-6 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input id="login-email" type="email" placeholder="name@company.com" value={loginData.email} onChange={(e) => setLoginData({ ...loginData, email: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input id="login-password" type="password" placeholder="Enter your password" value={loginData.password} onChange={(e) => setLoginData({ ...loginData, password: e.target.value })} />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Sign In
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="register">
-                <form onSubmit={handleRegister} className="px-6 pb-6 space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-name">Full Name *</Label>
-                    <Input id="reg-name" placeholder="John Doe" value={registerData.name} onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-email">Email *</Label>
-                    <Input id="reg-email" type="email" placeholder="name@company.com" value={registerData.email} onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="reg-phone">Phone</Label>
-                      <Input id="reg-phone" placeholder="+1 (555) 000" value={registerData.phone} onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="reg-company">Company</Label>
-                      <Input id="reg-company" placeholder="Acme Inc." value={registerData.company} onChange={(e) => setRegisterData({ ...registerData, company: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-password">Password *</Label>
-                    <Input id="reg-password" type="password" placeholder="Min. 6 characters" value={registerData.password} onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-confirm">Confirm Password *</Label>
-                    <Input id="reg-confirm" type="password" placeholder="Re-enter password" value={registerData.confirmPassword} onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })} />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Create Account
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
+            <CardContent className="pt-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-center">Sign In</h2>
+                <p className="text-sm text-muted-foreground text-center mt-1">Enter your credentials to access your workspace</p>
+              </div>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="login-email">Email</Label>
+                  <Input id="login-email" type="email" placeholder="name@company.com" value={loginData.email} onChange={(e) => setLoginData({ ...loginData, email: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="login-password">Password</Label>
+                  <Input id="login-password" type="password" placeholder="Enter your password" value={loginData.password} onChange={(e) => setLoginData({ ...loginData, password: e.target.value })} />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Sign In
+                </Button>
+              </form>
+            </CardContent>
           </Card>
 
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-6">

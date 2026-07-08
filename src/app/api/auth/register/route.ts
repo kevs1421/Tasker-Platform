@@ -1,39 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/auth'
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { email, password, name, role } = body
-
-    if (!email || !password || !name) {
-      return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 })
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
-    }
-
-    const existing = await db.user.findUnique({ where: { email } })
-    if (existing) {
-      return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
-    }
-
-    const hashedPassword = await hashPassword(password)
-    const user = await db.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        role: role || 'client',
-      }
-    })
-
-    const { password: _, ...safeUser } = user
-    return NextResponse.json({ user: safeUser }, { status: 201 })
-  } catch (error) {
-    console.error('Register error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
+// Public registration is disabled.
+// Only admins can create new users through the admin dashboard.
+export async function POST() {
+  return NextResponse.json(
+    { error: 'Registration is disabled. Please contact an administrator to create an account.' },
+    { status: 403 }
+  )
 }
