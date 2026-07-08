@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,11 +17,12 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { 
   X, CalendarIcon, MessageSquare, Plus, Trash2, 
-  ArrowRight, Check, Circle, Clock, Eye, Send
+  ArrowRight, Check, Circle, Clock, Eye, Send, UserPlus, Users
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import type { Task, Comment, Subtask } from '@/types'
+import type { Task, Comment, Subtask, User } from '@/types'
 import { priorityConfig, getInitials } from './TaskCard'
+import { cn } from '@/lib/utils'
 
 interface TaskDetailProps {
   task: Task | null
@@ -40,6 +41,9 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
     task?.dueDate ? new Date(task.dueDate) : undefined
   )
   const [dateOpen, setDateOpen] = useState(false)
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [currentAssigneeIds, setCurrentAssigneeIds] = useState<Set<string>>(new Set())
+  const [assigneeLoading, setAssigneeLoading] = useState(false)
   const prevTaskIdRef = useRef<string | null>(null)
 
   // Reset form state when task changes
@@ -50,6 +54,9 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
     setNewSubtask('')
     setAddingSubtask(false)
     setDueDate(task?.dueDate ? new Date(task.dueDate) : undefined)
+    setCurrentAssigneeIds(
+      new Set((task?.assignees || []).map((a: { userId: string }) => a.userId))
+    )
   }
 
   useEffect(() => {
@@ -59,6 +66,49 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
         .then(d => setComments(d.comments || []))
     }
   }, [task?.id])
+
+  // Fetch all team members for assignee selection
+  useEffect(() => {
+    if (open) {
+      fetch('/api/users')
+        .then(r => r.json())
+        .then(d => {
+          const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'admin')
+          setAllUsers(members)
+        })
+        .catch(() => {})
+    }
+  }, [open])
+
+  const handleToggleAssignee = useCallback(async (userId: string) => {
+    if (!task) return
+    setAssigneeLoading(true)
+    try {
+      const isCurrentlyAssigned = currentAssigneeIds.has(userId)
+      const res = await fetch('/api/tasks/assignments', {
+        method: isCurrentlyAssigned ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, taskId: task.id }),
+      })
+      if (res.ok) {
+        setCurrentAssigneeIds(prev => {
+          const next = new Set(prev)
+          if (isCurrentlyAssigned) next.delete(userId)
+          else next.add(userId)
+          return next
+        })
+        toast.success(isCurrentlyAssigned ? 'Assignee removed' : 'Assignee added')
+        onUpdate()
+      } else {
+        const d = await res.json()
+        throw new Error(d.error)
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update assignee')
+    } finally {
+      setAssigneeLoading(false)
+    }
+  }, [task, currentAssigneeIds, onUpdate])
 
   if (!task) return null
 
@@ -333,6 +383,44 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
               ) : !addingSubtask ? (
                 <p className="text-xs text-muted-foreground">No subtasks yet</p>
               ) : null}
+            </div>
+
+            {/* Assignees */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Assignees ({currentAssigneeIds.size})
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {allUsers.map(member => {
+                  const isAssigned = currentAssigneeIds.has(member.id)
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      disabled={assigneeLoading}
+                      onClick={() => handleToggleAssignee(member.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer disabled:opacity-50',
+                        isAssigned
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-foreground border-border hover:bg-accent'
+                      )}
+                    >
+                      <Avatar className="w-4 h-4">
+                        <AvatarFallback className="text-[7px] bg-primary/10 text-primary" style={{ fontSize: '7px' }}>
+                          {getInitials(member.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {member.name}
+                      {isAssigned && <X className="w-3 h-3 ml-0.5" />}
+                    </button>
+                  )
+                })}
+                {allUsers.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No team members available</p>
+                )}
+              </div>
             </div>
 
             <Separator />

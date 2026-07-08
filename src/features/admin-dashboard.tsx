@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User, Comment } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
+import { cn } from '@/lib/utils'
 
 // shadcn/ui
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -775,6 +776,9 @@ export function AdminTasks() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
   const [commentText, setCommentText] = useState('')
+  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
+  const [currentAssigneeIds, setCurrentAssigneeIds] = useState<Set<string>>(new Set())
+  const [assigneeLoading, setAssigneeLoading] = useState(false)
 
   const fetchTasks = useCallback(async (status: StatusFilter) => {
     setLoading(true)
@@ -793,10 +797,22 @@ export function AdminTasks() {
 
   useEffect(() => { fetchTasks(statusFilter) }, [statusFilter, fetchTasks])
 
+  // Fetch all team/admin users for assignee selection
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => {
+        const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'admin')
+        setAllTeamUsers(members)
+      })
+      .catch(() => {})
+  }, [])
+
   async function openTaskDetail(task: Task) {
     setSelectedTask(task)
     setDetailOpen(true)
     setCommentText('')
+    setCurrentAssigneeIds(new Set((task.assignees || []).map((a: { userId: string }) => a.userId)))
     // Fetch full task with comments
     try {
       const detailRes = await fetch(`/api/tasks/${task.id}`)
@@ -804,8 +820,46 @@ export function AdminTasks() {
         const data = await detailRes.json()
         setSelectedTask(data.task)
         setComments(data.task?.comments ?? [])
+        setCurrentAssigneeIds(new Set((data.task?.assignees || []).map((a: { userId: string }) => a.userId)))
       }
     } catch { /* use basic data */ }
+  }
+
+  async function handleToggleAssignee(userId: string) {
+    if (!selectedTask) return
+    setAssigneeLoading(true)
+    try {
+      const isAssigned = currentAssigneeIds.has(userId)
+      const res = await fetch('/api/tasks/assignments', {
+        method: isAssigned ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, taskId: selectedTask.id }),
+      })
+      if (res.ok) {
+        setCurrentAssigneeIds(prev => {
+          const next = new Set(prev)
+          if (isAssigned) {
+            next.delete(userId)
+          } else {
+            next.add(userId)
+          }
+          return next
+        })
+        toast.success(isAssigned ? 'Assignee removed' : 'Assignee added')
+        fetchTasks(statusFilter)
+        // Refresh selected task
+        const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
+        if (fresh.ok) {
+          const data = await fresh.json()
+          setSelectedTask(data.task)
+          setCurrentAssigneeIds(new Set((data.task?.assignees || []).map((a: { userId: string }) => a.userId)))
+        }
+      }
+    } catch {
+      toast.error('Failed to update assignee')
+    } finally {
+      setAssigneeLoading(false)
+    }
   }
 
   async function handleUpdateTask(taskId: string, updates: Record<string, unknown>) {
@@ -1002,6 +1056,44 @@ export function AdminTasks() {
                       </PopoverContent>
                     </Popover>
                   </div>
+
+                  {/* Assignees */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      Assignees ({currentAssigneeIds.size})
+                    </Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allTeamUsers.map(member => {
+                        const isAssigned = currentAssigneeIds.has(member.id)
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            disabled={assigneeLoading}
+                            onClick={() => handleToggleAssignee(member.id)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer disabled:opacity-50',
+                              isAssigned
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-foreground border-border hover:bg-accent'
+                            )}
+                          >
+                            <Avatar className="w-4 h-4">
+                              <AvatarFallback className="text-[7px] bg-primary/10 text-primary" style={{ fontSize: '7px' }}>
+                                {getInitials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.name}
+                            {isAssigned && <X className="w-3 h-3 ml-0.5" />}
+                          </button>
+                        )
+                      })}
+                      {allTeamUsers.length === 0 && <p className="text-xs text-muted-foreground">No team members</p>}
+                    </div>
+                  </div>
+
+                  <Separator />
 
                   {/* Description */}
                   {selectedTask.description && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,17 +9,20 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { toast } from 'sonner'
-import { CalendarIcon, Plus, X } from 'lucide-react'
+import { CalendarIcon, X, Users, Check } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types'
+import { getInitials } from './TaskCard'
+import { cn } from '@/lib/utils'
 
 interface CreateTaskModalProps {
   open: boolean
   onClose: () => void
   projectId: string
-  projectMembers: (User & { _pivot_role?: string })[]
+  projectMembers?: (User & { _pivot_role?: string })[]
   onCreated: () => void
 }
 
@@ -34,6 +37,24 @@ export function CreateTaskModal({ open, onClose, projectId, projectMembers, onCr
   const [assigneeIds, setAssigneeIds] = useState<string[]>([])
   const [dateOpen, setDateOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [availableMembers, setAvailableMembers] = useState<User[]>([])
+
+  // Fetch all team/admin users for assignee selection
+  useEffect(() => {
+    if (open) {
+      if (projectMembers && projectMembers.length > 0) {
+        setAvailableMembers(projectMembers)
+      } else {
+        fetch('/api/users')
+          .then(r => r.json())
+          .then(d => {
+            const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'admin')
+            setAvailableMembers(members)
+          })
+          .catch(() => {})
+      }
+    }
+  }, [open, projectMembers])
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -173,21 +194,37 @@ export function CreateTaskModal({ open, onClose, projectId, projectMembers, onCr
             </div>
           </div>
 
-          {projectMembers.length > 0 && (
+          {availableMembers.length > 0 && (
             <div className="space-y-2">
-              <Label>Assignees</Label>
+              <Label className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                Assignees ({assigneeIds.length} selected)
+              </Label>
               <div className="flex flex-wrap gap-1.5">
-                {projectMembers.map(member => (
-                  <Button
-                    key={member.id}
-                    variant={assigneeIds.includes(member.id) ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => toggleAssignee(member.id)}
-                  >
-                    {member.name}
-                  </Button>
-                ))}
+                {availableMembers.map(member => {
+                  const isSelected = assigneeIds.includes(member.id)
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => toggleAssignee(member.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer',
+                        isSelected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-foreground border-border hover:bg-accent'
+                      )}
+                    >
+                      <Avatar className="w-4 h-4">
+                        <AvatarFallback className="text-[7px] bg-primary/10 text-primary" style={{ fontSize: '7px' }}>
+                          {getInitials(member.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {member.name}
+                      {isSelected && <Check className="w-3 h-3 ml-0.5" />}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}

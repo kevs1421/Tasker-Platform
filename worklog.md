@@ -43,3 +43,34 @@ Stage Summary:
 - Admin sidebar: New Users tab with full user management
 - AdminUsers: search, filter, role change, activate/deactivate, add user dialog
 - All APIs verified working correctly
+
+---
+Task ID: 3
+Agent: main
+Task: Add user selection for task assignees in TaskDetail and AdminTasks
+
+Work Log:
+- Added assignee selection UI to TaskDetail modal (src/components/dashboard/TaskDetail.tsx)
+  - Fetches all team/admin users on dialog open
+  - Shows clickable pill buttons with avatar + name for each user
+  - Selected assignees shown in primary color with X icon to remove
+  - Unselected users shown in outline style to add
+  - Calls /api/tasks/assignments POST/DELETE to toggle
+  - Optimistic UI update with toast notifications
+- Enhanced CreateTaskModal (src/components/dashboard/CreateTaskModal.tsx)
+  - Auto-fetches team/admin users if no projectMembers passed
+  - Replaced plain buttons with avatar pill buttons matching TaskDetail style
+  - Shows selected count and checkmark icon
+- Added assignee selection to AdminTasks detail dialog (src/features/admin-dashboard.tsx)
+  - Same UI pattern as TaskDetail (avatar pills with toggle)
+  - Fetches team users on mount, tracks assignee state per task
+  - Refreshes task data after assignment change
+- Fixed template literal JSX parsing issues by switching to cn() utility
+- All lint and TypeScript checks pass for changed files
+
+Stage Summary:
+- TaskDetail: New "Assignees" section with toggle-able user pills
+- CreateTaskModal: Improved assignee pills with avatars + auto-fetch fallback
+- AdminTasks: New "Assignees" section in task detail dialog
+- All three locations show team+admin users with avatar, name, selected state
+- Uses existing /api/tasks/assignments POST/DELETE endpoints
