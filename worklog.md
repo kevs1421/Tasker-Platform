@@ -74,3 +74,20 @@ Stage Summary:
 - AdminTasks: New "Assignees" section in task detail dialog
 - All three locations show team+admin users with avatar, name, selected state
 - Uses existing /api/tasks/assignments POST/DELETE endpoints
+
+---
+Task ID: 4
+Agent: main
+Task: Put assignee selection in a modal/popover instead of inline pills
+
+Work Log:
+- Updated TaskDetail: Replaced inline pill buttons with a Popover triggered by clicking "Assignees (N)" header. Popover shows a scrollable list of all team/admin users with avatar, name, role, and checkbox. Current assignees shown as removable chips below the header.
+- Updated AdminTasks: Same popover pattern as TaskDetail for consistency.
+- Updated CreateTaskModal: Changed from horizontal pill layout to a vertical scrollable list inside a bordered container, matching the popover style (full-width rows with avatar, name, role, and check indicator).
+- Added missing Check icon import to admin-dashboard.tsx.
+- All lint and TypeScript checks pass.
+
+Stage Summary:
+- TaskDetail & AdminTasks: Click "Assignees (N)" → popover opens with user selection list. Selected users shown as removable chips below.
+- CreateTaskModal: Inline scrollable list with same visual style (avatar + name + role + check circle).
+- All three locations show: user avatar, name, role label (ADMIN/TEAM), and a filled/empty circle indicator.

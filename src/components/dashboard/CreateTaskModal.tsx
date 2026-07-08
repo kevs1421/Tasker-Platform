@@ -200,7 +200,7 @@ export function CreateTaskModal({ open, onClose, projectId, projectMembers, onCr
                 <Users className="w-3.5 h-3.5" />
                 Assignees ({assigneeIds.length} selected)
               </Label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="max-h-32 overflow-y-auto rounded-md border p-1.5 space-y-0.5">
                 {availableMembers.map(member => {
                   const isSelected = assigneeIds.includes(member.id)
                   return (
@@ -209,19 +209,24 @@ export function CreateTaskModal({ open, onClose, projectId, projectMembers, onCr
                       type="button"
                       onClick={() => toggleAssignee(member.id)}
                       className={cn(
-                        'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer',
-                        isSelected
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-foreground border-border hover:bg-accent'
+                        'w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-left text-sm transition-colors cursor-pointer',
+                        isSelected ? 'bg-primary/5' : 'hover:bg-accent'
                       )}
                     >
-                      <Avatar className="w-4 h-4">
-                        <AvatarFallback className="text-[7px] bg-primary/10 text-primary" style={{ fontSize: '7px' }}>
+                      <Avatar className="w-6 h-6 shrink-0">
+                        <AvatarFallback className="text-[9px] bg-primary/10 text-primary">
                           {getInitials(member.name)}
                         </AvatarFallback>
                       </Avatar>
-                      {member.name}
-                      {isSelected && <Check className="w-3 h-3 ml-0.5" />}
+                      <span className="flex-1 truncate">{member.name}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">{member.role}</span>
+                      {isSelected ? (
+                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center shrink-0">
+                          <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                        </div>
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-muted shrink-0" />
+                      )}
                     </button>
                   )
                 })}

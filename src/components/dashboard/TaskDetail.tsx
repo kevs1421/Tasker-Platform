@@ -44,6 +44,7 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [currentAssigneeIds, setCurrentAssigneeIds] = useState<Set<string>>(new Set())
   const [assigneeLoading, setAssigneeLoading] = useState(false)
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
   const prevTaskIdRef = useRef<string | null>(null)
 
   // Reset form state when task changes
@@ -93,8 +94,11 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
       if (res.ok) {
         setCurrentAssigneeIds(prev => {
           const next = new Set(prev)
-          if (isCurrentlyAssigned) next.delete(userId)
-          else next.add(userId)
+          if (isCurrentlyAssigned) {
+            next.delete(userId)
+          } else {
+            next.add(userId)
+          }
           return next
         })
         toast.success(isCurrentlyAssigned ? 'Assignee removed' : 'Assignee added')
@@ -109,6 +113,8 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
       setAssigneeLoading(false)
     }
   }, [task, currentAssigneeIds, onUpdate])
+
+  const assignedUsersList = allUsers.filter(u => currentAssigneeIds.has(u.id))
 
   if (!task) return null
 
@@ -387,40 +393,90 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
 
             {/* Assignees */}
             <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Assignees ({currentAssigneeIds.size})
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {allUsers.map(member => {
-                  const isAssigned = currentAssigneeIds.has(member.id)
-                  return (
+              <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  <PopoverTrigger asChild>
                     <button
-                      key={member.id}
                       type="button"
-                      disabled={assigneeLoading}
-                      onClick={() => handleToggleAssignee(member.id)}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer disabled:opacity-50',
-                        isAssigned
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-foreground border-border hover:bg-accent'
-                      )}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 -ml-2 hover:bg-accent transition-colors cursor-pointer"
                     >
-                      <Avatar className="w-4 h-4">
-                        <AvatarFallback className="text-[7px] bg-primary/10 text-primary" style={{ fontSize: '7px' }}>
-                          {getInitials(member.name)}
+                      Assignees ({currentAssigneeIds.size})
+                      <UserPlus className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </PopoverTrigger>
+                </h4>
+                <PopoverContent className="w-72 p-0" align="start" side="bottom">
+                  <div className="p-3 border-b">
+                    <p className="text-xs font-medium text-muted-foreground">Select team members to assign</p>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto p-2 space-y-0.5">
+                    {allUsers.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-4">No team members available</p>
+                    )}
+                    {allUsers.map(member => {
+                      const isAssigned = currentAssigneeIds.has(member.id)
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          disabled={assigneeLoading}
+                          onClick={() => handleToggleAssignee(member.id)}
+                          className={cn(
+                            'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-sm transition-colors cursor-pointer disabled:opacity-50',
+                            isAssigned ? 'bg-primary/5' : 'hover:bg-accent'
+                          )}
+                        >
+                          <Avatar className="w-7 h-7 shrink-0">
+                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                              {getInitials(member.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="flex-1 truncate font-medium">{member.name}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase">{member.role}</span>
+                          {isAssigned ? (
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+                              <Check className="w-3 h-3 text-primary-foreground" />
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 rounded-full border border-muted shrink-0" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Current assignee chips */}
+              {assignedUsersList.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {assignedUsersList.map(u => (
+                    <div
+                      key={u.id}
+                      className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                    >
+                      <Avatar className="w-5 h-5">
+                        <AvatarFallback className="text-[8px]" style={{ fontSize: '8px' }}>
+                          {getInitials(u.name)}
                         </AvatarFallback>
                       </Avatar>
-                      {member.name}
-                      {isAssigned && <X className="w-3 h-3 ml-0.5" />}
-                    </button>
-                  )
-                })}
-                {allUsers.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No team members available</p>
-                )}
-              </div>
+                      <span>{u.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAssignee(u.id)}
+                        className="ml-0.5 hover:text-destructive transition-colors"
+                        disabled={assigneeLoading}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {assignedUsersList.length === 0 && !assigneePopoverOpen && (
+                <p className="text-xs text-muted-foreground">No assignees yet. Click to add.</p>
+              )}
             </div>
 
             <Separator />
