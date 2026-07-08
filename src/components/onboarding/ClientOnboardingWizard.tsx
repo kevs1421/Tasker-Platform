@@ -525,41 +525,41 @@ export default function ClientOnboardingWizard() {
       </div>
 
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="businessName">Business Name <span className="text-red-500">*</span></Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="businessName" className="text-sm">Business Name <span className="text-red-500">*</span></Label>
           <Input id="businessName" placeholder="Enter business name" value={responses.businessName || ''} onChange={(e) => updateResponse('businessName', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="businessEmail">Business Email <span className="text-red-500">*</span></Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="businessEmail" className="text-sm">Business Email <span className="text-red-500">*</span></Label>
             <Input id="businessEmail" type="email" placeholder="name@company.com" value={responses.businessEmail || ''} onChange={(e) => updateResponse('businessEmail', e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="businessPhone">Business Phone</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="businessPhone" className="text-sm">Business Phone</Label>
             <Input id="businessPhone" placeholder="+1 (555) 000-0000" value={responses.businessPhone || ''} onChange={(e) => updateResponse('businessPhone', e.target.value)} />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="businessAddress">Business Address</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="businessAddress" className="text-sm">Business Address</Label>
           <Input id="businessAddress" placeholder="Enter full business address" value={responses.businessAddress || ''} onChange={(e) => updateResponse('businessAddress', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Industry</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm">Industry</Label>
             <Select value={responses.industry || ''} onValueChange={(v) => updateResponse('industry', v)}>
-              <SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select industry" /></SelectTrigger>
               <SelectContent>
                 {INDUSTRIES.map((ind) => <SelectItem key={ind} value={ind}>{ind}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Company Size</Label>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Company Size</Label>
             <Select value={responses.companySize || ''} onValueChange={(v) => updateResponse('companySize', v)}>
-              <SelectTrigger><SelectValue placeholder="Select company size" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select company size" /></SelectTrigger>
               <SelectContent>
                 {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s} employees</SelectItem>)}
               </SelectContent>
@@ -590,13 +590,13 @@ export default function ClientOnboardingWizard() {
           description="PNG, JPG or SVG. Recommended 512x512px."
         />
 
-        <div className="space-y-2">
-          <Label htmlFor="brandColors">Brand Colors</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="brandColors" className="text-sm">Brand Colors</Label>
           <Input id="brandColors" placeholder="e.g., #0142A0, #AA0C5B" value={responses.brandColors || ''} onChange={(e) => updateResponse('brandColors', e.target.value)} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="typography">Typography / Fonts</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="typography" className="text-sm">Typography / Fonts</Label>
           <Input id="typography" placeholder="e.g., Inter, Poppins" value={responses.typography || ''} onChange={(e) => updateResponse('typography', e.target.value)} />
         </div>
 
@@ -621,35 +621,35 @@ export default function ClientOnboardingWizard() {
       </div>
 
       <div className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="projectGoals">Project Goals <span className="text-red-500">*</span></Label>
-          <Textarea id="projectGoals" placeholder="Describe your main project goals and objectives" rows={5} value={responses.projectGoals || ''} onChange={(e) => updateResponse('projectGoals', e.target.value)} />
+        <div className="space-y-1.5">
+          <Label htmlFor="projectGoals" className="text-sm">Project Goals <span className="text-red-500">*</span></Label>
+          <Textarea id="projectGoals" placeholder="Describe your main project goals and objectives" rows={4} value={responses.projectGoals || ''} onChange={(e) => updateResponse('projectGoals', e.target.value)} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="targetAudience">Target Audience <span className="text-red-500">*</span></Label>
-          <Textarea id="targetAudience" placeholder="Describe your target audience" rows={4} value={responses.targetAudience || ''} onChange={(e) => updateResponse('targetAudience', e.target.value)} />
+        <div className="space-y-1.5">
+          <Label htmlFor="targetAudience" className="text-sm">Target Audience <span className="text-red-500">*</span></Label>
+          <Textarea id="targetAudience" placeholder="Describe your target audience" rows={3} value={responses.targetAudience || ''} onChange={(e) => updateResponse('targetAudience', e.target.value)} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="mainCompetitors">Main Competitors</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="mainCompetitors" className="text-sm">Main Competitors</Label>
           <Textarea id="mainCompetitors" placeholder="List your main competitors" rows={3} value={responses.mainCompetitors || ''} onChange={(e) => updateResponse('mainCompetitors', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Budget Range</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm">Budget Range</Label>
             <Select value={responses.budgetRange || ''} onValueChange={(v) => updateResponse('budgetRange', v)}>
-              <SelectTrigger><SelectValue placeholder="Select budget range" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select budget range" /></SelectTrigger>
               <SelectContent>
                 {BUDGET_RANGES.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Expected Timeline</Label>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Expected Timeline</Label>
             <Select value={responses.expectedTimeline || ''} onValueChange={(v) => updateResponse('expectedTimeline', v)}>
-              <SelectTrigger><SelectValue placeholder="Select timeline" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select timeline" /></SelectTrigger>
               <SelectContent>
                 {TIMELINES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>

@@ -40,7 +40,7 @@ import {
   Plus, Trash2, Eye, Send, ChevronDown, Check,
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
-  UserPlus, UserCog, MoreHorizontal, X, Loader2
+  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -270,9 +270,16 @@ function getOnboardingBadge(status: string) {
 }
 
 function getOnboardingStatusLabel(status: string) {
-  const map: Record<string, string> = { in_progress: 'In Progress', submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected' }
+  const map: Record<string, string> = { in_progress: 'In Progress', submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', draft: 'Draft', published: 'Published', archived: 'Archived' }
   return map[status] || status
 }
+
+const ONBOARDING_STEPS_CONFIG = [
+  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+]
 
 export function AdminOnboarding() {
   const { user } = useAuthStore()
@@ -283,21 +290,45 @@ export function AdminOnboarding() {
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch('/api/onboarding')
-        if (!res.ok) throw new Error('Failed')
-        const data = await res.json()
-        setForms(data.forms ?? [])
-      } catch {
-        toast.error('Failed to load onboarding forms')
-      } finally {
-        setLoading(false)
-      }
+  // Create onboarding form state
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [createForm, setCreateForm] = useState({
+    title: '',
+    description: '',
+    projectId: '',
+    selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+  })
+  const [stepSearch, setStepSearch] = useState('')
+
+  const fetchForms = useCallback(async () => {
+    try {
+      const res = await fetch('/api/onboarding')
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setForms(data.forms ?? [])
+    } catch {
+      toast.error('Failed to load onboarding forms')
+    } finally {
+      setLoading(false)
     }
-    fetchData()
   }, [])
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      if (res.ok) {
+        const data = await res.json()
+        setProjects(data.projects ?? [])
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    fetchForms()
+    fetchProjects()
+  }, [fetchForms, fetchProjects])
 
   async function openForm(form: OnboardingForm) {
     try {
@@ -308,6 +339,42 @@ export function AdminOnboarding() {
       setDialogOpen(true)
     } catch {
       toast.error('Failed to load form details')
+    }
+  }
+
+  async function handleCreateOnboarding() {
+    if (!user || !createForm.title.trim() || !createForm.projectId) return
+    setCreating(true)
+    try {
+      const stepsJson = JSON.stringify(
+        createForm.selectedSteps.map(stepId => {
+          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+        })
+      )
+      const res = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: createForm.title.trim(),
+          description: createForm.description.trim() || null,
+          stepsJson,
+          projectId: createForm.projectId,
+          status: 'published',
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to create')
+      }
+      toast.success('Onboarding form created successfully')
+      setCreateOpen(false)
+      setCreateForm({ title: '', description: '', projectId: '', selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'] })
+      fetchForms()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding form')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -334,12 +401,39 @@ export function AdminOnboarding() {
           setSelectedForm(data.form)
         }
       }
+      fetchForms()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to review')
     } finally {
       setReviewing(null)
     }
   }
+
+  async function handleDeleteForm(formId: string, formTitle: string) {
+    try {
+      const res = await fetch(`/api/onboarding/${formId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error()
+      toast.success(`"${formTitle}" deleted`)
+      setForms(prev => prev.filter(f => f.id !== formId))
+    } catch {
+      toast.error('Failed to delete onboarding form')
+    }
+  }
+
+  const toggleStep = (stepId: string) => {
+    setCreateForm(prev => ({
+      ...prev,
+      selectedSteps: prev.selectedSteps.includes(stepId)
+        ? prev.selectedSteps.filter(s => s !== stepId)
+        : [...prev.selectedSteps, stepId],
+    }))
+  }
+
+  const filteredSteps = ONBOARDING_STEPS_CONFIG.filter(s =>
+    !stepSearch || s.label.toLowerCase().includes(stepSearch.toLowerCase()) || s.description.toLowerCase().includes(stepSearch.toLowerCase())
+  )
 
   if (loading) {
     return (
@@ -352,11 +446,41 @@ export function AdminOnboarding() {
 
   return (
     <motion.div {...fadeIn} className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold">Onboarding Management</h2>
-        <p className="text-sm text-muted-foreground">Review and manage client onboarding submissions</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Onboarding Management</h2>
+          <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Plus className="h-4 w-4 mr-2" /> Create Onboarding
+        </Button>
       </div>
 
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Forms', value: forms.length, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+          { label: 'Published', value: forms.filter(f => f.status === 'published').length, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+          { label: 'Drafts', value: forms.filter(f => f.status === 'draft').length, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+          { label: 'Pending Review', value: forms.reduce((acc, f) => acc + (f._count?.submissions ?? 0), 0), color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+        ].map((c) => (
+          <Card key={c.label}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+                  <FileCheck className={`h-4 w-4 ${c.color}`} />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold">{c.value}</p>
+                  <p className="text-xs text-muted-foreground">{c.label}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Onboarding Forms Table */}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -366,53 +490,117 @@ export function AdminOnboarding() {
                 <TableHead>Project</TableHead>
                 <TableHead className="text-center">Submissions</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-16"></TableHead>
+                <TableHead className="w-24"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {forms.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No onboarding forms found</TableCell></TableRow>
-              )}
-              {forms.map((form) => (
-                <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
-                  <TableCell className="font-medium">{form.title}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {form.project && <div className="h-3 w-3 rounded-full" style={{ backgroundColor: form.project.color }} />}
-                      <span className="text-sm text-muted-foreground">{form.project?.name ?? '—'}</span>
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                    <div className="flex flex-col items-center gap-2">
+                      <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
+                      <p>No onboarding forms yet</p>
+                      <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+                        <Plus className="h-4 w-4 mr-1" /> Create your first form
+                      </Button>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center">{form._count?.submissions ?? 0}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
-                      {getOnboardingStatusLabel(form.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
                 </TableRow>
-              ))}
+              )}
+              {forms.map((form) => {
+                const project = form.project as { color?: string; name?: string } | undefined
+                return (
+                  <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{form.title}</p>
+                          {form.description && <p className="text-xs text-muted-foreground truncate max-w-48">{form.description}</p>}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
+                        <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {(form._count?.submissions ?? 0) > 0 && (
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {form._count?.submissions}
+                        </Badge>
+                      )}
+                      {(form._count?.submissions ?? 0) === 0 && <span className="text-muted-foreground text-sm">0</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+                        {getOnboardingStatusLabel(form.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Onboarding Form</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete &quot;{form.title}&quot;? This will also delete all associated submissions. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteForm(form.id, form.title)} className="bg-rose-600 hover:bg-rose-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* Submissions Dialog */}
+      {/* Submissions Review Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
             <DialogDescription>
-              {selectedForm?.project?.name ?? 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
+              {selectedForm?.project ? (
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+                  {(selectedForm.project as { name?: string }).name}
+                </span>
+              ) : 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="space-y-4 py-2">
               {selectedForm?.submissions?.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-6">No submissions yet</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                    <FileCheck className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">No submissions yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
+                </div>
               )}
               {selectedForm?.submissions?.map((sub) => {
                 let parsedResponses: Record<string, string> = {}
@@ -434,7 +622,7 @@ export function AdminOnboarding() {
                           </Avatar>
                           <div>
                             <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
-                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? 'No company'}</p>
+                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
                           </div>
                         </div>
                         <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
@@ -447,7 +635,7 @@ export function AdminOnboarding() {
                       )}
 
                       {Object.keys(parsedResponses).length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {Object.entries(parsedResponses).filter(([_, v]) => v?.trim()).map(([key, value]) => (
                             <div key={key} className="p-2.5 rounded-lg bg-muted/50 border">
                               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
@@ -497,7 +685,8 @@ export function AdminOnboarding() {
                               onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
                               disabled={reviewing === sub.id}
                             >
-                              {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsUp className="h-3 w-3 mr-1" /> Approve</>}
+                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />}
+                              Approve
                             </Button>
                             <Button
                               size="sm"
@@ -505,7 +694,8 @@ export function AdminOnboarding() {
                               onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
                               disabled={reviewing === sub.id}
                             >
-                              {reviewing === sub.id ? <Skeleton className="h-4 w-16" /> : <><ThumbsDown className="h-3 w-3 mr-1" /> Reject</>}
+                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />}
+                              Reject
                             </Button>
                           </div>
                         </div>
@@ -516,6 +706,128 @@ export function AdminOnboarding() {
               })}
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Onboarding Form Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
+            </DialogTitle>
+            <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+            {/* Title */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="e.g., Client Onboarding Package"
+                value={createForm.title}
+                onChange={(e) => setCreateForm(p => ({ ...p, title: e.target.value }))}
+                autoFocus
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Description</Label>
+              <Textarea
+                placeholder="Brief description of this onboarding form (optional)"
+                value={createForm.description}
+                onChange={(e) => setCreateForm(p => ({ ...p, description: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
+            {/* Project Selection */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+              <Select value={createForm.projectId} onValueChange={(v) => setCreateForm(p => ({ ...p, projectId: v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        {p.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
+            </div>
+
+            <Separator />
+
+            {/* Step Selection */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Onboarding Steps</Label>
+                <Badge variant="secondary" className="text-xs">
+                  {createForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+                </Badge>
+              </div>
+
+              <p className="text-xs text-muted-foreground">Choose which steps to include in the onboarding form</p>
+
+              <div className="space-y-2">
+                {ONBOARDING_STEPS_CONFIG.map((step) => {
+                  const isSelected = createForm.selectedSteps.includes(step.id)
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => toggleStep(step.id)}
+                      className={cn(
+                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+                          : 'border-transparent bg-muted/50 hover:bg-muted'
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={cn(
+                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+                        )}>
+                          {isSelected && <Check className="h-3.5 w-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{step.label}</p>
+                            {step.required && (
+                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleCreateOnboarding}
+              disabled={!createForm.title.trim() || !createForm.projectId || createForm.selectedSteps.length === 0 || creating}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Create Form
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.div>

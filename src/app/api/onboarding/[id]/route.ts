@@ -60,3 +60,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ form })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }
+
+// DELETE /api/onboarding/:id - delete onboarding form and its submissions
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const form = await db.onboardingForm.findUnique({
+      where: { id },
+      select: { title: true }
+    })
+    if (!form) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    await db.onboardingForm.delete({ where: { id } })
+    await db.activityLog.create({ data: { action: 'onboarding_deleted', details: `Deleted onboarding form "${form.title}"` } })
+    return NextResponse.json({ success: true })
+  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+}

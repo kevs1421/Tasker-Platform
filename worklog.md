@@ -168,3 +168,26 @@ Stage Summary:
 - Upload API saves files to public/uploads/onboarding/ with unique names
 - Verified: New Message dialog, Create Group dialog, message/conversation deletion all functional
 - Lint passes with 0 errors (4 warnings for unused eslint-disable directives)
+
+---
+Task ID: 2
+Agent: main
+Task: Fix form overlap fields + Create onboarding form for admin
+
+Work Log:
+- Fixed z-index hierarchy for Select, Popover, and DropdownMenu: changed from z-50 to z-[200] so they render above Dialog overlays (z-[100]/z-[101])
+- Fixed form field overlap in ClientOnboardingWizard: changed grid breakpoints from md: to sm: for two-column layouts, reduced spacing from space-y-2 to space-y-1.5, added w-full to SelectTrigger, reduced Textarea rows for better mobile layout
+- Built "Create Onboarding Form" dialog in AdminOnboarding component with: title, description, project selector (fetches all projects), step selection (4 toggleable steps with checkmark cards)
+- Added summary stat cards to AdminOnboarding: Total Forms, Published, Drafts, Pending Review
+- Enhanced onboarding table: form icon, description preview, submission count badge, view/delete actions
+- Added DELETE endpoint to /api/onboarding/[id] for deleting forms and their submissions
+- Added form delete with confirmation AlertDialog in admin table
+- Improved submissions dialog: better empty state, project color dot in header, sm: breakpoints for response grid, loading spinner for review buttons
+- All lint checks pass (0 errors, 4 warnings)
+
+Stage Summary:
+- Select/Popover/DropdownMenu z-index: z-50 → z-[200] fixes overlap with Dialog overlays
+- Onboarding wizard forms: proper single-column on mobile, two-column on sm+ breakpoints
+- Admin "Create Onboarding" button opens dialog with project picker and step configuration
+- Admin can delete onboarding forms with confirmation
+- Verified via browser: Create Onboarding dialog works, project dropdown renders above dialog, form created successfully, client onboarding wizard fields properly spaced, Create Group dialog fully functional
