@@ -333,3 +333,31 @@ Stage Summary:
 - Files modified: src/features/team-dashboard.tsx, src/app/api/tasks/[id]/route.ts
 - Key fixes: Task creation (createdById + assigneeIds), task filtering (all project tasks), PATCH API (undefined checks), inline title/description editing, empty state for no projects
 - All task CRUD operations verified working for team dashboard
+
+---
+Task ID: 2
+Agent: Main
+Task: Add edit user and reset password functionality to Admin User Management
+
+Work Log:
+- Enhanced /api/users PATCH endpoint: Changed from conditional spread to explicit updateData builder. Now supports updating name, email, phone, company, role, status. Added email uniqueness check.
+- Added PATCH handler to /api/users/[id]/route.ts for password reset. Validates admin role, hashes new password, creates activity log.
+- Added `KeyRound` icon import to admin-dashboard.tsx
+- Added edit state variables: editOpen, editing, editForm (id, name, email, role, phone, company)
+- Added reset password state variables: resetOpen, resetting, resetTarget, resetPassword, resetConfirm
+- Added `openEditDialog(u)` function that pre-fills edit form from user data
+- Added `handleEditUser(e)` function that PATCHes to /api/users
+- Added `openResetDialog(u)` function that sets reset target
+- Added `handleResetPassword(e)` function that validates and PATCHes to /api/users/[id]
+- Added 2 new DropdownMenuItems in user actions: "Edit User" (Pencil icon) and "Reset Password" (KeyRound icon)
+- Created Edit User Dialog: pre-filled name, email, role, phone, company fields with Save/Cancel buttons
+- Created Reset Password Dialog: amber-themed with warning banner, new password + confirm fields, "Reset Password" amber button
+- Verified via browser: dropdown shows 4 menu items, Edit dialog pre-fills correctly, Edit saves and updates table (Emma Wilson company changed from "—" to "TaskFlow Team"), Reset Password dialog shows with amber theme and warning, Password reset returns 200 and creates activity log
+- Lint: 0 errors (4 pre-existing warnings)
+
+Stage Summary:
+- Files modified: src/app/api/users/route.ts, src/app/api/users/[id]/route.ts, src/features/admin-dashboard.tsx
+- Admin user dropdown now has 4 options: Edit User, Reset Password, Deactivate/Activate, Delete User
+- Edit User dialog allows changing name, email, role, phone, company
+- Reset Password dialog with amber warning theme, validates min 6 chars and password match
+- All operations verified working end-to-end

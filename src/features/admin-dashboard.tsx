@@ -40,7 +40,8 @@ import {
   Plus, Trash2, Eye, Send, ChevronDown, Check,
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
-  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil
+  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
+  KeyRound
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -1835,6 +1836,23 @@ export function AdminUsers() {
     role: 'team' as 'admin' | 'team' | 'client',
     phone: '', company: ''
   })
+  // Edit user state
+  const [editOpen, setEditOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState<{
+    id: string
+    name: string
+    email: string
+    role: string
+    phone: string
+    company: string
+  }>({ id: '', name: '', email: '', role: 'team', phone: '', company: '' })
+  // Reset password state
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetConfirm, setResetConfirm] = useState('')
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -1935,6 +1953,93 @@ export function AdminUsers() {
       fetchUsers()
     } catch {
       toast.error('Failed to update user role')
+    }
+  }
+
+  function openEditDialog(u: User) {
+    setEditForm({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      phone: u.phone ?? '',
+      company: u.company ?? '',
+    })
+    setEditOpen(true)
+  }
+
+  async function handleEditUser(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editForm.name || !editForm.email) {
+      toast.error('Name and email are required')
+      return
+    }
+    setEditing(true)
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editForm.id,
+          name: editForm.name,
+          email: editForm.email,
+          role: editForm.role,
+          phone: editForm.phone || undefined,
+          company: editForm.company || undefined,
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`User "${editForm.name}" updated successfully`)
+      setEditOpen(false)
+      fetchUsers()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update user')
+    } finally {
+      setEditing(false)
+    }
+  }
+
+  function openResetDialog(u: User) {
+    setResetTarget({ id: u.id, name: u.name })
+    setResetPassword('')
+    setResetConfirm('')
+    setResetOpen(true)
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!resetTarget) return
+    if (!resetPassword) {
+      toast.error('New password is required')
+      return
+    }
+    if (resetPassword.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    if (resetPassword !== resetConfirm) {
+      toast.error('Passwords do not match')
+      return
+    }
+    setResetting(true)
+    try {
+      const res = await fetch(`/api/users/${resetTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          newPassword: resetPassword,
+          adminUserId: adminUser?.id,
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(data.message || `Password reset for "${resetTarget.name}"`)
+      setResetOpen(false)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reset password')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -2114,6 +2219,14 @@ export function AdminUsers() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditDialog(u)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit User
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openResetDialog(u)}>
+                              <KeyRound className="h-4 w-4 mr-2" />
+                              Reset Password
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
                               {u.status === 'active' ? (
                                 <>
@@ -2245,6 +2358,131 @@ export function AdminUsers() {
               <Button type="submit" disabled={adding} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Create User
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update user information. Changes are saved immediately.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditUser} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name *</Label>
+              <Input
+                id="edit-name"
+                placeholder="John Doe"
+                value={editForm.name}
+                onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email *</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                placeholder="name@company.com"
+                value={editForm.email}
+                onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Role *</Label>
+                <Select value={editForm.role} onValueChange={(val) => setEditForm(p => ({ ...p, role: val }))}>
+                  <SelectTrigger id="edit-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="client">Client</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  placeholder="+1 (555) 000"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-company">Company</Label>
+              <Input
+                id="edit-company"
+                placeholder="Acme Inc."
+                value={editForm.company}
+                onChange={(e) => setEditForm(p => ({ ...p, company: e.target.value }))}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editing} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                {editing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-amber-600" />
+              Reset Password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new password for <span className="font-semibold text-foreground">{resetTarget?.name}</span>. Make sure to share the new credentials with them securely.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="h-4 w-4 inline-block mr-1.5 -mt-0.5" />
+                The user will need to use the new password for their next login.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reset-password">New Password *</Label>
+              <Input
+                id="reset-password"
+                type="password"
+                placeholder="Min. 6 characters"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reset-confirm">Confirm Password *</Label>
+              <Input
+                id="reset-confirm"
+                type="password"
+                placeholder="Re-enter new password"
+                value={resetConfirm}
+                onChange={(e) => setResetConfirm(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={resetting} className="bg-amber-600 hover:bg-amber-700 text-white">
+                {resetting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Reset Password
               </Button>
             </DialogFooter>
           </form>
