@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { CheckCircle2, LayoutDashboard, Users, Eye, Loader2, Sun, Moon, Monitor } from 'lucide-react'
+import { CheckCircle2, LayoutDashboard, Loader2, Sun, Moon, Monitor } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 export default function LoginPage() {
@@ -31,12 +31,6 @@ export default function LoginPage() {
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Login failed') }
     finally { setLoading(false) }
   }
-
-  const demoAccounts = [
-    { email: 'admin@taskflow.com', password: 'admin123', role: 'Admin', icon: LayoutDashboard, color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30' },
-    { email: 'sarah@taskflow.com', password: 'team123', role: 'Team', icon: Users, color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/30' },
-    { email: 'john@client.com', password: 'client123', role: 'Client', icon: Eye, color: 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-900/30' },
-  ]
 
   return (
     <div className="min-h-screen flex flex-col bg-background relative">
@@ -90,23 +84,6 @@ export default function LoginPage() {
               </form>
             </CardContent>
           </Card>
-
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-6">
-            <p className="text-sm text-muted-foreground text-center mb-3">Quick demo access</p>
-            <div className="grid grid-cols-3 gap-2">
-              {demoAccounts.map((account) => (
-                <button key={account.email} onClick={() => setLoginData({ email: account.email, password: account.password })} className="flex flex-col items-center gap-2 p-3 rounded-xl border bg-card hover:bg-accent transition-colors cursor-pointer">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${account.color}`}>
-                    <account.icon className="w-4 h-4" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-medium">{account.role}</p>
-                    <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">{account.email.split('@')[0]}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </motion.div>
 
           <div className="mt-8 flex items-center justify-center gap-6 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-primary" /><span>Admin Panel</span></div>
