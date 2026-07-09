@@ -221,6 +221,7 @@ export function ClientProjects() {
           description: onboardingDesc.trim() || null,
           stepsJson,
           projectId: onboardingProjectId,
+          clientId: user?.id || null,
           status: 'published',
         }),
       })

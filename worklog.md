@@ -233,3 +233,42 @@ Stage Summary:
 - File modified: /home/z/my-project/src/components/onboarding/ClientOnboardingWizard.tsx
 - Key changes: Step 3 competitors field type, read-only view field consistency, documents grid layout
 - Browser verification passed: clean professional layout confirmed
+
+---
+Task ID: 2
+Agent: Main
+Task: Add delete user icon in admin Users, add client owner to onboarding, filter client onboarding by business
+
+Work Log:
+- Added DELETE handler to /api/users/[id]/route.ts with activity log creation
+- Added deleteId state and handleDeleteUser function to AdminUsers component
+- Added "Delete User" menu item with Trash2 icon in the users table dropdown (red styling, disabled for self)
+- Added clientId field to OnboardingForm in Prisma schema with optional relation to User
+- Added clientOnboardingForms relation to User model
+- Ran prisma db push and prisma generate
+- Updated /api/onboarding GET to accept ?clientId= query param for filtering
+- Updated /api/onboarding POST to accept and store clientId
+- Updated /api/onboarding/[id] GET to include client in response
+- Updated OnboardingForm TypeScript type to include clientId and client
+- Updated AdminOnboarding component:
+  - Added clients state and fetchClients to load active client users
+  - Added Client Owner selector (Select with avatar + name + company) in create dialog
+  - Made clientId required for form creation
+  - Added Client Owner column in onboarding forms table
+  - Pass clientId in handleCreateOnboarding
+- Updated ClientOnboardingWizard fetchForms to pass ?clientId=${user.id}
+- Updated client-dashboard.tsx handleCreateOnboarding to pass clientId: user?.id
+- All lint checks pass (0 errors, 4 pre-existing warnings)
+- API tests verified: admin GET returns all forms, client GET filters by clientId, users list works
+
+Stage Summary:
+- Files modified:
+  - prisma/schema.prisma (added clientId to OnboardingForm, relation to User)
+  - src/types/index.ts (added clientId to OnboardingForm interface)
+  - src/app/api/users/[id]/route.ts (added DELETE handler)
+  - src/app/api/onboarding/route.ts (added clientId filtering in GET, clientId in POST)
+  - src/app/api/onboarding/[id]/route.ts (added client to include)
+  - src/features/admin-dashboard.tsx (delete user button, client owner in onboarding)
+  - src/features/client-dashboard.tsx (pass clientId in onboarding creation)
+  - src/components/onboarding/ClientOnboardingWizard.tsx (filter by clientId)
+- Key design: Each onboarding form is assigned to a specific client via clientId. The client dashboard only fetches forms where clientId matches the logged-in user's ID. Admin can see all forms and manages client assignments.

@@ -9,6 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { id },
       include: {
         project: { select: { id: true, name: true, color: true } },
+        client: { select: { id: true, name: true, email: true, company: true } },
         submissions: {
           include: { client: { select: { id: true, name: true, email: true, company: true, avatar: true } }, reviewer: { select: { id: true, name: true } } },
           orderBy: { createdAt: 'desc' }

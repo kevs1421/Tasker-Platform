@@ -32,6 +32,7 @@ model User {
   createdGroups      MessageGroup[]  @relation("CreatedGroups")
   groupMemberships   GroupMember[]   @relation("GroupMemberships")
   reviewedOnboardings Onboarding[]   @relation("OnboardingReviewer")
+  clientOnboardingForms OnboardingForm[]  @relation("ClientOnboardingForms")
 }
 
 model Project {
@@ -138,10 +139,12 @@ model OnboardingForm {
   status      String   @default("draft") // draft, published, archived
   stepsJson   String   // JSON array of step definitions
   projectId   String
+  clientId    String?  // The client user who owns this onboarding
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  client      User?        @relation("ClientOnboardingForms", fields: [clientId], references: [id], onDelete: Cascade)
   submissions Onboarding[]
 }
 

@@ -14,3 +14,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const user = await db.user.findUnique({ where: { id }, select: { id: true, name: true } })
+    if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    await db.user.delete({ where: { id } })
+    await db.activityLog.create({ data: { action: 'user_deleted', details: `Deleted user "${user.name}"` } })
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Failed to delete user. They may have related records that need to be removed first.' }, { status: 500 })
+  }
+}

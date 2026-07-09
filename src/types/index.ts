@@ -35,8 +35,8 @@ export interface Comment { id: string; content: string; createdAt: string; updat
 
 export interface OnboardingForm {
   id: string; title: string; description?: string | null; status: string;
-  stepsJson: string; projectId: string; createdAt: string; updatedAt: string;
-  project?: Project; _count?: { submissions: number };
+  stepsJson: string; projectId: string; clientId?: string | null; createdAt: string; updatedAt: string;
+  project?: Project; client?: User; _count?: { submissions: number };
 }
 
 export interface Onboarding {

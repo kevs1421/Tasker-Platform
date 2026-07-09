@@ -294,10 +294,12 @@ export function AdminOnboarding() {
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
+  const [clients, setClients] = useState<User[]>([])
   const [createForm, setCreateForm] = useState({
     title: '',
     description: '',
     projectId: '',
+    clientId: '',
     selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
   })
   const [stepSearch, setStepSearch] = useState('')
@@ -325,10 +327,21 @@ export function AdminOnboarding() {
     } catch { /* ignore */ }
   }, [])
 
+  const fetchClients = useCallback(async () => {
+    try {
+      const res = await fetch('/api/users')
+      if (res.ok) {
+        const data = await res.json()
+        setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     fetchForms()
     fetchProjects()
-  }, [fetchForms, fetchProjects])
+    fetchClients()
+  }, [fetchForms, fetchProjects, fetchClients])
 
   async function openForm(form: OnboardingForm) {
     try {
@@ -360,6 +373,7 @@ export function AdminOnboarding() {
           description: createForm.description.trim() || null,
           stepsJson,
           projectId: createForm.projectId,
+          clientId: createForm.clientId || null,
           status: 'published',
         }),
       })
@@ -369,7 +383,7 @@ export function AdminOnboarding() {
       }
       toast.success('Onboarding form created successfully')
       setCreateOpen(false)
-      setCreateForm({ title: '', description: '', projectId: '', selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'] })
+      setCreateForm({ title: '', description: '', projectId: '', clientId: '', selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'] })
       fetchForms()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to create onboarding form')
@@ -488,6 +502,7 @@ export function AdminOnboarding() {
               <TableRow>
                 <TableHead>Form Title</TableHead>
                 <TableHead>Project</TableHead>
+                <TableHead className="hidden md:table-cell">Client Owner</TableHead>
                 <TableHead className="text-center">Submissions</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-24"></TableHead>
@@ -496,7 +511,7 @@ export function AdminOnboarding() {
             <TableBody>
               {forms.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                     <div className="flex flex-col items-center gap-2">
                       <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
                       <p>No onboarding forms yet</p>
@@ -527,6 +542,23 @@ export function AdminOnboarding() {
                         {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
                         <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {form.client ? (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                              {getInitials(form.client.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{form.client.name}</p>
+                            {form.client.company && <p className="text-xs text-muted-foreground truncate">{form.client.company}</p>}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       {(form._count?.submissions ?? 0) > 0 && (
@@ -764,6 +796,31 @@ export function AdminOnboarding() {
               <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
             </div>
 
+            {/* Client Owner Selection */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Client Owner <span className="text-red-500">*</span></Label>
+              <Select value={createForm.clientId} onValueChange={(v) => setCreateForm(p => ({ ...p, clientId: v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.length === 0 && <SelectItem value="_none" disabled>No active clients available</SelectItem>}
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+                          {getInitials(c.name)}
+                        </span>
+                        <span>{c.name}</span>
+                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Only this client will see and fill out this onboarding form</p>
+            </div>
+
             <Separator />
 
             {/* Step Selection */}
@@ -820,7 +877,7 @@ export function AdminOnboarding() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               onClick={handleCreateOnboarding}
-              disabled={!createForm.title.trim() || !createForm.projectId || createForm.selectedSteps.length === 0 || creating}
+              disabled={!createForm.title.trim() || !createForm.projectId || !createForm.clientId || createForm.selectedSteps.length === 0 || creating}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -1553,6 +1610,7 @@ export function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', confirmPassword: '',
     role: 'team' as 'admin' | 'team' | 'client',
@@ -1658,6 +1716,23 @@ export function AdminUsers() {
       fetchUsers()
     } catch {
       toast.error('Failed to update user role')
+    }
+  }
+
+  async function handleDeleteUser(u: User) {
+    setDeletingId(u.id)
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed')
+      }
+      toast.success(`User "${u.name}" deleted`)
+      fetchUsers()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete user')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -1832,6 +1907,18 @@ export function AdminUsers() {
                                   Activate
                                 </>
                               )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteUser(u)}
+                              disabled={u.id === adminUser?.id || deletingId === u.id}
+                              className="text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-900/20"
+                            >
+                              {deletingId === u.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 mr-2" />
+                              )}
+                              Delete User
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

@@ -241,8 +241,9 @@ export default function ClientOnboardingWizard() {
   const totalSteps = 4
 
   const fetchForms = useCallback(async () => {
+    if (!user?.id) return
     try {
-      const res = await fetch('/api/onboarding')
+      const res = await fetch(`/api/onboarding?clientId=${user.id}`)
       const data = await res.json()
       setForms(data.forms || [])
     } catch {
@@ -250,7 +251,7 @@ export default function ClientOnboardingWizard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => { fetchForms() }, [fetchForms])
 
