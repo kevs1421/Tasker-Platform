@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         members: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } },
         tasks: {
           include: {
-            assignees: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } },
+            assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } }, orderBy: { assignedAt: 'asc' } },
             creator: { select: { id: true, name: true, role: true, avatar: true } },
             subtasks: true,
             _count: { select: { comments: true, subtasks: true } }
@@ -23,7 +23,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const tasks = project.tasks.map(t => ({ ...t, _count: { ...t._count, completedSubtasks: t.subtasks.filter(s => s.completed).length } }))
+    const tasks = project.tasks.map(t => ({
+      ...t,
+      assignees: t.assignments,
+      _count: { ...t._count, completedSubtasks: t.subtasks.filter(s => s.completed).length }
+    }))
     return NextResponse.json({ project: { ...project, tasks } })
   } catch {
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

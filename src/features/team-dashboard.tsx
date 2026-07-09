@@ -949,6 +949,8 @@ export function TeamTasks() {
     }
   }
 
+  const currentProject = projects.find((p) => p.id === selectedProject)
+
   // Get project members (team + admin) for assignee picker
   const projectMembers = currentProject?.members?.filter((m) => m.user && (m.user.role === 'team' || m.user.role === 'admin')) || []
 
@@ -969,8 +971,6 @@ export function TeamTasks() {
       </div>
     )
   }
-
-  const currentProject = projects.find((p) => p.id === selectedProject)
 
   // No projects empty state
   if (!loading && projects.length === 0) {
