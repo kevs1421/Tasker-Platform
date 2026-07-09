@@ -398,17 +398,17 @@ export default function ClientOnboardingWizard() {
             <Building2 className="w-4 h-4 text-primary" /> Business Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
+            {([
               { label: 'Business Name', value: responses.businessName },
               { label: 'Business Email', value: responses.businessEmail },
               { label: 'Business Phone', value: responses.businessPhone },
               { label: 'Business Address', value: responses.businessAddress },
               { label: 'Industry', value: responses.industry },
               { label: 'Company Size', value: responses.companySize },
-            ].map((field) => (
+            ] as const).map((field) => (
               <div key={field.label} className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
-                <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
               </div>
             ))}
           </div>
@@ -430,13 +430,13 @@ export default function ClientOnboardingWizard() {
               </div>
             </div>
           )}
-          {[
+          {([
             { label: 'Brand Colors', value: responses.brandColors },
             { label: 'Typography / Fonts', value: responses.typography },
-          ].map((field) => (
+          ] as const).map((field) => (
             <div key={field.label} className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
-              <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+              <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
             </div>
           ))}
           {files.brandGuidelines && (
@@ -453,28 +453,30 @@ export default function ClientOnboardingWizard() {
         <Separator />
 
         {/* Project Kickoff */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           <h3 className="text-base font-semibold flex items-center gap-2">
             <Rocket className="w-4 h-4 text-primary" /> Project Kickoff
           </h3>
-          {[
-            { label: 'Project Goals', value: responses.projectGoals },
-            { label: 'Target Audience', value: responses.targetAudience },
-            { label: 'Main Competitors', value: responses.mainCompetitors },
-          ].map((field) => (
-            <div key={field.label} className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
-              <p className="text-sm p-2.5 rounded-lg bg-muted/50 border whitespace-pre-wrap">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
-            </div>
-          ))}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              { label: 'Budget Range', value: responses.budgetRange },
-              { label: 'Expected Timeline', value: responses.expectedTimeline },
-            ].map((field) => (
+          <div className="space-y-4">
+            {([
+              { label: 'Project Goals', value: responses.projectGoals },
+              { label: 'Target Audience', value: responses.targetAudience },
+              { label: 'Main Competitors', value: responses.mainCompetitors },
+            ] as const).map((field) => (
               <div key={field.label} className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
-                <p className="text-sm p-2.5 rounded-lg bg-muted/50 border">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px] whitespace-pre-wrap">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([
+              { label: 'Budget Range', value: responses.budgetRange },
+              { label: 'Expected Timeline', value: responses.expectedTimeline },
+            ] as const).map((field) => (
+              <div key={field.label} className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
               </div>
             ))}
           </div>
@@ -483,11 +485,11 @@ export default function ClientOnboardingWizard() {
         <Separator />
 
         {/* Documents */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           <h3 className="text-base font-semibold flex items-center gap-2">
             <FileText className="w-4 h-4 text-primary" /> Submitted Documents
           </h3>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {([
               { key: 'contractForm', label: 'Contract Form' },
               { key: 'paymentForm', label: 'Payment Form' },
@@ -499,10 +501,10 @@ export default function ClientOnboardingWizard() {
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                     <FileText className="w-5 h-5 text-primary" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{doc.label}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{doc.label}</p>
                     {f ? (
-                      <p className="text-xs text-muted-foreground">{f.originalName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{f.originalName}</p>
                     ) : (
                       <p className="text-xs text-muted-foreground italic">Not uploaded</p>
                     )}
@@ -620,7 +622,7 @@ export default function ClientOnboardingWizard() {
         <p className="text-sm text-muted-foreground">Help us understand your project goals and requirements.</p>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="projectGoals" className="text-sm">Project Goals <span className="text-red-500">*</span></Label>
           <Textarea id="projectGoals" placeholder="Describe your main project goals and objectives" rows={4} value={responses.projectGoals || ''} onChange={(e) => updateResponse('projectGoals', e.target.value)} />
@@ -633,7 +635,7 @@ export default function ClientOnboardingWizard() {
 
         <div className="space-y-1.5">
           <Label htmlFor="mainCompetitors" className="text-sm">Main Competitors</Label>
-          <Textarea id="mainCompetitors" placeholder="List your main competitors" rows={3} value={responses.mainCompetitors || ''} onChange={(e) => updateResponse('mainCompetitors', e.target.value)} />
+          <Input id="mainCompetitors" placeholder="e.g., Competitor A, Competitor B" value={responses.mainCompetitors || ''} onChange={(e) => updateResponse('mainCompetitors', e.target.value)} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

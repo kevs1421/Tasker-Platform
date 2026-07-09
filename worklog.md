@@ -213,3 +213,23 @@ Stage Summary:
 - Subtask API: Fully functional - GET, POST (create), PATCH (toggle), DELETE all work
 - Dark/Light mode: ThemeProvider wrapping app, dropdown toggle in header, toggle on login page
 - Primary color: Blue (oklch blue ~264 hue) applied to all CSS variables, admin buttons, sidebar, stat cards
+
+---
+Task ID: 1
+Agent: Main
+Task: Fix client onboarding UI issues (from screenshot)
+
+Work Log:
+- Analyzed uploaded screenshot using VLM to identify UI issues
+- Read ClientOnboardingWizard.tsx (938 lines) to understand the component structure
+- Identified issues: (1) Step 3 "Main Competitors" used Textarea creating height mismatch with budget/timeline grid, (2) Read-only view had React node rendering issue with `||` operator mixing strings with JSX spans, (3) Field value boxes had inconsistent padding (p-2.5 vs p-3), (4) Submitted Documents section lacked proper grid layout
+- Fixed Step 3: Changed "Main Competitors" from Textarea (rows={3}) to Input (single line), reduced parent spacing from space-y-5 to space-y-4
+- Fixed read-only view: Added `as const` to field arrays, increased padding from p-2.5 to p-3, added min-h-[40px] for consistent field heights
+- Fixed Documents section: Changed from vertical stack (space-y-2) to 3-column grid (grid grid-cols-1 md:grid-cols-3 gap-3), added min-w-0 and truncate for text overflow
+- Verified with agent-browser: read-only view shows consistent field alignment, proper section separation, and clean 3-column document grid
+- Ran lint: 0 errors, 4 pre-existing warnings
+
+Stage Summary:
+- File modified: /home/z/my-project/src/components/onboarding/ClientOnboardingWizard.tsx
+- Key changes: Step 3 competitors field type, read-only view field consistency, documents grid layout
+- Browser verification passed: clean professional layout confirmed
