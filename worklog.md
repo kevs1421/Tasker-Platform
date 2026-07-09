@@ -272,3 +272,29 @@ Stage Summary:
   - src/features/client-dashboard.tsx (pass clientId in onboarding creation)
   - src/components/onboarding/ClientOnboardingWizard.tsx (filter by clientId)
 - Key design: Each onboarding form is assigned to a specific client via clientId. The client dashboard only fetches forms where clientId matches the logged-in user's ID. Admin can see all forms and manages client assignments.
+
+---
+Task ID: 5
+Agent: Main
+Task: Add edit functionality to Onboarding Management (after creating onboarding)
+
+Work Log:
+- Updated /api/onboarding/[id] PATCH handler to support editing all form fields: title, description, stepsJson, status, projectId, clientId
+- Added activity log creation on form update
+- Added `Pencil` icon import to admin-dashboard.tsx
+- Added edit state variables: editOpen, editing, editFormId, editForm
+- Added openEditDialog function that parses stepsJson and pre-fills the edit form
+- Added handleEditOnboarding function that PATCHes the form with updated data
+- Added Pencil edit button in the onboarding table actions column (between Eye and Trash), with Tooltip
+- Widened actions column from w-24 to w-28 to accommodate 3 buttons
+- Created Edit Onboarding Dialog with same layout as Create dialog: title, description, project selector, client owner selector (with "No client assigned" option), step selection cards
+- Edit dialog pre-fills all fields from the existing form data
+- Client owner in edit dialog allows unsetting (via "_none" value mapped to null)
+- Verified via agent-browser: Edit dialog opens with pre-filled data, title change saved successfully, table shows 3 action buttons (Eye, Pencil, Trash)
+- VLM screenshot analysis confirmed clean UI with proper buttons and no visual issues
+- Lint: 0 errors (4 pre-existing warnings)
+
+Stage Summary:
+- Files modified: src/app/api/onboarding/[id]/route.ts, src/features/admin-dashboard.tsx
+- Admin Onboarding table now has 3 action buttons per row: View (Eye), Edit (Pencil), Delete (Trash)
+- Edit dialog pre-fills all form fields and allows full editing of title, description, project, client owner, and steps

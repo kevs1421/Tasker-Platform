@@ -40,7 +40,7 @@ import {
   Plus, Trash2, Eye, Send, ChevronDown, Check,
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
-  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList
+  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -304,6 +304,18 @@ export function AdminOnboarding() {
   })
   const [stepSearch, setStepSearch] = useState('')
 
+  // Edit onboarding form state
+  const [editOpen, setEditOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editFormId, setEditFormId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    projectId: '',
+    clientId: '',
+    selectedSteps: [] as string[],
+  })
+
   const fetchForms = useCallback(async () => {
     try {
       const res = await fetch('/api/onboarding')
@@ -436,6 +448,55 @@ export function AdminOnboarding() {
     }
   }
 
+  function openEditDialog(form: OnboardingForm) {
+    const steps = form.stepsJson ? (JSON.parse(form.stepsJson) as { id: string }[]).map(s => s.id) : []
+    setEditFormId(form.id)
+    setEditForm({
+      title: form.title,
+      description: form.description ?? '',
+      projectId: form.projectId,
+      clientId: form.clientId ?? '',
+      selectedSteps: steps.length > 0 ? steps : ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+    })
+    setEditOpen(true)
+  }
+
+  async function handleEditOnboarding() {
+    if (!editFormId || !editForm.title.trim() || !editForm.projectId) return
+    setEditing(true)
+    try {
+      const stepsJson = JSON.stringify(
+        editForm.selectedSteps.map(stepId => {
+          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+        })
+      )
+      const res = await fetch(`/api/onboarding/${editFormId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editForm.title.trim(),
+          description: editForm.description.trim() || null,
+          stepsJson,
+          projectId: editForm.projectId,
+          clientId: editForm.clientId && editForm.clientId !== '_none' ? editForm.clientId : null,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to update')
+      }
+      toast.success('Onboarding form updated successfully')
+      setEditOpen(false)
+      setEditFormId(null)
+      fetchForms()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update onboarding form')
+    } finally {
+      setEditing(false)
+    }
+  }
+
   const toggleStep = (stepId: string) => {
     setCreateForm(prev => ({
       ...prev,
@@ -505,7 +566,7 @@ export function AdminOnboarding() {
                 <TableHead className="hidden md:table-cell">Client Owner</TableHead>
                 <TableHead className="text-center">Submissions</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-24"></TableHead>
+                <TableHead className="w-28"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -578,6 +639,16 @@ export function AdminOnboarding() {
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
                           <Eye className="h-4 w-4" />
                         </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(form)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit Form</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
@@ -883,6 +954,154 @@ export function AdminOnboarding() {
               {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               <ClipboardList className="h-4 w-4 mr-2" />
               Create Form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Onboarding Form Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" /> Edit Onboarding Form
+            </DialogTitle>
+            <DialogDescription>Update the onboarding form details</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+            {/* Title */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="e.g., Client Onboarding Package"
+                value={editForm.title}
+                onChange={(e) => setEditForm(p => ({ ...p, title: e.target.value }))}
+                autoFocus
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Description</Label>
+              <Textarea
+                placeholder="Brief description of this onboarding form (optional)"
+                value={editForm.description}
+                onChange={(e) => setEditForm(p => ({ ...p, description: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
+            {/* Project Selection */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+              <Select value={editForm.projectId} onValueChange={(v) => setEditForm(p => ({ ...p, projectId: v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        {p.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Client Owner Selection */}
+            <div className="space-y-1.5">
+              <Label className="text-sm">Client Owner</Label>
+              <Select value={editForm.clientId} onValueChange={(v) => setEditForm(p => ({ ...p, clientId: v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">No client assigned</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+                          {getInitials(c.name)}
+                        </span>
+                        <span>{c.name}</span>
+                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
+            {/* Step Selection */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Onboarding Steps</Label>
+                <Badge variant="secondary" className="text-xs">
+                  {editForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                {ONBOARDING_STEPS_CONFIG.map((step) => {
+                  const isSelected = editForm.selectedSteps.includes(step.id)
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => setEditForm(prev => ({
+                        ...prev,
+                        selectedSteps: prev.selectedSteps.includes(step.id)
+                          ? prev.selectedSteps.filter(s => s !== step.id)
+                          : [...prev.selectedSteps, step.id],
+                      }))}
+                      className={cn(
+                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+                          : 'border-transparent bg-muted/50 hover:bg-muted'
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={cn(
+                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+                        )}>
+                          {isSelected && <Check className="h-3.5 w-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{step.label}</p>
+                            {step.required && (
+                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleEditOnboarding}
+              disabled={!editForm.title.trim() || !editForm.projectId || editForm.selectedSteps.length === 0 || editing}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              {editing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Pencil className="h-4 w-4 mr-2" />
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

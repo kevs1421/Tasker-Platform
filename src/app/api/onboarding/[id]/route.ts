@@ -53,11 +53,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     // Update form itself
+    const updateData: Record<string, unknown> = {}
+    if (data.title !== undefined) updateData.title = data.title
+    if (data.description !== undefined) updateData.description = data.description
+    if (data.stepsJson !== undefined) updateData.stepsJson = data.stepsJson
+    if (data.status !== undefined) updateData.status = data.status
+    if (data.projectId !== undefined) updateData.projectId = data.projectId
+    if (data.clientId !== undefined) updateData.clientId = data.clientId
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
     const form = await db.onboardingForm.update({
       where: { id },
-      data: { ...(data.title && { title: data.title }), ...(data.description !== undefined && { description: data.description }), ...(data.stepsJson && { stepsJson: data.stepsJson }), ...(data.status && { status: data.status }) },
-      include: { project: { select: { id: true, name: true, color: true } } }
+      data: updateData,
+      include: {
+        project: { select: { id: true, name: true, color: true } },
+        client: { select: { id: true, name: true, email: true, company: true } },
+        _count: { select: { submissions: true } }
+      }
     })
+
+    await db.activityLog.create({
+      data: { action: 'onboarding_updated', details: `Updated onboarding form "${form.title}"` }
+    })
+
     return NextResponse.json({ form })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }
