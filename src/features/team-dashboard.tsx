@@ -676,6 +676,9 @@ export function TeamTasks() {
   const [editPriority, setEditPriority] = useState<string>('')
   const [editDueDate, setEditDueDate] = useState<Date>()
   const [editCalendarOpen, setEditCalendarOpen] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -699,9 +702,7 @@ export function TeamTasks() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const params = new URLSearchParams({ projectId: selectedProject })
-      if (user) params.set('assigneeId', user.id)
-      const res = await fetch(`/api/tasks?${params}`)
+      const res = await fetch(`/api/tasks?projectId=${selectedProject}`)
       const data = await res.json()
       setTasks(data.tasks || [])
     } catch {
@@ -709,7 +710,7 @@ export function TeamTasks() {
     } finally {
       setLoading(false)
     }
-  }, [selectedProject, user])
+  }, [selectedProject])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
   useEffect(() => { fetchTasks() }, [fetchTasks])
@@ -719,6 +720,9 @@ export function TeamTasks() {
     setEditStatus(task.status)
     setEditPriority(task.priority)
     setEditDueDate(task.dueDate ? parseISO(task.dueDate) : undefined)
+    setEditTitle(task.title)
+    setEditDesc(task.description || '')
+    setIsEditingTitle(false)
     setDetailOpen(true)
     setSelectedTaskId(task.id)
     setSelectedProjectId(task.projectId)
@@ -747,7 +751,10 @@ export function TeamTasks() {
         body: JSON.stringify(updates),
       })
       const data = await res.json()
-      setDetailTask(data.task || detailTask)
+      const updatedTask = data.task || { ...detailTask, ...updates }
+      setDetailTask(updatedTask as Task)
+      if (updates.title) setEditTitle(String(updates.title))
+      if (updates.description !== undefined) setEditDesc(String(updates.description ?? ''))
       fetchTasks()
       toast.success('Task updated')
     } catch {
@@ -761,7 +768,8 @@ export function TeamTasks() {
     if (!detailTask) return
     setDeleting(true)
     try {
-      await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
       toast.success('Task deleted')
       setDetailOpen(false)
       setDetailTask(null)
@@ -777,14 +785,15 @@ export function TeamTasks() {
     if (!detailTask || !newSubtask.trim()) return
     setSubtaskLoading(true)
     try {
-      await fetch('/api/tasks/subtasks', {
+      const res = await fetch('/api/tasks/subtasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newSubtask, taskId: detailTask.id }),
       })
+      if (!res.ok) throw new Error()
       setNewSubtask('')
-      const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
-      const data = await res.json()
+      const stRes = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
+      const data = await stRes.json()
       setSubtasks(data.subtasks || [])
       fetchTasks()
     } catch {
@@ -848,26 +857,31 @@ export function TeamTasks() {
   }
 
   const handleCreateTask = async () => {
-    if (!cTitle.trim() || !selectedProject) return
+    if (!cTitle.trim() || !selectedProject || !user) return
     setCreateLoading(true)
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: cTitle, description: cDesc || null, status: cStatus,
           priority: cPriority, projectId: selectedProject,
           dueDate: cDueDate ? cDueDate.toISOString() : null,
-          tags: cTags, assigneeId: cAssignee || null,
+          tags: cTags, createdById: user.id,
+          assigneeIds: cAssignee ? [cAssignee] : [],
         }),
       })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to create task')
+      }
       toast.success('Task created')
       setCreateOpen(false)
       setCTitle(''); setCDesc(''); setCStatus('todo')
       setCPriority('medium'); setCDueDate(undefined); setCTags(''); setCAssignee('')
       fetchTasks()
-    } catch {
-      toast.error('Failed to create task')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create task')
     } finally {
       setCreateLoading(false)
     }
@@ -906,6 +920,17 @@ export function TeamTasks() {
   }
 
   const currentProject = projects.find((p) => p.id === selectedProject)
+
+  // No projects empty state
+  if (!loading && projects.length === 0) {
+    return (
+      <EmptyState
+        icon={FolderKanban}
+        title="No projects yet"
+        description="You haven't been assigned to any projects. Create one or ask an admin to assign you."
+      />
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1246,7 +1271,41 @@ export function TeamTasks() {
               <DialogHeader>
                 <div className="flex items-center gap-3">
                   <div className={cn('h-3 w-3 rounded-full', getStatusConfig(detailTask.status).dotColor)} />
-                  <DialogTitle className="text-lg">{detailTask.title}</DialogTitle>
+                  {isEditingTitle ? (
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (editTitle.trim() && editTitle.trim() !== detailTask.title) {
+                            handleUpdateTask({ title: editTitle.trim() })
+                          }
+                          setIsEditingTitle(false)
+                        }
+                        if (e.key === 'Escape') {
+                          setEditTitle(detailTask.title)
+                          setIsEditingTitle(false)
+                        }
+                      }}
+                      onBlur={() => {
+                        if (editTitle.trim() && editTitle.trim() !== detailTask.title) {
+                          handleUpdateTask({ title: editTitle.trim() })
+                        }
+                        setIsEditingTitle(false)
+                      }}
+                      className="text-lg font-semibold h-auto py-0"
+                      autoFocus
+                    />
+                  ) : (
+                    <DialogTitle
+                      className="text-lg cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors"
+                      onClick={() => setIsEditingTitle(true)}
+                    >
+                      {detailTask.title}
+                      <Pencil className="h-3.5 w-3. inline-block ml-2 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </DialogTitle>
+                  )}
                 </div>
                 <DialogDescription className="sr-only">Task details</DialogDescription>
               </DialogHeader>
@@ -1298,14 +1357,36 @@ export function TeamTasks() {
                   </div>
                 </div>
 
-                {detailTask.description && (
-                  <div className="space-y-1.5">
+                {/* Description (editable) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
                     <Label className="text-xs text-muted-foreground">Description</Label>
-                    <p className="text-sm text-foreground/80 whitespace-pre-wrap bg-muted/50 rounded-lg p-3">
-                      {detailTask.description}
-                    </p>
+                    {(editDesc !== (detailTask.description || '')) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => handleUpdateTask({ description: editDesc || null })}
+                        disabled={updating}
+                      >
+                        {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        Save
+                      </Button>
+                    )}
                   </div>
-                )}
+                  <Textarea
+                    placeholder="Add a description..."
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    onBlur={() => {
+                      if (editDesc !== (detailTask.description || '')) {
+                        handleUpdateTask({ description: editDesc || null })
+                      }
+                    }}
+                    className="text-sm min-h-[60px] resize-none"
+                    rows={2}
+                  />
+                </div>
 
                 {/* Tags */}
                 {detailTask.tags && (

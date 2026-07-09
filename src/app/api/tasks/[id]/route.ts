@@ -30,8 +30,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const task = await db.task.update({
       where: { id },
       data: {
-        ...(title !== undefined && { title }), ...(description !== undefined && { description }),
-        ...(status && { status }), ...(priority && { priority }),
+        ...(title !== undefined && { title }),
+        ...(description !== undefined && { description }),
+        ...(status !== undefined && { status }),
+        ...(priority !== undefined && { priority }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
         ...(tags !== undefined && { tags }),
       },

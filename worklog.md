@@ -298,3 +298,38 @@ Stage Summary:
 - Files modified: src/app/api/onboarding/[id]/route.ts, src/features/admin-dashboard.tsx
 - Admin Onboarding table now has 3 action buttons per row: View (Eye), Edit (Pencil), Delete (Trash)
 - Edit dialog pre-fills all form fields and allows full editing of title, description, project, client owner, and steps
+
+---
+Task ID: 6
+Agent: Main
+Task: Fix Team Dashboard Tasks section
+
+Work Log:
+- Identified 5 bugs through code analysis and browser testing:
+  1. Task creation completely broken - missing `createdById` and wrong field name (`assigneeId` vs `assigneeIds`)
+  2. Task filtering too restrictive - only showed tasks assigned to current user, not all project tasks
+  3. Empty page when team member has no projects - rendered nothing instead of empty state
+  4. PATCH API used truthy check for status/priority - `status && { status }` fails for empty/falsy values
+  5. No way to edit task title or description in detail dialog
+- Fixed task creation: Added `createdById: user.id`, changed `assigneeId` to `assigneeIds: [cAssignee]`, added error response handling
+- Fixed task filtering: Removed `assigneeId` param from fetchTasks, now fetches all project tasks
+- Added empty state component when no projects (reuses existing EmptyState with FolderKanban icon)
+- Fixed PATCH /api/tasks/[id]: Changed from `status && { status }` to `status !== undefined && { status }` for all fields
+- Added inline title editing: Click title -> Input appears -> Enter/blur saves, Escape cancels
+- Added editable description: Replaced read-only p tag with Textarea that auto-saves on blur
+- Added editTitle/editDesc/isEditingTitle state variables
+- Updated handleUpdateTask to sync local edit state with saved data
+- Added proper error response checking for handleDeleteTask and handleAddSubtask
+- Re-seeded database (db push --force-reset + prisma db seed) since previous data was corrupted
+- Verified all fixes via agent-browser:
+  - Task creation works (new task appears in board)
+  - All 8 Website Redesign tasks visible across 4 columns
+  - Inline title editing saves correctly with toast
+  - Delete task works with confirmation dialog
+  - List view shows all tasks correctly
+- Lint: 0 errors (4 pre-existing warnings)
+
+Stage Summary:
+- Files modified: src/features/team-dashboard.tsx, src/app/api/tasks/[id]/route.ts
+- Key fixes: Task creation (createdById + assigneeIds), task filtering (all project tasks), PATCH API (undefined checks), inline title/description editing, empty state for no projects
+- All task CRUD operations verified working for team dashboard
