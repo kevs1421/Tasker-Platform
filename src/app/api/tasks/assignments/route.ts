@@ -3,9 +3,29 @@ import { db } from '@/lib/db'
 
 export async function POST(request: Request) {
   try {
-    const { userId, taskId } = await request.json()
+    const { userId, taskId, assignedBy } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
-    const assignment = await db.taskAssignment.create({ data: { userId, taskId } })
+
+    const existing = await db.taskAssignment.findUnique({ where: { taskId_userId: { taskId, userId } } })
+    if (existing) return NextResponse.json({ error: 'Already assigned' }, { status: 409 })
+
+    const assignment = await db.taskAssignment.create({
+      data: { userId, taskId },
+      include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } },
+    })
+
+    // Log who assigned the user
+    await db.activityLog.create({
+      data: {
+        action: 'task_assigned',
+        details: assignedBy
+          ? `Assigned ${assignment.user?.name || userId} to task`
+          : `User ${assignment.user?.name || userId} assigned to task`,
+        userId: assignedBy || userId,
+        taskId,
+      }
+    })
+
     return NextResponse.json({ assignment }, { status: 201 })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }

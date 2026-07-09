@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 const taskInclude = {
-  assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } },
+  assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } }, orderBy: { assignedAt: 'asc' } },
   creator: { select: { id: true, name: true, email: true, role: true, avatar: true } },
   subtasks: true,
-  project: { select: { id: true, name: true, color: true } },
+  project: { select: { id: true, name: true, color: true, members: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } } } },
   _count: { select: { comments: true, subtasks: true } }
 } as const
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { Project, Task, Subtask, Comment, Message, User } from '@/types'
+import type { Project, ProjectMember, Task, TaskAssignment, Subtask, Comment, Message, User } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
   formatDate, formatRelativeTime,
@@ -39,6 +39,9 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover'
 import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from '@/components/ui/tooltip'
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
@@ -60,7 +63,7 @@ import {
   CircleDot, Clock, Eye, CheckCircle2, Circle, ChevronDown,
   X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
-  MessageCircle, Hash, AlertCircle,
+  MessageCircle, Hash, AlertCircle, UserPlus, UserMinus, History,
 } from 'lucide-react'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -682,6 +685,10 @@ export function TeamTasks() {
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Inline assignee management on task cards
+  const [assigneePopoverTaskId, setAssigneePopoverTaskId] = useState<string | null>(null)
+  const [assigneeLoading, setAssigneeLoading] = useState<string | null>(null)
+
   const fetchProjects = useCallback(async () => {
     try {
       const res = await fetch('/api/projects')
@@ -900,6 +907,50 @@ export function TeamTasks() {
       handleAddSubtask()
     }
   }
+
+  // Inline assignee management
+  const handleToggleAssignee = async (task: Task, userId: string) => {
+    if (!user) return
+    const isAssigned = task.assignees?.some((a) => a.userId === userId)
+    setAssigneeLoading(userId)
+    try {
+      if (isAssigned) {
+        await fetch('/api/tasks/assignments', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, taskId: task.id }),
+        })
+        toast.success('Assignee removed')
+      } else {
+        const res = await fetch('/api/tasks/assignments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, taskId: task.id, assignedBy: user.id }),
+        })
+        if (!res.ok) {
+          const d = await res.json()
+          if (res.status === 409) return // Already assigned, silent
+          throw new Error(d.error)
+        }
+        toast.success('Assignee added')
+      }
+      fetchTasks()
+      // If detail dialog is open for this task, refresh it
+      if (detailTask && detailTask.id === task.id) {
+        openDetail({ ...task, assignees: isAssigned
+          ? task.assignees?.filter((a) => a.userId !== userId)
+          : [...(task.assignees || []), { id: '', taskId: task.id, userId, assignedAt: new Date().toISOString(), user: currentProject?.members?.find((m) => m.userId === userId)?.user }]
+        })
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update assignee')
+    } finally {
+      setAssigneeLoading(null)
+    }
+  }
+
+  // Get project members (team + admin) for assignee picker
+  const projectMembers = currentProject?.members?.filter((m) => m.user && (m.user.role === 'team' || m.user.role === 'admin')) || []
 
   if (loading && projects.length === 0) {
     return (
@@ -1155,15 +1206,65 @@ export function TeamTasks() {
                                   </div>
                                 )}
 
-                                {/* Bottom row */}
+                                {/* Bottom row: Assignees + Comments */}
                                 <div className="flex items-center justify-between pt-1">
-                                  <AvatarStack users={assignees} max={2} />
-                                  {commentCount > 0 && (
-                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                      <MessageCircle className="h-3 w-3" />
-                                      {commentCount}
-                                    </div>
-                                  )}
+                                  <Popover
+                                    open={assigneePopoverTaskId === task.id}
+                                    onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
+                                  >
+                                    <PopoverTrigger asChild>
+                                      <button
+                                        className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <AvatarStack users={assignees} max={2} />
+                                        <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-56 p-2" align="start" side="bottom">
+                                      <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+                                      <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                                        {projectMembers.map((m) => {
+                                          if (!m.user) return null
+                                          const isAssigned = assignees.some((a) => a.userId === m.userId)
+                                          const isLoading = assigneeLoading === m.userId
+                                          return (
+                                            <button
+                                              key={m.userId}
+                                              className={cn(
+                                                'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+                                                isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                                              )}
+                                              onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, m.userId) }}
+                                              disabled={isLoading}
+                                            >
+                                              <Avatar className="h-6 w-6">
+                                                <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+                                                  {getInitials(m.user.name)}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                              <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                              {isLoading ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                              ) : isAssigned ? (
+                                                <Check className="h-3.5 w-3.5 text-primary" />
+                                              ) : (
+                                                <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                              )}
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                  <div className="flex items-center gap-2">
+                                    {commentCount > 0 && (
+                                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                        <MessageCircle className="h-3 w-3" />
+                                        {commentCount}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </Card>
@@ -1231,7 +1332,55 @@ export function TeamTasks() {
                         <Badge className={cn('text-[10px]', pConf.color)}>{pConf.label}</Badge>
                       </TableCell>
                       <TableCell>
-                        <AvatarStack users={assignees} max={2} />
+                        <Popover
+                          open={assigneePopoverTaskId === task.id}
+                          onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
+                        >
+                          <PopoverTrigger asChild>
+                            <button
+                              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <AvatarStack users={assignees} max={2} />
+                              <UserPlus className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-2" align="start" side="bottom">
+                            <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+                            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                              {projectMembers.map((m) => {
+                                if (!m.user) return null
+                                const isAssigned = assignees.some((a) => a.userId === m.userId)
+                                const isLoading = assigneeLoading === m.userId
+                                return (
+                                  <button
+                                    key={m.userId}
+                                    className={cn(
+                                      'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+                                      isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                                    )}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, m.userId) }}
+                                    disabled={isLoading}
+                                  >
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+                                        {getInitials(m.user.name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                    {isLoading ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                    ) : isAssigned ? (
+                                      <Check className="h-3.5 w-3.5 text-primary" />
+                                    ) : (
+                                      <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </TableCell>
                       <TableCell>
                         {task.dueDate ? (
@@ -1402,20 +1551,122 @@ export function TeamTasks() {
                   </div>
                 )}
 
-                {/* Assignees */}
-                {detailTask.assignees && detailTask.assignees.length > 0 && (
-                  <div className="space-y-1.5">
+                {/* Assignees + Assignment History */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
                     <Label className="text-xs text-muted-foreground">Assignees</Label>
-                    <div className="flex gap-2">
-                      {detailTask.assignees.map((a) => (
-                        <div key={a.id} className="flex items-center gap-2 bg-muted/50 rounded-lg px-2.5 py-1.5">
-                          <MemberAvatar user={a.user} size="sm" />
-                          <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
-                        </div>
-                      ))}
-                    </div>
+                    <span className="text-[10px] text-muted-foreground">{detailTask.assignees?.length || 0} assigned</span>
                   </div>
-                )}
+                  <div className="space-y-1.5">
+                    {/* Current assignees as removable chips */}
+                    {detailTask.assignees && detailTask.assignees.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {detailTask.assignees.map((a) => (
+                          <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1 group">
+                            <MemberAvatar user={a.user} size="sm" />
+                            <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
+                            <button
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
+                              onClick={() => handleToggleAssignee(detailTask, a.userId)}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No one assigned yet</p>
+                    )}
+                    {/* Add assignee button */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                          <UserPlus className="h-3 w-3" /> Add Assignee
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2" align="start">
+                        <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+                        <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                          {projectMembers.map((m) => {
+                            if (!m.user) return null
+                            const isAssigned = detailTask.assignees?.some((a) => a.userId === m.userId)
+                            const isLoading = assigneeLoading === m.userId
+                            return (
+                              <button
+                                key={m.userId}
+                                className={cn(
+                                  'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+                                  isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                                )}
+                                onClick={() => handleToggleAssignee(detailTask, m.userId)}
+                                disabled={isLoading}
+                              >
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+                                    {getInitials(m.user.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                {isLoading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                ) : isAssigned ? (
+                                  <Check className="h-3.5 w-3.5 text-primary" />
+                                ) : (
+                                  <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Assignment History */}
+                  {detailTask.assignees && detailTask.assignees.length > 0 && (
+                    <div className="mt-2 pt-2 border-t">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <History className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-[10px] font-medium text-muted-foreground">Assignment History</span>
+                      </div>
+                      <div className="space-y-1">
+                        {/* First assignee (who was assigned 1st) */}
+                        {detailTask.assignees.length > 0 && (
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <span className="text-muted-foreground w-14 shrink-0">1st</span>
+                            <MemberAvatar user={detailTask.assignees[0].user} size="sm" />
+                            <span className="font-medium">{detailTask.assignees[0].user?.name || 'Unknown'}</span>
+                            <span className="text-muted-foreground ml-auto">
+                              {detailTask.assignees[0].assignedAt ? formatRelativeTime(detailTask.assignees[0].assignedAt) : ''}
+                            </span>
+                          </div>
+                        )}
+                        {/* Subsequent assignees */}
+                        {detailTask.assignees.slice(1).map((a, i) => (
+                          <div key={a.id || a.userId} className="flex items-center gap-2 text-[10px]">
+                            <span className="text-muted-foreground w-14 shrink-0">#{i + 2}</span>
+                            <MemberAvatar user={a.user} size="sm" />
+                            <span className="font-medium">{a.user?.name || 'Unknown'}</span>
+                            <span className="text-muted-foreground ml-auto">
+                              {a.assignedAt ? formatRelativeTime(a.assignedAt) : ''}
+                            </span>
+                          </div>
+                        ))}
+                        {/* Task creator info */}
+                        {detailTask.creator && (
+                          <div className="flex items-center gap-2 text-[10px] pt-1 border-t mt-1">
+                            <span className="text-muted-foreground w-14 shrink-0">Created</span>
+                            <MemberAvatar user={detailTask.creator} size="sm" />
+                            <span className="font-medium">{detailTask.creator.name}</span>
+                            <span className="text-muted-foreground ml-auto">
+                              {formatRelativeTime(detailTask.createdAt)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <Separator />
 
