@@ -2336,6 +2336,7 @@ export function AdminUsers() {
                     placeholder="Min. 6 characters"
                     value={newUser.password}
                     onChange={(e) => setNewUser(p => ({ ...p, password: e.target.value }))}
+                    suppressHydrationWarning
                   />
                 </div>
                 <div className="space-y-2">
@@ -2346,6 +2347,7 @@ export function AdminUsers() {
                     placeholder="Re-enter"
                     value={newUser.confirmPassword}
                     onChange={(e) => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))}
+                    suppressHydrationWarning
                   />
                 </div>
               </div>
@@ -2464,6 +2466,7 @@ export function AdminUsers() {
                 placeholder="Min. 6 characters"
                 value={resetPassword}
                 onChange={(e) => setResetPassword(e.target.value)}
+                suppressHydrationWarning
               />
             </div>
             <div className="space-y-2">
@@ -2474,6 +2477,7 @@ export function AdminUsers() {
                 placeholder="Re-enter new password"
                 value={resetConfirm}
                 onChange={(e) => setResetConfirm(e.target.value)}
+                suppressHydrationWarning
               />
             </div>
             <DialogFooter>
