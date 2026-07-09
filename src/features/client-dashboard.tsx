@@ -7,7 +7,8 @@ import {
   FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  MessageCircle, ListTodo, Check, CheckCheck, Search, ClipboardCheck, Plus
+  MessageCircle, ListTodo, Check, CheckCheck, Search, ClipboardCheck, Plus,
+  TrendingUp, BarChart3, PieChart as PieChartIcon
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type {
@@ -34,6 +35,21 @@ import {
 } from '@/components/ui/dialog'
 import { isBefore, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie, Legend
+} from 'recharts'
+
+// ─── Extended project type with task stats ────────────────────
+interface ClientProject extends Project {
+  taskStats?: {
+    todo: number
+    in_progress: number
+    in_review: number
+    done: number
+  }
+  progress?: number
+}
 
 // ─── Animation Variants ──────────────────────────────────────────
 const fadeSlide = {
@@ -49,35 +65,12 @@ function PageSkeleton() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       <Skeleton className="h-8 w-64" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+        <Skeleton className="h-80 rounded-xl" />
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-48 rounded-lg" />
-        ))}
-      </div>
+      <Skeleton className="h-64 rounded-xl" />
     </div>
-  )
-}
-
-function StatCard({ icon: Icon, label, value, color }: {
-  icon: React.ElementType; label: string; value: number | string; color: string
-}) {
-  return (
-    <motion.div {...fadeSlide} className="bg-card border rounded-xl p-4 md:p-5 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold">{value}</p>
-        </div>
-      </div>
-    </motion.div>
   )
 }
 
@@ -131,9 +124,52 @@ const ONBOARDING_STEPS = [
   { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
 ]
 
+// ─── Status color constants ──────────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  todo: '#94a3b8',
+  in_progress: '#f59e0b',
+  in_review: '#8b5cf6',
+  done: '#10b981',
+}
+const STATUS_LABELS: Record<string, string> = {
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  in_review: 'In Review',
+  done: 'Done',
+}
+
+// ─── Custom tooltip for charts ──────────────────────────────────
+function CustomBarTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string; color: string }>; label?: string }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-lg text-sm">
+      <p className="font-medium mb-1">{label}</p>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+          <span className="text-muted-foreground">{STATUS_LABELS[p.dataKey] || p.dataKey}:</span>
+          <span className="font-medium">{p.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CustomPieTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { fill: string } }> }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-lg text-sm">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].payload.fill }} />
+        <span className="font-medium">{payload[0].name}: {payload[0].value}</span>
+      </div>
+    </div>
+  )
+}
+
 export function ClientProjects() {
   const { user } = useAuthStore()
-  const [projects, setProjects] = useState<(Project & { tasks?: (Task & { _count: { comments: number; subtasks: number; completedSubtasks: number } })[] })[]>([])
+  const [projects, setProjects] = useState<ClientProject[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
@@ -244,35 +280,55 @@ export function ClientProjects() {
     )
   }
 
-  // Stats
-  const allTasks = projects.flatMap(p => p.tasks || [])
-  const totalTasks = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
-  const completedTasks = allTasks.filter(t => t.status === 'done').length
-  const inProgressTasks = allTasks.filter(t => t.status === 'in_progress').length
+  // ─── Compute aggregate data for charts ────────────────────────
+  const totalTasksAcrossAll = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
+  const totalDoneAcrossAll = projects.reduce((sum, p) => sum + (p.taskStats?.done || 0), 0)
+  const overallProgress = totalTasksAcrossAll > 0 ? Math.round((totalDoneAcrossAll / totalTasksAcrossAll) * 100) : 0
+
+  // Data for the bar chart: stacked tasks per project by status
+  const barChartData = projects.map(p => ({
+    name: p.name.length > 12 ? p.name.slice(0, 12) + '…' : p.name,
+    fullName: p.name,
+    todo: p.taskStats?.todo || 0,
+    in_progress: p.taskStats?.in_progress || 0,
+    in_review: p.taskStats?.in_review || 0,
+    done: p.taskStats?.done || 0,
+  }))
+
+  // Data for the pie chart: overall status distribution
+  const pieData = [
+    { name: 'To Do', value: projects.reduce((s, p) => s + (p.taskStats?.todo || 0), 0), fill: STATUS_COLORS.todo },
+    { name: 'In Progress', value: projects.reduce((s, p) => s + (p.taskStats?.in_progress || 0), 0), fill: STATUS_COLORS.in_progress },
+    { name: 'In Review', value: projects.reduce((s, p) => s + (p.taskStats?.in_review || 0), 0), fill: STATUS_COLORS.in_review },
+    { name: 'Done', value: projects.reduce((s, p) => s + (p.taskStats?.done || 0), 0), fill: STATUS_COLORS.done },
+  ].filter(d => d.value > 0)
 
   if (loading) return <PageSkeleton />
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+      {/* Page Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+            <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">My Projects</h1>
+            <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">My Projects</h1>
-          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
-        </div>
+        {projects.length > 0 && (
+          <div className="flex items-center gap-3 bg-card border rounded-xl px-4 py-2.5 shadow-sm">
+            <TrendingUp className="w-5 h-5 text-emerald-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Overall Progress</p>
+              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{overallProgress}%</p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={FolderKanban} label="My Projects" value={projects.length} color="bg-emerald-500" />
-        <StatCard icon={ListTodo} label="Total Tasks" value={totalTasks} color="bg-amber-500" />
-        <StatCard icon={CheckCircle2} label="Completed" value={completedTasks} color="bg-teal-500" />
-        <StatCard icon={Clock} label="In Progress" value={inProgressTasks} color="bg-orange-500" />
-      </div>
-
-      {/* Project Cards */}
       {projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
@@ -280,149 +336,270 @@ export function ClientProjects() {
           description="You don't have any active projects yet."
         />
       ) : (
-        <div className="space-y-4">
-          {projects.map((project, i) => {
-            const projectTasks = expandedProjectId === project.id ? expandedTasks : []
-            const doneTasks = projectTasks.filter(t => t.status === 'done').length
-            const totalT = project._count?.tasks || 0
-            const pct = totalT > 0 ? Math.round((doneTasks / totalT) * 100) : 0
-            const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+        <>
+          {/* ─── Charts Section ─────────────────────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Stacked Bar Chart — Tasks per Project by Status */}
+            <motion.div {...fadeSlide} className="lg:col-span-2">
+              <Card className="h-full">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                    Project Task Breakdown
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-4">
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 12 }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12 }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip content={<CustomBarTooltip />} />
+                        <Bar dataKey="done" stackId="a" fill={STATUS_COLORS.done} radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="in_review" stackId="a" fill={STATUS_COLORS.in_review} />
+                        <Bar dataKey="in_progress" stackId="a" fill={STATUS_COLORS.in_progress} />
+                        <Bar dataKey="todo" stackId="a" fill={STATUS_COLORS.todo} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center justify-center gap-4 mt-3">
+                    {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                      <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_COLORS[key] }} />
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-            return (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Card
-                  className="cursor-pointer hover:shadow-md transition-shadow border-l-4"
-                  style={{ borderLeftColor: project.color }}
-                  onClick={() => expandProject(project.id)}
-                >
-                  <CardContent className="p-4 md:p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-base truncate">{project.name}</h3>
-                          <PriorityBadge priority={project.priority} />
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 text-sm">
-                        {project.dueDate && (
-                          <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
-                            <Calendar className="w-3.5 h-3.5" />
-                            {formatDate(project.dueDate)}
-                          </span>
-                        )}
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5" />
-                          {project._count?.members || 0}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1.5 text-xs"
-                          onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
-                        >
-                          <ClipboardCheck className="w-3.5 h-3.5" />
-                          Onboarding
-                        </Button>
-                        <span className="text-muted-foreground cursor-pointer">
-                          {expandedProjectId === project.id ? '▲' : '▼'}
-                        </span>
-                      </div>
+            {/* Donut Chart — Overall Status Distribution */}
+            <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+              <Card className="h-full">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <PieChartIcon className="w-4 h-4 text-muted-foreground" />
+                    Status Distribution
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-4 flex flex-col items-center justify-center">
+                  {totalTasksAcrossAll === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+                      No tasks yet
                     </div>
-
-                    {/* Progress bar */}
-                    <div className="mt-3 space-y-1">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{doneTasks}/{totalT} tasks completed</span>
-                        <span>{pct}%</span>
+                  ) : (
+                    <>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={80}
+                              paddingAngle={3}
+                              dataKey="value"
+                              stroke="none"
+                            >
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<CustomPieTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                      <Progress value={pct} className="h-2" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Expanded tasks table */}
-                <AnimatePresence>
-                  {expandedProjectId === project.id && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <Card className="mt-2 rounded-t-none">
-                        <CardContent className="p-0">
-                          {projectTasks.length === 0 ? (
-                            <div className="py-8 text-center text-sm text-muted-foreground">
-                              No tasks in this project yet.
-                            </div>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b bg-muted/50">
-                                    <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
-                                    <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                                    <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
-                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
-                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {projectTasks.map(task => (
-                                    <tr
-                                      key={task.id}
-                                      className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
-                                      onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
-                                    >
-                                      <td className="p-3">
-                                        <div className="font-medium">{task.title}</div>
-                                        {task.description && (
-                                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
-                                        )}
-                                      </td>
-                                      <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
-                                      <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
-                                      <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
-                                        {task.dueDate ? formatDate(task.dueDate) : '—'}
-                                      </td>
-                                      <td className="p-3 hidden lg:table-cell">
-                                        <div className="flex -space-x-2">
-                                          {task.assignees?.slice(0, 3).map(a => (
-                                            <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
-                                              <AvatarFallback className="text-[10px] bg-muted">
-                                                {getInitials(a.user?.name || '?')}
-                                              </AvatarFallback>
-                                            </Avatar>
-                                          ))}
-                                          {(task.assignees?.length || 0) > 3 && (
-                                            <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
-                                              +{(task.assignees?.length || 0) - 3}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </motion.div>
+                      <div className="grid grid-cols-2 gap-2 w-full mt-2">
+                        {pieData.map(d => (
+                          <div key={d.name} className="flex items-center gap-1.5 text-xs">
+                            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: d.fill }} />
+                            <span className="text-muted-foreground truncate">{d.name}</span>
+                            <span className="font-semibold ml-auto">{d.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
-                </AnimatePresence>
-              </motion.div>
-            )
-          })}
-        </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* ─── Project Cards ──────────────────────────────────── */}
+          <div className="space-y-4">
+            {projects.map((project, i) => {
+              const projectTasks = expandedProjectId === project.id ? expandedTasks : []
+              const doneTasks = project.taskStats?.done || 0
+              const totalT = project._count?.tasks || 0
+              const pct = project.progress ?? 0
+              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+              const isExpanded = expandedProjectId === project.id
+
+              // Compute progress bar gradient colors
+              const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
+
+              return (
+                <motion.div
+                  key={project.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <Card
+                    className="cursor-pointer hover:shadow-md transition-all border-l-4"
+                    style={{ borderLeftColor: project.color }}
+                    onClick={() => expandProject(project.id)}
+                  >
+                    <CardContent className="p-4 md:p-5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-base truncate">{project.name}</h3>
+                            <PriorityBadge priority={project.priority} />
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 text-sm">
+                          {project.dueDate && (
+                            <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+                              <Calendar className="w-3.5 h-3.5" />
+                              {formatDate(project.dueDate)}
+                            </span>
+                          )}
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5" />
+                            {project._count?.members || 0}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs"
+                            onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
+                          >
+                            <ClipboardCheck className="w-3.5 h-3.5" />
+                            Onboarding
+                          </Button>
+                          <motion.span
+                            className="text-muted-foreground"
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </motion.span>
+                        </div>
+                      </div>
+
+                      {/* Progress bar with percentage */}
+                      <div className="mt-3 space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
+                          <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+                        </div>
+                        <div className="relative">
+                          <Progress value={pct} className="h-2.5" />
+                          <div
+                            className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${pct}%`,
+                              background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Expanded tasks table */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <Card className="mt-2 rounded-t-none">
+                          <CardContent className="p-0">
+                            {projectTasks.length === 0 ? (
+                              <div className="py-8 text-center text-sm text-muted-foreground">
+                                No tasks in this project yet.
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b bg-muted/50">
+                                      <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
+                                      <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                                      <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
+                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
+                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {projectTasks.map(task => (
+                                      <tr
+                                        key={task.id}
+                                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
+                                      >
+                                        <td className="p-3">
+                                          <div className="font-medium">{task.title}</div>
+                                          {task.description && (
+                                            <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
+                                          )}
+                                        </td>
+                                        <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
+                                        <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
+                                        <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
+                                          {task.dueDate ? formatDate(task.dueDate) : '—'}
+                                        </td>
+                                        <td className="p-3 hidden lg:table-cell">
+                                          <div className="flex -space-x-2">
+                                            {task.assignees?.slice(0, 3).map(a => (
+                                              <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
+                                                <AvatarFallback className="text-[10px] bg-muted">
+                                                  {getInitials(a.user?.name || '?')}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                            ))}
+                                            {(task.assignees?.length || 0) > 3 && (
+                                              <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
+                                                +{(task.assignees?.length || 0) - 3}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )
+            })}
+          </div>
+        </>
       )}
 
       {/* Create Onboarding Dialog */}
