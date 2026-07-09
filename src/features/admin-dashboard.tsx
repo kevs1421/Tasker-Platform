@@ -41,7 +41,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download
+  KeyRound, Download, Save
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -1416,11 +1416,23 @@ export function AdminTasks() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
-  const [commentText, setCommentText] = useState('')
   const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
-  const [currentAssigneeIds, setCurrentAssigneeIds] = useState<Set<string>>(new Set())
-  const [assigneeLoading, setAssigneeLoading] = useState(false)
   const [assigneeOpen, setAssigneeOpen] = useState(false)
+
+  // ─── Buffered edit state ───────────────────────────────────────
+  const [editStatus, setEditStatus] = useState('')
+  const [editPriority, setEditPriority] = useState('')
+  const [editDueDate, setEditDueDate] = useState<Date | null>(null)
+  const [pendingAssigneeIds, setPendingAssigneeIds] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  const hasChanges = selectedTask ? (
+    editStatus !== selectedTask.status ||
+    editPriority !== selectedTask.priority ||
+    (editDueDate ? editDueDate.toISOString() : null) !== (selectedTask.dueDate || null) ||
+    pendingAssigneeIds.size !== new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).size ||
+    ![...pendingAssigneeIds].every(id => new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).has(id))
+  ) : false
 
   const fetchTasks = useCallback(async (status: StatusFilter) => {
     setLoading(true)
@@ -1453,81 +1465,109 @@ export function AdminTasks() {
   async function openTaskDetail(task: Task) {
     setSelectedTask(task)
     setDetailOpen(true)
-    setCommentText('')
-    setCurrentAssigneeIds(new Set((task.assignees || []).map((a: { userId: string }) => a.userId)))
+    // Initialize edit state from the task
+    setEditStatus(task.status)
+    setEditPriority(task.priority)
+    setEditDueDate(task.dueDate ? new Date(task.dueDate) : null)
+    const aIds = new Set((task.assignees || []).map((a: { userId: string }) => a.userId))
+    setPendingAssigneeIds(aIds)
     // Fetch full task with comments
     try {
       const detailRes = await fetch(`/api/tasks/${task.id}`)
       if (detailRes.ok) {
         const data = await detailRes.json()
-        setSelectedTask(data.task)
-        setComments(data.task?.comments ?? [])
-        setCurrentAssigneeIds(new Set((data.task?.assignees || []).map((a: { userId: string }) => a.userId)))
+        const fullTask = data.task
+        setSelectedTask(fullTask)
+        setComments(fullTask?.comments ?? [])
+        setEditStatus(fullTask.status)
+        setEditPriority(fullTask.priority)
+        setEditDueDate(fullTask.dueDate ? new Date(fullTask.dueDate) : null)
+        setPendingAssigneeIds(new Set((fullTask?.assignees || []).map((a: { userId: string }) => a.userId)))
       }
     } catch { /* use basic data */ }
   }
 
-  async function handleToggleAssignee(userId: string) {
-    if (!selectedTask) return
-    setAssigneeLoading(true)
-    try {
-      const isAssigned = currentAssigneeIds.has(userId)
-      const res = await fetch('/api/tasks/assignments', {
-        method: isAssigned ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, taskId: selectedTask.id }),
-      })
-      if (res.ok) {
-        setCurrentAssigneeIds(prev => {
-          const next = new Set(prev)
-          if (isAssigned) {
-            next.delete(userId)
-          } else {
-            next.add(userId)
-          }
-          return next
-        })
-        toast.success(isAssigned ? 'Assignee removed' : 'Assignee added')
-        fetchTasks(statusFilter)
-        // Refresh selected task
-        const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
-        if (fresh.ok) {
-          const data = await fresh.json()
-          setSelectedTask(data.task)
-          setCurrentAssigneeIds(new Set((data.task?.assignees || []).map((a: { userId: string }) => a.userId)))
-        }
+  function handleTogglePendingAssignee(userId: string) {
+    setPendingAssigneeIds(prev => {
+      const next = new Set(prev)
+      if (next.has(userId)) {
+        next.delete(userId)
+      } else {
+        next.add(userId)
       }
-    } catch {
-      toast.error('Failed to update assignee')
-    } finally {
-      setAssigneeLoading(false)
-    }
+      return next
+    })
   }
 
-  const assignedUsersList = allTeamUsers.filter(u => currentAssigneeIds.has(u.id))
+  const assignedUsersList = allTeamUsers.filter(u => pendingAssigneeIds.has(u.id))
 
-  async function handleUpdateTask(taskId: string, updates: Record<string, unknown>) {
+  async function handleSave() {
+    if (!selectedTask || !hasChanges) return
+    setSaving(true)
     try {
-      const patchRes = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      })
-      if (!patchRes.ok) throw new Error()
+      // Build updates for task fields
+      const updates: Record<string, unknown> = {}
+      if (editStatus !== selectedTask.status) updates.status = editStatus
+      if (editPriority !== selectedTask.priority) updates.priority = editPriority
+      const newDueDateStr = editDueDate ? editDueDate.toISOString() : null
+      if (newDueDateStr !== (selectedTask.dueDate || null)) updates.dueDate = newDueDateStr
+
+      if (Object.keys(updates).length > 0) {
+        const patchRes = await fetch(`/api/tasks/${selectedTask.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates)
+        })
+        if (!patchRes.ok) throw new Error()
+      }
+
+      // Handle assignee changes
+      const originalIds = new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId))
+      const toRemove = [...originalIds].filter(id => !pendingAssigneeIds.has(id))
+      const toAdd = [...pendingAssigneeIds].filter(id => !originalIds.has(id))
+
+      for (const userId of toRemove) {
+        await fetch('/api/tasks/assignments', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+        })
+      }
+      for (const userId of toAdd) {
+        await fetch('/api/tasks/assignments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+        })
+      }
+
       toast.success('Task updated')
       fetchTasks(statusFilter)
-      // Update selected task if open
-      if (selectedTask?.id === taskId) {
-        const fresh = await fetch(`/api/tasks/${taskId}`)
-        if (fresh.ok) {
-          const data = await fresh.json()
-          setSelectedTask(data.task)
-          setComments(data.task?.comments ?? [])
-        }
+      // Refresh selected task
+      const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
+      if (fresh.ok) {
+        const data = await fresh.json()
+        const updatedTask = data.task
+        setSelectedTask(updatedTask)
+        setComments(updatedTask?.comments ?? [])
+        setEditStatus(updatedTask.status)
+        setEditPriority(updatedTask.priority)
+        setEditDueDate(updatedTask.dueDate ? new Date(updatedTask.dueDate) : null)
+        setPendingAssigneeIds(new Set((updatedTask?.assignees || []).map((a: { userId: string }) => a.userId)))
       }
     } catch {
       toast.error('Failed to update task')
+    } finally {
+      setSaving(false)
     }
+  }
+
+  function handleDiscard() {
+    if (!selectedTask) return
+    setEditStatus(selectedTask.status)
+    setEditPriority(selectedTask.priority)
+    setEditDueDate(selectedTask.dueDate ? new Date(selectedTask.dueDate) : null)
+    setPendingAssigneeIds(new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)))
   }
 
   const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
@@ -1640,7 +1680,13 @@ export function AdminTasks() {
       </Card>
 
       {/* Task Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <Dialog open={detailOpen} onOpenChange={(open) => {
+        if (!open && hasChanges) {
+          // If closing with unsaved changes, discard them
+          handleDiscard()
+        }
+        setDetailOpen(open)
+      }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           {selectedTask && (
             <>
@@ -1651,13 +1697,21 @@ export function AdminTasks() {
                 </DialogDescription>
               </DialogHeader>
 
+              {/* Unsaved changes indicator */}
+              {hasChanges && (
+                <div className="flex items-center gap-2 px-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
+                </div>
+              )}
+
               <ScrollArea className="flex-1 -mx-6 px-6">
                 <div className="space-y-6 py-2">
                   {/* Status & Priority */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Status</Label>
-                      <Select value={selectedTask.status} onValueChange={(v) => handleUpdateTask(selectedTask.id, { status: v })}>
+                      <Select value={editStatus} onValueChange={setEditStatus}>
                         <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="todo">To Do</SelectItem>
@@ -1669,7 +1723,7 @@ export function AdminTasks() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Priority</Label>
-                      <Select value={selectedTask.priority} onValueChange={(v) => handleUpdateTask(selectedTask.id, { priority: v })}>
+                      <Select value={editPriority} onValueChange={setEditPriority}>
                         <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="low">Low</SelectItem>
@@ -1688,14 +1742,14 @@ export function AdminTasks() {
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-fit justify-start text-left font-normal h-9">
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {selectedTask.dueDate ? format(new Date(selectedTask.dueDate), 'MMM d, yyyy') : 'Set due date'}
+                          {editDueDate ? format(editDueDate, 'MMM d, yyyy') : 'Set due date'}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
-                          selected={selectedTask.dueDate ? new Date(selectedTask.dueDate) : undefined}
-                          onSelect={(d: Date | undefined) => handleUpdateTask(selectedTask.id, { dueDate: d ? d.toISOString() : null })}
+                          selected={editDueDate ?? undefined}
+                          onSelect={(d: Date | undefined) => setEditDueDate(d ?? null)}
                         />
                       </PopoverContent>
                     </Popover>
@@ -1707,7 +1761,7 @@ export function AdminTasks() {
                       <Label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors">
                         <Users className="w-3.5 h-3.5" />
                         <PopoverTrigger asChild>
-                          <span>Assignees ({currentAssigneeIds.size})</span>
+                          <span>Assignees ({pendingAssigneeIds.size})</span>
                         </PopoverTrigger>
                         <UserPlus className="w-3 h-3" />
                       </Label>
@@ -1718,15 +1772,14 @@ export function AdminTasks() {
                         <div className="max-h-56 overflow-y-auto p-2 space-y-0.5">
                           {allTeamUsers.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No team members</p>}
                           {allTeamUsers.map(member => {
-                            const isAssigned = currentAssigneeIds.has(member.id)
+                            const isAssigned = pendingAssigneeIds.has(member.id)
                             return (
                               <button
                                 key={member.id}
                                 type="button"
-                                disabled={assigneeLoading}
-                                onClick={() => handleToggleAssignee(member.id)}
+                                onClick={() => handleTogglePendingAssignee(member.id)}
                                 className={cn(
-                                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-sm transition-colors cursor-pointer disabled:opacity-50',
+                                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-sm transition-colors cursor-pointer',
                                   isAssigned ? 'bg-primary/5' : 'hover:bg-accent'
                                 )}
                               >
@@ -1754,7 +1807,7 @@ export function AdminTasks() {
                           <div key={u.id} className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
                             <Avatar className="w-5 h-5"><AvatarFallback className="text-[8px]" style={{ fontSize: '8px' }}>{getInitials(u.name)}</AvatarFallback></Avatar>
                             <span>{u.name}</span>
-                            <button type="button" onClick={() => handleToggleAssignee(u.id)} className="ml-0.5 hover:text-destructive transition-colors" disabled={assigneeLoading}><X className="w-3 h-3" /></button>
+                            <button type="button" onClick={() => handleTogglePendingAssignee(u.id)} className="ml-0.5 hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
                           </div>
                         ))}
                       </div>
@@ -1823,6 +1876,24 @@ export function AdminTasks() {
                   </div>
                 </div>
               </ScrollArea>
+
+              {/* Footer with Save / Discard buttons */}
+              <div className="border-t pt-3 flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">
+                  {hasChanges ? 'Changes will be applied when you save' : 'No changes'}
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasChanges && (
+                    <Button variant="outline" size="sm" onClick={handleDiscard} disabled={saving}>
+                      Discard
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={handleSave} disabled={!hasChanges || saving} className="gap-1.5">
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    Save
+                  </Button>
+                </div>
+              </div>
             </>
           )}
         </DialogContent>

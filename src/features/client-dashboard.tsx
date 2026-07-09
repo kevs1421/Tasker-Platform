@@ -8,7 +8,7 @@ import {
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
   MessageCircle, ListTodo, Check, CheckCheck, Search, ClipboardCheck, Plus,
-  TrendingUp, BarChart3, PieChart as PieChartIcon
+  TrendingUp, BarChart3
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type {
@@ -36,8 +36,7 @@ import {
 import { isBefore, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, Legend
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
 
 // ─── Extended project type with task stats ────────────────────
@@ -151,18 +150,6 @@ function CustomBarTooltip({ active, payload, label }: { active?: boolean; payloa
           <span className="font-medium">{p.value}</span>
         </div>
       ))}
-    </div>
-  )
-}
-
-function CustomPieTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { fill: string } }> }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-lg text-sm">
-      <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].payload.fill }} />
-        <span className="font-medium">{payload[0].name}: {payload[0].value}</span>
-      </div>
     </div>
   )
 }
@@ -295,14 +282,6 @@ export function ClientProjects() {
     done: p.taskStats?.done || 0,
   }))
 
-  // Data for the pie chart: overall status distribution
-  const pieData = [
-    { name: 'To Do', value: projects.reduce((s, p) => s + (p.taskStats?.todo || 0), 0), fill: STATUS_COLORS.todo },
-    { name: 'In Progress', value: projects.reduce((s, p) => s + (p.taskStats?.in_progress || 0), 0), fill: STATUS_COLORS.in_progress },
-    { name: 'In Review', value: projects.reduce((s, p) => s + (p.taskStats?.in_review || 0), 0), fill: STATUS_COLORS.in_review },
-    { name: 'Done', value: projects.reduce((s, p) => s + (p.taskStats?.done || 0), 0), fill: STATUS_COLORS.done },
-  ].filter(d => d.value > 0)
-
   if (loading) return <PageSkeleton />
 
   return (
@@ -338,9 +317,9 @@ export function ClientProjects() {
       ) : (
         <>
           {/* ─── Charts Section ─────────────────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {/* Stacked Bar Chart — Tasks per Project by Status */}
-            <motion.div {...fadeSlide} className="lg:col-span-2">
+            <motion.div {...fadeSlide}>
               <Card className="h-full">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -381,58 +360,6 @@ export function ClientProjects() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Donut Chart — Overall Status Distribution */}
-            <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
-              <Card className="h-full">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <PieChartIcon className="w-4 h-4 text-muted-foreground" />
-                    Status Distribution
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4 flex flex-col items-center justify-center">
-                  {totalTasksAcrossAll === 0 ? (
-                    <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
-                      No tasks yet
-                    </div>
-                  ) : (
-                    <>
-                      <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={pieData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={50}
-                              outerRadius={80}
-                              paddingAngle={3}
-                              dataKey="value"
-                              stroke="none"
-                            >
-                              {pieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                              ))}
-                            </Pie>
-                            <Tooltip content={<CustomPieTooltip />} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 w-full mt-2">
-                        {pieData.map(d => (
-                          <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: d.fill }} />
-                            <span className="text-muted-foreground truncate">{d.name}</span>
-                            <span className="font-semibold ml-auto">{d.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
                 </CardContent>
               </Card>
             </motion.div>

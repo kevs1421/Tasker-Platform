@@ -250,27 +250,34 @@ export function TeamProjects() {
 
   const handleCreateTask = async () => {
     if (!taskTitle.trim()) { toast.error('Task title is required'); return }
+    if (!user?.id) { toast.error('Not authenticated'); return }
     setCreateTaskLoading(true)
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: taskTitle, description: taskDesc || null, status: taskStatus,
           priority: taskPriority, projectId: createTaskProjectId,
           dueDate: taskDueDate ? taskDueDate.toISOString() : null,
-          tags: taskTags, assigneeId: taskAssignee || null,
+          tags: taskTags,
+          createdById: user.id,
+          assigneeIds: taskAssignee ? [taskAssignee] : [],
         }),
       })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to create task')
+      }
       toast.success('Task created')
       setCreateTaskOpen(false)
       setTaskTitle(''); setTaskDesc(''); setTaskStatus('todo')
       setTaskPriority('medium'); setTaskDueDate(undefined)
       setTaskTags(''); setTaskAssignee('')
-      if (expandedId === createTaskProjectId) handleExpand(createTaskProjectId)
-      else handleExpand(createTaskProjectId)
-    } catch {
-      toast.error('Failed to create task')
+      // Always refresh the expanded project view
+      handleExpand(createTaskProjectId)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create task')
     } finally {
       setCreateTaskLoading(false)
     }
