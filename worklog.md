@@ -405,3 +405,62 @@ Work Log:
 Stage Summary:
 - Files modified: src/features/team-dashboard.tsx (moved currentProject declaration), src/app/api/projects/[id]/route.ts (fixed assignees→assignments relation name, added assignees mapping)
 - Root cause: Temporal dead zone — variable referenced before its `const` declaration due to an early return block placement
+---
+Task ID: 2-b
+Agent: upload-api-agent
+Task: Create file upload API for onboarding documents
+
+Work Log:
+- Created /home/z/my-project/src/app/api/upload/route.ts with POST endpoint
+- Accepts multipart form data with a 'file' field
+- Validates file types via both extension and MIME type mapping: pdf, png, jpg, jpeg, gif, webp, doc, docx, txt, svg
+- Enforces 10MB file size limit with descriptive error message
+- Saves files to /home/z/my-project/public/uploads/onboarding/ with unique filenames (timestamp + 8-byte random hex)
+- Creates the uploads directory recursively if it doesn't exist using fs/promises mkdir
+- Uses only standard Node.js APIs (fs/promises, crypto, path) and Next.js NextRequest
+- Returns JSON response: { url, filename, originalName, size, type }
+- Includes proper error handling: missing file, size exceeded, type mismatch, server errors
+- Ensured /home/z/my-project/public/uploads/onboarding/ directory exists
+- Lint passed with 0 errors (4 pre-existing warnings)
+
+Stage Summary:
+- Upload API ready at POST /api/upload
+- Validates file type (extension + MIME consistency) and size (10MB max)
+- Generates unique filenames: {timestamp}-{16hex}{ext}
+- Returns public URL path (/uploads/onboarding/{filename})
+
+---
+Task ID: 1
+Agent: Main
+Task: Add Save button to Task Detail + Download button for Onboarding Management
+
+Work Log:
+- **Task Save Button (team-dashboard.tsx)**:
+  - Removed all auto-save behavior: Status select, Priority select, Due Date calendar, Description textarea, and Title inline edit no longer call API on change
+  - Added `hasChanges` computed boolean that compares all editable fields (title, description, status, priority, dueDate) against the original task
+  - Replaced `handleUpdateTask` (auto-save) with `handleSaveTask` (batch save) that collects all changed fields into a single PATCH request
+  - Added `handleDiscardChanges` function that resets all edit state to the original task values
+  - Added "Unsaved changes" amber warning indicator that appears when changes are detected
+  - Added "Discard" button (outline, with RotateCcw icon) that appears only when there are changes
+  - Added "Save Changes" button (primary, with Save icon) that is disabled when no changes exist
+  - Kept Delete button (destructive) alongside the new save controls
+  - Added Save and RotateCcw icon imports from lucide-react
+
+- **Onboarding Download (admin-dashboard.tsx + API)**:
+  - Created /api/onboarding/download/route.ts GET endpoint that:
+    - Accepts `submissionId` query parameter
+    - Fetches submission with client, form, project, and reviewer relations
+    - Parses responsesJson to extract form fields and uploaded file references
+    - Generates a formatted plain-text report with: form info, client info, all submitted data fields, uploaded document details (name, size, type, URL), review status
+    - Returns as text/plain with Content-Disposition attachment header
+  - Added Download icon import to admin-dashboard.tsx
+  - Added "Download Report" button (outline variant) to each submission card in the submissions review dialog
+  - Button opens the download URL in a new tab via window.open()
+
+- Also created /api/upload/route.ts (by sub-agent) for file upload support
+
+Stage Summary:
+- Files modified: src/features/team-dashboard.tsx, src/features/admin-dashboard.tsx
+- Files created: src/app/api/onboarding/download/route.ts, src/app/api/upload/route.ts
+- Task detail: Changes are now local-only until "Save Changes" is clicked. "Discard" reverts. "Unsaved changes" indicator shown.
+- Onboarding: Admin can download any submitted onboarding as a formatted text report via "Download Report" button

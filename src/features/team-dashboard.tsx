@@ -64,6 +64,7 @@ import {
   X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus, History,
+  Save, RotateCcw,
 } from 'lucide-react'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -685,6 +686,15 @@ export function TeamTasks() {
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Check if there are unsaved changes
+  const hasChanges = detailTask
+    ? editTitle.trim() !== detailTask.title
+      || editDesc !== (detailTask.description || '')
+      || editStatus !== detailTask.status
+      || editPriority !== detailTask.priority
+      || (editDueDate ? editDueDate.toISOString() : null) !== (detailTask.dueDate || null)
+    : false
+
   // Inline assignee management on task cards
   const [assigneePopoverTaskId, setAssigneePopoverTaskId] = useState<string | null>(null)
   const [assigneeLoading, setAssigneeLoading] = useState<string | null>(null)
@@ -748,10 +758,20 @@ export function TeamTasks() {
     }
   }
 
-  const handleUpdateTask = async (updates: Record<string, unknown>) => {
+  const handleSaveTask = async () => {
     if (!detailTask) return
     setUpdating(true)
     try {
+      const updates: Record<string, unknown> = {}
+      if (editTitle.trim() !== detailTask.title) updates.title = editTitle.trim()
+      if (editDesc !== (detailTask.description || '')) updates.description = editDesc || null
+      if (editStatus !== detailTask.status) updates.status = editStatus
+      if (editPriority !== detailTask.priority) updates.priority = editPriority
+      const newDueDate = editDueDate ? editDueDate.toISOString() : null
+      if (newDueDate !== (detailTask.dueDate || null)) updates.dueDate = newDueDate
+
+      if (Object.keys(updates).length === 0) { setUpdating(false); return }
+
       const res = await fetch(`/api/tasks/${detailTask.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -760,15 +780,23 @@ export function TeamTasks() {
       const data = await res.json()
       const updatedTask = data.task || { ...detailTask, ...updates }
       setDetailTask(updatedTask as Task)
-      if (updates.title) setEditTitle(String(updates.title))
-      if (updates.description !== undefined) setEditDesc(String(updates.description ?? ''))
       fetchTasks()
-      toast.success('Task updated')
+      toast.success('Task saved successfully')
     } catch {
-      toast.error('Failed to update task')
+      toast.error('Failed to save task')
     } finally {
       setUpdating(false)
     }
+  }
+
+  const handleDiscardChanges = () => {
+    if (!detailTask) return
+    setEditTitle(detailTask.title)
+    setEditDesc(detailTask.description || '')
+    setEditStatus(detailTask.status)
+    setEditPriority(detailTask.priority)
+    setEditDueDate(detailTask.dueDate ? parseISO(detailTask.dueDate) : undefined)
+    setIsEditingTitle(false)
   }
 
   const handleDeleteTask = async () => {
@@ -1427,9 +1455,6 @@ export function TeamTasks() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
-                          if (editTitle.trim() && editTitle.trim() !== detailTask.title) {
-                            handleUpdateTask({ title: editTitle.trim() })
-                          }
                           setIsEditingTitle(false)
                         }
                         if (e.key === 'Escape') {
@@ -1437,12 +1462,7 @@ export function TeamTasks() {
                           setIsEditingTitle(false)
                         }
                       }}
-                      onBlur={() => {
-                        if (editTitle.trim() && editTitle.trim() !== detailTask.title) {
-                          handleUpdateTask({ title: editTitle.trim() })
-                        }
-                        setIsEditingTitle(false)
-                      }}
+                      onBlur={() => setIsEditingTitle(false)}
                       className="text-lg font-semibold h-auto py-0"
                       autoFocus
                     />
@@ -1451,7 +1471,7 @@ export function TeamTasks() {
                       className="text-lg cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors"
                       onClick={() => setIsEditingTitle(true)}
                     >
-                      {detailTask.title}
+                      {editTitle}
                       <Pencil className="h-3.5 w-3. inline-block ml-2 text-muted-foreground opacity-0 group-hover:opacity-100" />
                     </DialogTitle>
                   )}
@@ -1464,7 +1484,7 @@ export function TeamTasks() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Status</Label>
-                    <Select value={editStatus} onValueChange={(v) => { setEditStatus(v); handleUpdateTask({ status: v }) }}>
+                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v)}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todo">To Do</SelectItem>
@@ -1476,7 +1496,7 @@ export function TeamTasks() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Priority</Label>
-                    <Select value={editPriority} onValueChange={(v) => { setEditPriority(v); handleUpdateTask({ priority: v }) }}>
+                    <Select value={editPriority} onValueChange={(v) => setEditPriority(v)}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
@@ -1499,7 +1519,7 @@ export function TeamTasks() {
                         <Calendar
                           mode="single"
                           selected={editDueDate}
-                          onSelect={(d) => { setEditDueDate(d); setEditCalendarOpen(false); if (d) handleUpdateTask({ dueDate: d.toISOString() }) }}
+                          onSelect={(d) => { setEditDueDate(d); setEditCalendarOpen(false) }}
                         />
                       </PopoverContent>
                     </Popover>
@@ -1508,30 +1528,11 @@ export function TeamTasks() {
 
                 {/* Description (editable) */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs text-muted-foreground">Description</Label>
-                    {(editDesc !== (detailTask.description || '')) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs gap-1"
-                        onClick={() => handleUpdateTask({ description: editDesc || null })}
-                        disabled={updating}
-                      >
-                        {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                        Save
-                      </Button>
-                    )}
-                  </div>
+                  <Label className="text-xs text-muted-foreground">Description</Label>
                   <Textarea
                     placeholder="Add a description..."
                     value={editDesc}
                     onChange={(e) => setEditDesc(e.target.value)}
-                    onBlur={() => {
-                      if (editDesc !== (detailTask.description || '')) {
-                        handleUpdateTask({ description: editDesc || null })
-                      }
-                    }}
                     className="text-sm min-h-[60px] resize-none"
                     rows={2}
                   />
@@ -1772,30 +1773,60 @@ export function TeamTasks() {
 
                 <Separator />
 
-                {/* Delete */}
-                <div className="flex justify-end">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="sm" className="gap-2" disabled={deleting}>
-                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        Delete Task
+                {/* Action buttons: Save, Discard, Delete */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {hasChanges && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" /> Unsaved changes
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasChanges && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={handleDiscardChanges}
+                        disabled={updating}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Discard
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Task</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete &quot;{detailTask.title}&quot;? This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteTask} className="bg-destructive text-white hover:bg-destructive/90">
+                    )}
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={handleSaveTask}
+                      disabled={updating || !hasChanges}
+                    >
+                      {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Save Changes
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm" className="gap-2" disabled={deleting}>
+                          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete &quot;{detailTask.title}&quot;? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleDeleteTask} className="bg-destructive text-white hover:bg-destructive/90">
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               </div>
             </>

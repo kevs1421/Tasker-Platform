@@ -41,7 +41,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound
+  KeyRound, Download
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -737,6 +737,20 @@ export function AdminOnboarding() {
                       {sub.submittedAt && (
                         <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
                       )}
+
+                      {/* Download submission button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 h-8 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
+                        }}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Download Report
+                      </Button>
 
                       {Object.keys(parsedResponses).length > 0 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
