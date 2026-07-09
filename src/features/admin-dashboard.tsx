@@ -1825,6 +1825,7 @@ export { MessagesPanel as AdminMessages } from '@/components/messages/MessagesPa
 export function AdminUsers() {
   const { user: adminUser } = useAuthStore()
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
@@ -1867,7 +1868,7 @@ export function AdminUsers() {
     }
   }, [])
 
-  useEffect(() => { fetchUsers() }, [fetchUsers])
+  useEffect(() => { setMounted(true); fetchUsers() }, [fetchUsers])
 
   const filteredUsers = users.filter((u) => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false
@@ -2327,16 +2328,18 @@ export function AdminUsers() {
             <Separator />
             <div className="space-y-3">
               <p className="text-sm font-medium">Set Password</p>
+              {mounted && (
+              <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="add-password">Password *</Label>
                   <Input
                     id="add-password"
                     type="password"
+                    autoComplete="new-password"
                     placeholder="Min. 6 characters"
                     value={newUser.password}
                     onChange={(e) => setNewUser(p => ({ ...p, password: e.target.value }))}
-                    suppressHydrationWarning
                   />
                 </div>
                 <div className="space-y-2">
@@ -2344,14 +2347,16 @@ export function AdminUsers() {
                   <Input
                     id="add-confirm"
                     type="password"
+                    autoComplete="new-password"
                     placeholder="Re-enter"
                     value={newUser.confirmPassword}
                     onChange={(e) => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))}
-                    suppressHydrationWarning
                   />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Share the credentials with the new user after creation.</p>
+              </>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
@@ -2458,15 +2463,17 @@ export function AdminUsers() {
                 The user will need to use the new password for their next login.
               </p>
             </div>
+            {mounted && (
+            <>
             <div className="space-y-2">
               <Label htmlFor="reset-password">New Password *</Label>
               <Input
                 id="reset-password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="Min. 6 characters"
                 value={resetPassword}
                 onChange={(e) => setResetPassword(e.target.value)}
-                suppressHydrationWarning
               />
             </div>
             <div className="space-y-2">
@@ -2474,12 +2481,14 @@ export function AdminUsers() {
               <Input
                 id="reset-confirm"
                 type="password"
+                autoComplete="new-password"
                 placeholder="Re-enter new password"
                 value={resetConfirm}
                 onChange={(e) => setResetConfirm(e.target.value)}
-                suppressHydrationWarning
               />
             </div>
+            </>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
                 Cancel
@@ -2634,15 +2643,15 @@ export function AdminProfile() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="currentPass">Current Password</Label>
-                  <Input id="currentPass" type="password" value={passwords.currentPassword} onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} placeholder="Enter current" />
+                  <Input id="currentPass" type="password" autoComplete="current-password" value={passwords.currentPassword} onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} placeholder="Enter current" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="newPass">New Password</Label>
-                  <Input id="newPass" type="password" value={passwords.newPassword} onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} placeholder="Enter new" />
+                  <Input id="newPass" type="password" autoComplete="new-password" value={passwords.newPassword} onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} placeholder="Enter new" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPass">Confirm Password</Label>
-                  <Input id="confirmPass" type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
+                  <Input id="confirmPass" type="password" autoComplete="new-password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Leave password fields empty to keep your current password.</p>
