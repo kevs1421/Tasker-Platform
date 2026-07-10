@@ -570,3 +570,29 @@ Stage Summary:
 - Admin "Task Dashboard" shows the table/list view of all tasks across projects
 - Admin "Task" shows the same kanban board as Team Workspace "Task" (shared TeamTasks component)
 - Team "My Tasks" (separate filtered task list) removed from navigation; TeamTasks kanban board is the primary task interface
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix Assignee field in Create Task modal to show all active admin + team users
+
+Work Log:
+- Identified 5 locations in team-dashboard.tsx where assignee selection was scoped to project members only:
+  1. TeamProjects Create Task modal (line ~514)
+  2. TeamTasks Create Task modal (line ~1023)
+  3. TeamTasks board view inline assignee popover (line ~1153)
+  4. TeamTasks list view inline assignee popover (line ~1307)
+  5. TeamTasks detail dialog add-assignee popover (line ~1519)
+- Added `allTeamUsers` state + fetch useEffect to both TeamProjects and TeamTasks components
+- Fetch calls `/api/users` and filters for `role === 'team' || role === 'admin'` with `status === 'active'`
+- Replaced all `projectMembers` (ProjectMember[]) references with `assignableUsers` (User[])
+- Updated all 5 assignee picker UIs to map over User[] instead of ProjectMember[]
+- Each assignee entry now shows: avatar initials, name, and role label in parentheses
+- Removed unused `projectMembers` variable and its `currentProject?.members` dependency
+- Fixed inline `openDetail` refresh to use `allTeamUsers.find()` instead of `currentProject?.members?.find()`
+- ESLint: 0 errors
+- Agent-browser verified: all 3 Create Task contexts (admin kanban, team projects, team kanban) show all 4 active users (3 team + 1 admin) with role labels
+
+Stage Summary:
+- Assignee dropdowns now show ALL active administrators and team members system-wide
+- Role labels displayed: "(admin)" or "(team)" next to each user name
+- Works consistently across: TeamProjects Add Task, TeamTasks Create Task, inline assignee popovers, and detail dialog

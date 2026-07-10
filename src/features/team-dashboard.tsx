@@ -166,6 +166,7 @@ export function TeamProjects() {
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [createTaskLoading, setCreateTaskLoading] = useState(false)
   const [createTaskProjectId, setCreateTaskProjectId] = useState<string>('')
+  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
 
   // Create task form
   const [taskTitle, setTaskTitle] = useState('')
@@ -193,6 +194,17 @@ export function TeamProjects() {
   }, [user])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  // Fetch all active admin + team users for assignee picker
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => {
+        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'admin') && u.status === 'active')
+        setAllTeamUsers(members)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleExpand = async (projectId: string) => {
     if (expandedId === projectId) {
@@ -511,14 +523,18 @@ export function TeamProjects() {
                 <Select value={taskAssignee} onValueChange={setTaskAssignee}>
                   <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
                   <SelectContent>
-                    {(() => {
-                      const proj = projects.find((p) => p.id === createTaskProjectId)
-                      return (proj?.members || []).map((m) => (
-                        <SelectItem key={m.userId} value={m.userId}>
-                          {m.user?.name || m.userId}
-                        </SelectItem>
-                      ))
-                    })()}
+                    {allTeamUsers.length === 0 && <SelectItem value="_none" disabled>No members available</SelectItem>}
+                    {allTeamUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+                            {getInitials(u.name)}
+                          </span>
+                          <span>{u.name}</span>
+                          <span className="text-muted-foreground text-xs capitalize">({u.role})</span>
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -564,6 +580,9 @@ export function TeamTasks() {
   const [cTags, setCTags] = useState('')
   const [cAssignee, setCAssignee] = useState<string>('')
   const [cCalendarOpen, setCCalendarOpen] = useState(false)
+
+  // All active admin + team users for assignee pickers
+  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
 
   // Detail task subtasks/comments
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
@@ -629,6 +648,17 @@ export function TeamTasks() {
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
   useEffect(() => { fetchTasks() }, [fetchTasks])
+
+  // Fetch all active admin + team users for assignee pickers
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => {
+        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'admin') && u.status === 'active')
+        setAllTeamUsers(members)
+      })
+      .catch(() => {})
+  }, [])
 
   const openDetail = async (task: Task) => {
     setDetailTask(task)
@@ -865,7 +895,7 @@ export function TeamTasks() {
       if (detailTask && detailTask.id === task.id) {
         openDetail({ ...task, assignees: isAssigned
           ? task.assignees?.filter((a) => a.userId !== userId)
-          : [...(task.assignees || []), { id: '', taskId: task.id, userId, assignedAt: new Date().toISOString(), user: currentProject?.members?.find((m) => m.userId === userId)?.user }]
+          : [...(task.assignees || []), { id: '', taskId: task.id, userId, assignedAt: new Date().toISOString(), user: allTeamUsers.find((u) => u.id === userId) }]
         })
       }
     } catch (e: unknown) {
@@ -877,8 +907,8 @@ export function TeamTasks() {
 
   const currentProject = projects.find((p) => p.id === selectedProject)
 
-  // Get project members (team + admin) for assignee picker
-  const projectMembers = currentProject?.members?.filter((m) => m.user && (m.user.role === 'team' || m.user.role === 'admin')) || []
+  // Use all active admin + team users for assignee pickers
+  const assignableUsers = allTeamUsers
 
   if (loading && projects.length === 0) {
     return (
@@ -1020,9 +1050,16 @@ export function TeamTasks() {
                     <Select value={cAssignee} onValueChange={setCAssignee}>
                       <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
                       <SelectContent>
-                        {currentProject?.members?.map((m) => (
-                          <SelectItem key={m.userId} value={m.userId}>
-                            {m.user?.name || m.userId}
+                        {assignableUsers.length === 0 && <SelectItem value="_none" disabled>No members available</SelectItem>}
+                        {assignableUsers.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+                                {getInitials(u.name)}
+                              </span>
+                              <span>{u.name}</span>
+                              <span className="text-muted-foreground text-xs capitalize">({u.role})</span>
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1150,26 +1187,26 @@ export function TeamTasks() {
                                     <PopoverContent className="w-56 p-2" align="start" side="bottom">
                                       <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
                                       <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                                        {projectMembers.map((m) => {
-                                          if (!m.user) return null
-                                          const isAssigned = assignees.some((a) => a.userId === m.userId)
-                                          const isLoading = assigneeLoading === m.userId
+                                        {assignableUsers.map((u) => {
+                                          const isAssigned = assignees.some((a) => a.userId === u.id)
+                                          const isLoading = assigneeLoading === u.id
                                           return (
                                             <button
-                                              key={m.userId}
+                                              key={u.id}
                                               className={cn(
                                                 'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
                                                 isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                                               )}
-                                              onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, m.userId) }}
+                                              onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, u.id) }}
                                               disabled={isLoading}
                                             >
                                               <Avatar className="h-6 w-6">
                                                 <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                                                  {getInitials(m.user.name)}
+                                                  {getInitials(u.name)}
                                                 </AvatarFallback>
                                               </Avatar>
-                                              <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                              <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+                                              <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
                                               {isLoading ? (
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                                               ) : isAssigned ? (
@@ -1274,26 +1311,26 @@ export function TeamTasks() {
                           <PopoverContent className="w-56 p-2" align="start" side="bottom">
                             <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
                             <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                              {projectMembers.map((m) => {
-                                if (!m.user) return null
-                                const isAssigned = assignees.some((a) => a.userId === m.userId)
-                                const isLoading = assigneeLoading === m.userId
+                              {assignableUsers.map((u) => {
+                                const isAssigned = assignees.some((a) => a.userId === u.id)
+                                const isLoading = assigneeLoading === u.id
                                 return (
                                   <button
-                                    key={m.userId}
+                                    key={u.id}
                                     className={cn(
                                       'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
                                       isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                                     )}
-                                    onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, m.userId) }}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, u.id) }}
                                     disabled={isLoading}
                                   >
                                     <Avatar className="h-6 w-6">
                                       <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                                        {getInitials(m.user.name)}
+                                        {getInitials(u.name)}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                    <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+                                    <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
                                     {isLoading ? (
                                       <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                                     ) : isAssigned ? (
@@ -1486,26 +1523,26 @@ export function TeamTasks() {
                       <PopoverContent className="w-56 p-2" align="start">
                         <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
                         <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                          {projectMembers.map((m) => {
-                            if (!m.user) return null
-                            const isAssigned = detailTask.assignees?.some((a) => a.userId === m.userId)
-                            const isLoading = assigneeLoading === m.userId
+                          {assignableUsers.map((u) => {
+                            const isAssigned = detailTask.assignees?.some((a) => a.userId === u.id)
+                            const isLoading = assigneeLoading === u.id
                             return (
                               <button
-                                key={m.userId}
+                                key={u.id}
                                 className={cn(
                                   'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
                                   isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                                 )}
-                                onClick={() => handleToggleAssignee(detailTask, m.userId)}
+                                onClick={() => handleToggleAssignee(detailTask, u.id)}
                                 disabled={isLoading}
                               >
                                 <Avatar className="h-6 w-6">
                                   <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                                    {getInitials(m.user.name)}
+                                    {getInitials(u.name)}
                                   </AvatarFallback>
                                 </Avatar>
-                                <span className="flex-1 truncate text-xs font-medium">{m.user.name}</span>
+                                <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+                                <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
                                 {isLoading ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                                 ) : isAssigned ? (
