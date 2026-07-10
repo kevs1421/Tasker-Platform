@@ -8,7 +8,6 @@ import {
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
   MessageCircle, Check, CheckCheck, Search, ClipboardCheck, Plus,
-  TrendingUp, BarChart3
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type {
@@ -35,9 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { isBefore, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
-} from 'recharts'
+
 
 // ─── Extended project type with task stats ────────────────────
 interface ClientProject extends Project {
@@ -122,37 +119,6 @@ const ONBOARDING_STEPS = [
   { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
   { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
 ]
-
-// ─── Status color constants ──────────────────────────────────────
-const STATUS_COLORS: Record<string, string> = {
-  todo: '#94a3b8',
-  in_progress: '#f59e0b',
-  in_review: '#8b5cf6',
-  done: '#10b981',
-}
-const STATUS_LABELS: Record<string, string> = {
-  todo: 'To Do',
-  in_progress: 'In Progress',
-  in_review: 'In Review',
-  done: 'Done',
-}
-
-// ─── Custom tooltip for charts ──────────────────────────────────
-function CustomBarTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string; color: string }>; label?: string }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-lg text-sm">
-      <p className="font-medium mb-1">{label}</p>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground">{STATUS_LABELS[p.dataKey] || p.dataKey}:</span>
-          <span className="font-medium">{p.value}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 export function ClientProjects() {
   const { user } = useAuthStore()
@@ -267,45 +233,19 @@ export function ClientProjects() {
     )
   }
 
-  // ─── Compute aggregate data for charts ────────────────────────
-  const totalTasksAcrossAll = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
-  const totalDoneAcrossAll = projects.reduce((sum, p) => sum + (p.taskStats?.done || 0), 0)
-  const overallProgress = totalTasksAcrossAll > 0 ? Math.round((totalDoneAcrossAll / totalTasksAcrossAll) * 100) : 0
-
-  // Data for the bar chart: stacked tasks per project by status
-  const barChartData = projects.map(p => ({
-    name: p.name.length > 12 ? p.name.slice(0, 12) + '…' : p.name,
-    fullName: p.name,
-    todo: p.taskStats?.todo || 0,
-    in_progress: p.taskStats?.in_progress || 0,
-    in_review: p.taskStats?.in_review || 0,
-    done: p.taskStats?.done || 0,
-  }))
-
   if (loading) return <PageSkeleton />
 
   return (
     <div className="p-4 md:p-6 space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-            <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">My Projects</h1>
-            <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
         </div>
-        {projects.length > 0 && (
-          <div className="flex items-center gap-3 bg-card border rounded-xl px-4 py-2.5 shadow-sm">
-            <TrendingUp className="w-5 h-5 text-emerald-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Overall Progress</p>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{overallProgress}%</p>
-            </div>
-          </div>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold">My Projects</h1>
+          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+        </div>
       </div>
 
       {projects.length === 0 ? (
@@ -316,55 +256,6 @@ export function ClientProjects() {
         />
       ) : (
         <>
-          {/* ─── Charts Section ─────────────────────────────────── */}
-          <div className="grid grid-cols-1 gap-4">
-            {/* Stacked Bar Chart — Tasks per Project by Status */}
-            <motion.div {...fadeSlide}>
-              <Card className="h-full">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-muted-foreground" />
-                    Project Task Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                        <XAxis
-                          dataKey="name"
-                          tick={{ fontSize: 12 }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 12 }}
-                          axisLine={false}
-                          tickLine={false}
-                          allowDecimals={false}
-                        />
-                        <Tooltip content={<CustomBarTooltip />} />
-                        <Bar dataKey="done" stackId="a" fill={STATUS_COLORS.done} radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="in_review" stackId="a" fill={STATUS_COLORS.in_review} />
-                        <Bar dataKey="in_progress" stackId="a" fill={STATUS_COLORS.in_progress} />
-                        <Bar dataKey="todo" stackId="a" fill={STATUS_COLORS.todo} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {/* Legend */}
-                  <div className="flex flex-wrap items-center justify-center gap-4 mt-3">
-                    {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                      <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_COLORS[key] }} />
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-
           {/* ─── Project Cards ──────────────────────────────────── */}
           <div className="space-y-4">
             {projects.map((project, i) => {

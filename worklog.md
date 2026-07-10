@@ -642,3 +642,21 @@ Stage Summary:
 - Assignees still show with name and avatar (no history, just current assignment)
 - ESLint: 0 errors (4 pre-existing warnings)
 - Agent-browser verified: all views render correctly, no console errors
+---
+Task ID: remove-client-dashboard
+Agent: main
+Task: Remove dashboard/chart section from client portal projects page — clients should only see project progress
+
+Work Log:
+- Analyzed client-dashboard.tsx to identify the "Project Task Breakdown" stacked bar chart and "Overall Progress" header widget
+- Removed the entire charts section (BarChart with recharts) from the ClientProjects component
+- Removed the "Overall Progress" summary card from the page header
+- Removed unused imports: recharts (BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell), TrendingUp, BarChart3 from lucide-react
+- Removed unused constants and helper: STATUS_COLORS, STATUS_LABELS, CustomBarTooltip function
+- Removed unused computed data: barChartData, overallProgress, totalTasksAcrossAll, totalDoneAcrossAll
+- Verified with agent-browser + VLM that the client portal now only shows project cards with progress bars
+
+Stage Summary:
+- Client portal projects page now shows only project cards with inline progress bars
+- No charts, graphs, or dashboard summary statistics visible to clients
+- All lint checks pass (0 errors, only pre-existing warnings)
