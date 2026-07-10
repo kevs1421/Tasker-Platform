@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor } from 'lucide-react'
+import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -132,14 +132,14 @@ function getNavItems(role: string): NavItem[] {
     { id: 'users', label: 'Users', icon: Users, route: { page: 'admin-dashboard', tab: 'users' } },
     { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'admin-dashboard', tab: 'onboarding' } },
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'admin-dashboard', tab: 'project' } },
-    { id: 'tasks', label: 'Tasks', icon: ListTodo, route: { page: 'admin-dashboard', tab: 'task' } },
+    { id: 'task-dashboard', label: 'Task Dashboard', icon: ListTodo, route: { page: 'admin-dashboard', tab: 'task-dashboard' } },
+    { id: 'task-view', label: 'Task', icon: Kanban, route: { page: 'admin-dashboard', tab: 'task-view' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
   ]
   if (role === 'team') return [
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
-    { id: 'tasks', label: 'Tasks', icon: ClipboardCheck, route: { page: 'team-dashboard', tab: 'tasks' } },
-    { id: 'task-dashboard', label: 'Tasks Dashboard', icon: ListTodo, route: { page: 'team-dashboard', tab: 'task-dashboard' } },
+    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
   ]

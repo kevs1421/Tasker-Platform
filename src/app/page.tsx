@@ -5,7 +5,6 @@ import { DashboardShell } from '@/features/app-shell'
 import LoginPage from '@/features/login-page'
 import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile } from '@/features/admin-dashboard'
 import { TeamProjects, TeamTasks, TeamMessages, TeamProfile } from '@/features/team-dashboard'
-import { TeamMyTasks } from '@/features/team-my-tasks'
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -19,7 +18,8 @@ function AdminDashboard() {
         {route.tab === 'users' && <AdminUsers />}
         {route.tab === 'onboarding' && <AdminOnboarding />}
         {route.tab === 'project' && <AdminProjects />}
-        {route.tab === 'task' && <AdminTasks />}
+        {route.tab === 'task-dashboard' && <AdminTasks />}
+        {route.tab === 'task-view' && <TeamTasks />}
         {route.tab === 'messages' && <AdminMessages />}
         {route.tab === 'profile' && <AdminProfile />}
       </motion.div>
@@ -34,8 +34,7 @@ function TeamDashboard() {
     <AnimatePresence mode="wait">
       <motion.div key={route.tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
         {route.tab === 'project' && <TeamProjects />}
-        {route.tab === 'tasks' && <TeamMyTasks />}
-        {route.tab === 'task-dashboard' && <TeamTasks />}
+        {route.tab === 'task' && <TeamTasks />}
         {route.tab === 'messages' && <TeamMessages />}
         {route.tab === 'profile' && <TeamProfile />}
       </motion.div>

@@ -548,3 +548,25 @@ Stage Summary:
 - New file: src/features/team-my-tasks.tsx
 - Fully functional component following existing team-dashboard.tsx design patterns
 - Exported as named export: TeamMyTasks
+---
+Task ID: 1
+Agent: Main Agent
+Task: Restructure Admin Panel and Team Workspace sidebar navigation
+
+Work Log:
+- Read and analyzed all dashboard files (admin-dashboard.tsx, team-dashboard.tsx, client-dashboard.tsx, app-shell.tsx, page.tsx, types/index.ts)
+- Updated AppRoute types: Admin now has `task-dashboard` and `task-view` tabs; Team simplified to `project`, `task`, `messages`, `profile`
+- Updated app-shell.tsx sidebar: Admin shows 8 items (Overview, Users, Onboarding, Projects, Task Dashboard, Task, Messages, Profile); Team shows 4 items (Projects, Task, Messages, Profile)
+- Updated page.tsx: Admin `task-dashboard` renders AdminTasks (table view), Admin `task-view` renders TeamTasks (kanban board); Team `task` renders TeamTasks (kanban board)
+- Removed TeamMyTasks import (file now unused)
+- Added Kanban icon import to app-shell.tsx
+- Updated AdminTasks heading from "Tasks" to "Task Dashboard"
+- Ran ESLint: 0 errors, 4 pre-existing warnings
+- Verified via agent-browser: all sidebar items correct for both admin and team, all pages render correctly
+
+Stage Summary:
+- Admin Panel sidebar: Overview → Users → Onboarding → Projects → Task Dashboard → Task → Messages → Profile
+- Team Workspace sidebar: Projects → Task → Messages → Profile
+- Admin "Task Dashboard" shows the table/list view of all tasks across projects
+- Admin "Task" shows the same kanban board as Team Workspace "Task" (shared TeamTasks component)
+- Team "My Tasks" (separate filtered task list) removed from navigation; TeamTasks kanban board is the primary task interface

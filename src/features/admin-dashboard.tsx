@@ -1601,7 +1601,7 @@ export function AdminTasks() {
   return (
     <motion.div {...fadeIn} className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">Tasks</h2>
+        <h2 className="text-xl font-semibold">Task Dashboard</h2>
         <p className="text-sm text-muted-foreground">View and manage all tasks across projects</p>
       </div>
 
