@@ -41,7 +41,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save
+  KeyRound, Download, Save, FileArchive, FileDown
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -738,19 +738,35 @@ export function AdminOnboarding() {
                         <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
                       )}
 
-                      {/* Download submission button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 h-8 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
-                        }}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download Report
-                      </Button>
+                      {/* Download buttons */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-8 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
+                          }}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download Report
+                        </Button>
+                        {Object.keys(parsedFiles).filter(([_, f]) => f).length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              window.open(`/api/onboarding/download-documents?submissionId=${sub.id}`, '_blank')
+                            }}
+                          >
+                            <FileArchive className="h-3.5 w-3.5" />
+                            Download Documents
+                          </Button>
+                        )}
+                      </div>
 
                       {Object.keys(parsedResponses).length > 0 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -770,10 +786,11 @@ export function AdminOnboarding() {
                           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Documents</p>
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(parsedFiles).filter(([_, f]) => f).map(([key, f]) => (
-                              <a key={key} href={f!.url} target="_blank" rel="noopener noreferrer"
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm">
-                                <FileText className="h-3.5 w-3.5 text-primary" />
+                              <a key={key} href={f!.url} download={f!.originalName} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm group">
+                                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
                                 <span className="max-w-[180px] truncate">{f!.originalName}</span>
+                                <FileDown className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                               </a>
                             ))}
                           </div>
