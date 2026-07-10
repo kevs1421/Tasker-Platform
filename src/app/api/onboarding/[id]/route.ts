@@ -30,14 +30,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { action, ...data } = body
 
     if (action === 'submit') {
-      // Client submits their onboarding
-      const updated = await db.onboarding.update({
-        where: { id },
-        data: { status: 'submitted', submittedAt: new Date(), responsesJson: data.responsesJson, updatedAt: new Date() },
-        include: { form: true, client: { select: { id: true, name: true } } }
-      })
-      await db.activityLog.create({ data: { action: 'onboarding_submitted', details: `Submitted onboarding for "${updated.form.title}"`, userId: updated.clientId } })
-      return NextResponse.json({ onboarding: updated })
+      const { formId, clientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
+
+      // Check if this is a new submission (formId + clientId) or updating an existing one (id matches an Onboarding record)
+      let result
+      const existingSubmission = await db.onboarding.findUnique({ where: { id } })
+
+      if (existingSubmission) {
+        // Update existing submission
+        result = await db.onboarding.update({
+          where: { id },
+          data: { status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || existingSubmission.responsesJson, updatedAt: new Date() },
+          include: { form: true, client: { select: { id: true, name: true } } }
+        })
+      } else if (formId && clientId) {
+        // Create new submission (upsert to handle the unique constraint on [formId, clientId])
+        result = await db.onboarding.upsert({
+          where: { formId_clientId: { formId, clientId } },
+          create: { formId, clientId, status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || '{}' },
+          update: { status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || '{}', updatedAt: new Date() },
+          include: { form: true, client: { select: { id: true, name: true } } }
+        })
+      } else {
+        return NextResponse.json({ error: 'Missing formId and clientId for new submission' }, { status: 400 })
+      }
+
+      await db.activityLog.create({ data: { action: 'onboarding_submitted', details: `Submitted onboarding for "${result.form.title}"`, userId: result.clientId } })
+      return NextResponse.json({ onboarding: result })
     }
 
     if (action === 'review') {
