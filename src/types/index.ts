@@ -70,6 +70,15 @@ export interface ActivityLog {
   createdAt: string; user?: User;
 }
 
+export interface TimeEntry {
+  id: string; userId: string; projectId?: string | null; taskId?: string | null;
+  description?: string | null; date: string;
+  timeIn?: string | null; timeOut?: string | null;
+  duration: number; status: 'idle' | 'timed_in' | 'completed';
+  createdAt: string; updatedAt: string;
+  user?: User; project?: Project; task?: Task;
+}
+
 export interface DashboardStats {
   totalTasks: number; completedTasks: number; inProgressTasks: number;
   inReviewTasks: number; todoTasks: number; overdueTasks: number;
@@ -82,6 +91,6 @@ export type Role = 'admin' | 'team' | 'client'
 // SPA route types
 export type AppRoute =
   | { page: 'login' }
-  | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'messages' | 'profile' }
-  | { page: 'team-dashboard'; tab: 'project' | 'task' | 'messages' | 'profile' }
+  | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'time-tracking' | 'messages' | 'profile' }
+  | { page: 'team-dashboard'; tab: 'project' | 'task' | 'time-tracking' | 'messages' | 'profile' }
   | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'messages' | 'profile' }

@@ -660,3 +660,69 @@ Stage Summary:
 - Client portal projects page now shows only project cards with inline progress bars
 - No charts, graphs, or dashboard summary statistics visible to clients
 - All lint checks pass (0 errors, only pre-existing warnings)
+---
+Task ID: 5
+Agent: admin-time-tracking-builder
+Task: Build AdminTimeTracking component
+
+Work Log:
+- Read end of /home/z/my-project/src/features/admin-dashboard.tsx (line 3017) and verified the file structure
+- Read /home/z/my-project/worklog.md for project context and existing work patterns
+- Read /home/z/my-project/src/types/index.ts to confirm TimeEntry, User, Project, Task interfaces
+- Verified existing imports: shadcn/ui (Card, Button, Badge, Input, Label, Dialog, Select, Table, ScrollArea, Skeleton, Avatar, Separator, Tabs, Tooltip, DropdownMenu, AlertDialog), framer-motion, lucide-react (Clock, CircleDot, TrendingUp, Trash2, Loader2, Shield), sonner toast, date-fns format, useAuthStore, getInitials, formatDate, formatRelativeTime, cn
+- Appended AdminTimeTracking component after line 3017 (602 new lines, file now 3618 lines total)
+- Used LocalTimeEntry interface inline (matching TimeEntry shape) to avoid modifying top-of-file imports
+- Implemented: Header with Clock icon and subtitle, Summary Stats row (3 cards: Active Timers, Today's Hours, Week's Hours), Filters row (User dropdown, Date preset buttons, Project dropdown), Active Timers section with live elapsed timer (HH:MM:SS updating every second), Time Entries Table with sort-by-date-desc, Status badges, Duration formatting (Xh Ym), Delete with AlertDialog confirmation
+- Ran bun run lint: 0 errors, 4 pre-existing warnings only
+
+Stage Summary:
+- AdminTimeTracking exported function appended to src/features/admin-dashboard.tsx
+- Features: summary stat cards, filter bar (user/date/project), live active timer cards with time-out button, full entries table with delete
+- Uses all existing shadcn/ui components and project utilities (no new imports needed)
+- Lint clean (0 new errors/warnings)
+---
+Task ID: 6
+Agent: team-time-tracking-builder
+Task: Build TeamTimeTracking component
+
+Work Log:
+- Read first 50 lines and last 10 lines of team-dashboard.tsx to understand existing imports and file structure
+- Added Play, Square, Timer to existing lucide-react import line
+- Appended TeamTimeTracking component (~680 lines) after line 1842 (end of existing file)
+- Component includes: formatDuration/formatElapsed helper functions, TimeEntry type, DateFilter type
+- Implemented: Header with Clock icon, Big Time In/Out button (emerald for time-in, red for time-out) with live HH:MM:SS elapsed timer, Time In dialog with optional Project/Task/Description fields, Summary Stats row (3 cards: Today/Week/Month hours), Date filter preset buttons (Today/This Week/This Month/All Time), Grouped-by-date card-based entries list with framer-motion animations, Empty state with Clock icon, Delete with AlertDialog confirmation
+- Fixed lint warning by removing unnecessary eslint-disable comment
+- Ran bun run lint: 0 errors, only pre-existing warnings
+
+Stage Summary:
+- TeamTimeTracking exported function appended to src/features/team-dashboard.tsx (lines 1844-2519)
+- Features: prominent time-in/out button, live elapsed timer, project/task selection dialog, summary stats, date filtering, grouped entries with animations, delete confirmation
+- No indigo/blue — uses emerald for positive actions, red for stop, amber for active timers
+- All using existing shadcn/ui imports, framer-motion, lucide-react, sonner toasts
+- Lint clean (0 new errors/warnings)
+
+---
+Task ID: time-tracking-feature
+Agent: main
+Task: Add time-in/time-out tracking for admin and team roles
+
+Work Log:
+- Added TimeEntry model to Prisma schema with fields: userId, projectId?, taskId?, description?, date, timeIn, timeOut, duration (minutes), status (idle/timed_in/completed)
+- Added reverse relations on User, Project, Task models
+- Ran prisma db push and prisma generate
+- Added TimeEntry TypeScript interface and 'time-tracking' tab to admin and team AppRoute types
+- Created /api/time-entries route (GET with filters, POST time_in/manual actions)
+- Created /api/time-entries/[id] route (PATCH time_out/cancel/update, DELETE)
+- Added Clock icon import and Time Tracking nav items to admin (9 items) and team (5 items) sidebar
+- Built AdminTimeTracking component (~600 lines): summary stats, user/project/date filters, active timers with live elapsed, full entries table with status badges and delete
+- Built TeamTimeTracking component (~675 lines): big Time In/Time Out button, Clock In dialog (project/task/description), live timer, summary stats, date filters, grouped entries list
+- Wired both components in page.tsx route mapping
+- Fixed hydration error: changed <p> to <span> for Skeleton-wrapped stat values in AdminTimeTracking
+- Verified end-to-end: Sarah Chen (team) timed in, saw live timer, timed out, entry showed as "Completed 0h 1m"
+- Verified admin sees Sarah's entry in the time entries table
+
+Stage Summary:
+- Full time tracking feature working for both admin and team roles
+- API supports time_in, time_out, cancel, manual entry, filtering by user/project/date
+- Admin view: monitor all team members, active timers with live elapsed, filterable table
+- Team view: personal time tracking with prominent Time In/Out button, optional project/task/description

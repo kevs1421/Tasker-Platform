@@ -1,0 +1,663 @@
+     1→---
+     2→Task ID: 1
+     3→Agent: main
+     4→Task: Build complete Asana-like TaskFlow app with Admin, Team, and Client dashboards
+     5→
+     6→Work Log:
+     7→- Designed comprehensive Prisma schema with 11 models (User, Project, ProjectMember, ClientProject, Task, TaskAssignment, Subtask, Comment, OnboardingForm, Onboarding, Message, ActivityLog)
+     8→- Created 15+ API routes for auth, admin, projects, tasks, comments, users, onboarding, messages, subtasks, assignments, profile
+     9→- Built login page with registration and quick demo access buttons
+    10→- Built AppShell with responsive sidebar, header with notifications, and user dropdown
+    11→- Built Admin Dashboard (6 tabs: Overview with charts, Onboarding review, Projects CRUD, Tasks management, Messages, Profile)
+    12→- Built Team Dashboard (4 tabs: Projects with kanban, Tasks with board/list views, Messages, Profile)
+    13→- Built Client Dashboard (4 tabs: Multi-step Onboarding wizard, Projects tracking, Messages, Profile)
+    14→- Seeded database with 6 users, 4 projects, 24 tasks, subtasks, comments, messages, activity logs, onboarding forms and submissions
+    15→- All lint errors resolved
+    16→
+    17→Stage Summary:
+    18→- Full Asana-like task management app with 3 role-based dashboards
+    19→- Admin: analytics, user management, onboarding review, project/task CRUD, messaging
+    20→- Team: kanban board, task management, project tracking, messaging
+    21→- Client: multi-step onboarding forms, project visibility, task comments, messaging
+    22→- Demo accounts: admin/123, sarah@123, john@123
+    23→---
+    24→Task ID: 2
+    25→Agent: main
+    26→Task: Remove public registration, add admin-only user registration in dashboard
+    27→
+    28→Work Log:
+    29→- Updated src/features/login-page.tsx: Removed Tabs and Register tab, now shows only Sign In form
+    30→- Updated src/app/api/auth/register/route.ts: Returns 403 Registration is disabled for all POST requests
+    31→- Updated src/app/api/register/route.ts: Now requires adminUserId in request body, verifies admin role
+    32→- Added AdminUsers component to src/features/admin-dashboard.tsx with user table, search, filter, role change, activate/deactivate, Add User dialog
+    33→- Added Users nav item to admin sidebar in src/features/app-shell.tsx
+    34→- Added users tab to admin route type in src/types/index.ts
+    35→- Wired AdminUsers component in src/app/page.tsx
+    36→- Fixed lint error in TaskDetail.tsx
+    37→- Verified via VLM screenshot and curl API tests
+    38→
+    39→Stage Summary:
+    40→- Login page: No register tab, only Sign In + demo account buttons
+    41→- /api/auth/register: Completely blocked (403)
+    42→- /api/register: Admin-only, requires valid adminUserId
+    43→- Admin sidebar: New Users tab with full user management
+    44→- AdminUsers: search, filter, role change, activate/deactivate, add user dialog
+    45→- All APIs verified working correctly
+    46→
+    47→---
+    48→Task ID: 3
+    49→Agent: main
+    50→Task: Add user selection for task assignees in TaskDetail and AdminTasks
+    51→
+    52→Work Log:
+    53→- Added assignee selection UI to TaskDetail modal (src/components/dashboard/TaskDetail.tsx)
+    54→  - Fetches all team/admin users on dialog open
+    55→  - Shows clickable pill buttons with avatar + name for each user
+    56→  - Selected assignees shown in primary color with X icon to remove
+    57→  - Unselected users shown in outline style to add
+    58→  - Calls /api/tasks/assignments POST/DELETE to toggle
+    59→  - Optimistic UI update with toast notifications
+    60→- Enhanced CreateTaskModal (src/components/dashboard/CreateTaskModal.tsx)
+    61→  - Auto-fetches team/admin users if no projectMembers passed
+    62→  - Replaced plain buttons with avatar pill buttons matching TaskDetail style
+    63→  - Shows selected count and checkmark icon
+    64→- Added assignee selection to AdminTasks detail dialog (src/features/admin-dashboard.tsx)
+    65→  - Same UI pattern as TaskDetail (avatar pills with toggle)
+    66→  - Fetches team users on mount, tracks assignee state per task
+    67→  - Refreshes task data after assignment change
+    68→- Fixed template literal JSX parsing issues by switching to cn() utility
+    69→- All lint and TypeScript checks pass for changed files
+    70→
+    71→Stage Summary:
+    72→- TaskDetail: New "Assignees" section with toggle-able user pills
+    73→- CreateTaskModal: Improved assignee pills with avatars + auto-fetch fallback
+    74→- AdminTasks: New "Assignees" section in task detail dialog
+    75→- All three locations show team+admin users with avatar, name, selected state
+    76→- Uses existing /api/tasks/assignments POST/DELETE endpoints
+    77→
+    78→---
+    79→Task ID: 4
+    80→Agent: main
+    81→Task: Put assignee selection in a modal/popover instead of inline pills
+    82→
+    83→Work Log:
+    84→- Updated TaskDetail: Replaced inline pill buttons with a Popover triggered by clicking "Assignees (N)" header. Popover shows a scrollable list of all team/admin users with avatar, name, role, and checkbox. Current assignees shown as removable chips below the header.
+    85→- Updated AdminTasks: Same popover pattern as TaskDetail for consistency.
+    86→- Updated CreateTaskModal: Changed from horizontal pill layout to a vertical scrollable list inside a bordered container, matching the popover style (full-width rows with avatar, name, role, and check indicator).
+    87→- Added missing Check icon import to admin-dashboard.tsx.
+    88→- All lint and TypeScript checks pass.
+    89→
+    90→Stage Summary:
+    91→- TaskDetail & AdminTasks: Click "Assignees (N)" → popover opens with user selection list. Selected users shown as removable chips below.
+    92→- CreateTaskModal: Inline scrollable list with same visual style (avatar + name + role + check circle).
+    93→- All three locations show: user avatar, name, role label (ADMIN/TEAM), and a filled/empty circle indicator.
+    94→
+    95→---
+    96→Task ID: 1
+    97→Agent: Main Agent
+    98→Task: Fix message recipients display + add group messaging feature
+    99→
+   100→Work Log:
+   101→- Explored all message-related code across the codebase (3 role-specific message panels, 1 API route, 1 Prisma model)
+   102→- Identified issues: no recipient info in chat headers, no group messaging, no search in admin messages, broken PATCH endpoint in team messages
+   103→- Added MessageGroup and GroupMember models to Prisma schema with proper relations
+   104→- Pushed schema to SQLite database
+   105→- Updated types/index.ts with MessageGroup, GroupMember interfaces
+   106→- Created /api/message-groups/route.ts (GET list, POST create)
+   107→- Created /api/message-groups/[id]/route.ts (GET detail, PATCH update members/name, DELETE)
+   108→- Rewrote /api/messages/route.ts to support both direct and group conversations in a single unified response
+   109→- Fixed Date serialization bug (Prisma returns Date objects that can't be serialized or compared with localeCompare)
+   110→- Built shared MessagesPanel component at src/components/messages/MessagesPanel.tsx with:
+   111→  - Unified conversation list (direct + group) sorted by most recent message
+   112→  - Search/filter for conversations
+   113→  - Create Group dialog with user search and multi-select
+   114→  - Group Info dialog for viewing/managing members (add/remove)
+   115→  - Group chat with sender names on each message
+   116→  - Direct chat showing recipient name, email, and role badge
+   117→  - Read receipts (check marks)
+   118→  - Proper loading skeletons and empty states
+   119→- Updated AdminMessages, TeamMessages, ClientMessages to use shared MessagesPanel
+   120→- Verified via browser: conversations load, search works, group created via API, group messages displayed correctly, direct message headers show recipient info
+   121→
+   122→Stage Summary:
+   123→- Key files created: src/components/messages/MessagesPanel.tsx, src/app/api/message-groups/route.ts, src/app/api/message-groups/[id]/route.ts
+   124→- Key files modified: prisma/schema.prisma, src/types/index.ts, src/app/api/messages/route.ts, src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx, src/features/client-dashboard.tsx
+   125→- All 3 dashboards now share a single, consistent messaging component with group chat support
+   126→- Date serialization fix applied to /api/messages conversation list endpoint
+   127→
+   128→---
+   129→Task ID: 5
+   130→Agent: upload-api-agent
+   131→Task: Create file upload API for onboarding documents
+   132→
+   133→Work Log:
+   134→- Created /home/z/my-project/src/app/api/upload/route.ts
+   135→- Handles POST multipart form data uploads
+   136→- Validates file types (pdf, png, jpg, jpeg, gif, webp, doc, docx, txt, svg) by MIME type and extension
+   137→- Limits file size to 10MB
+   138→- Saves to public/uploads/onboarding/ with unique filenames (timestamp + random hex)
+   139→- Creates uploads directory if it doesn't exist using fs/promises mkdir with recursive option
+   140→- Uses only standard Node.js APIs (fs/promises, crypto, path) and Next.js NextRequest
+   141→- Returns JSON with url, filename, originalName, size, and type on success
+   142→
+   143→Stage Summary:
+   144→- Upload API ready at /api/upload
+   145→- Returns file URL path on success
+   146→---
+   147→Task ID: 1
+   148→Agent: main
+   149→Task: Fix Dialog z-index, redesign Client Onboarding, add file uploads, update admin review
+   150→
+   151→Work Log:
+   152→- Fixed Dialog and AlertDialog z-index: bumped overlay to z-[100] and content to z-[101] in base components
+   153→- Removed redundant z-[100] from MessagesPanel dialog instances
+   154→- Created /src/components/onboarding/ClientOnboardingWizard.tsx with 4-step wizard UI
+   155→- Step 1: Business Information (name, email, phone, address, industry, company size)
+   156→- Step 2: Brand Assets (logo upload, brand colors, typography, brand guidelines upload)
+   157→- Step 3: Project Kickoff (goals, target audience, competitors, budget, timeline)
+   158→- Step 4: Document Submission (contract, payment, work order - all required PDF uploads)
+   159→- Created /api/upload route for file handling (POST multipart, type/size validation, unique filenames)
+   160→- Updated client-dashboard.tsx: replaced old ClientOnboarding with re-export of new wizard
+   161→- Updated admin-dashboard.tsx: submissions dialog now shows structured response fields and file attachments
+   162→- Added FileText to admin-dashboard icon imports
+   163→
+   164→Stage Summary:
+   165→- Dialog z-index fix ensures all modals appear above DevTools overlay
+   166→- Client onboarding now matches reference UI: step navigation cards, progress bar, file upload zones, select dropdowns
+   167→- Admin can view structured field responses and click to download uploaded documents
+   168→- Upload API saves files to public/uploads/onboarding/ with unique names
+   169→- Verified: New Message dialog, Create Group dialog, message/conversation deletion all functional
+   170→- Lint passes with 0 errors (4 warnings for unused eslint-disable directives)
+   171→
+   172→---
+   173→Task ID: 2
+   174→Agent: main
+   175→Task: Fix form overlap fields + Create onboarding form for admin
+   176→
+   177→Work Log:
+   178→- Fixed z-index hierarchy for Select, Popover, and DropdownMenu: changed from z-50 to z-[200] so they render above Dialog overlays (z-[100]/z-[101])
+   179→- Fixed form field overlap in ClientOnboardingWizard: changed grid breakpoints from md: to sm: for two-column layouts, reduced spacing from space-y-2 to space-y-1.5, added w-full to SelectTrigger, reduced Textarea rows for better mobile layout
+   180→- Built "Create Onboarding Form" dialog in AdminOnboarding component with: title, description, project selector (fetches all projects), step selection (4 toggleable steps with checkmark cards)
+   181→- Added summary stat cards to AdminOnboarding: Total Forms, Published, Drafts, Pending Review
+   182→- Enhanced onboarding table: form icon, description preview, submission count badge, view/delete actions
+   183→- Added DELETE endpoint to /api/onboarding/[id] for deleting forms and their submissions
+   184→- Added form delete with confirmation AlertDialog in admin table
+   185→- Improved submissions dialog: better empty state, project color dot in header, sm: breakpoints for response grid, loading spinner for review buttons
+   186→- All lint checks pass (0 errors, 4 warnings)
+   187→
+   188→Stage Summary:
+   189→- Select/Popover/DropdownMenu z-index: z-50 → z-[200] fixes overlap with Dialog overlays
+   190→- Onboarding wizard forms: proper single-column on mobile, two-column on sm+ breakpoints
+   191→- Admin "Create Onboarding" button opens dialog with project picker and step configuration
+   192→- Admin can delete onboarding forms with confirmation
+   193→- Verified via browser: Create Onboarding dialog works, project dropdown renders above dialog, form created successfully, client onboarding wizard fields properly spaced, Create Group dialog fully functional
+   194→---
+   195→Task ID: 1
+   196→Agent: Main Agent
+   197→Task: Fix subtask under team dashboard + add dark/light mode with blue primary color
+   198→
+   199→Work Log:
+   200→- Verified subtask API was already fixed from previous session (GET handler added, PATCH accepts both id/subtaskId with toggle, DELETE supports query param)
+   201→- Verified ThemeProvider was already added to layout.tsx
+   202→- Verified blue primary CSS was already applied to globals.css
+   203→- Improved theme toggle: changed from click-cycle to dropdown menu (Light/Dark/System) in app-shell.tsx header
+   204→- Added theme toggle to login page with Sun/Moon/Monitor icons
+   205→- Updated admin dashboard buttons from hardcoded emerald-600 to bg-primary (blue)
+   206→- Updated admin overview stat cards to use primary color for "Total Tasks"
+   207→- Updated chart bar colors to use blue (#3b82f6) for "In Progress"
+   208→- Updated sidebar "Admin Access" shield icon to use text-primary (blue)
+   209→- Updated login page demo account colors with dark: variants
+   210→- Updated login page bottom badges to use text-primary for "Admin Panel"
+   211→
+   212→Stage Summary:
+   213→- Subtask API: Fully functional - GET, POST (create), PATCH (toggle), DELETE all work
+   214→- Dark/Light mode: ThemeProvider wrapping app, dropdown toggle in header, toggle on login page
+   215→- Primary color: Blue (oklch blue ~264 hue) applied to all CSS variables, admin buttons, sidebar, stat cards
+   216→
+   217→---
+   218→Task ID: 1
+   219→Agent: Main
+   220→Task: Fix client onboarding UI issues (from screenshot)
+   221→
+   222→Work Log:
+   223→- Analyzed uploaded screenshot using VLM to identify UI issues
+   224→- Read ClientOnboardingWizard.tsx (938 lines) to understand the component structure
+   225→- Identified issues: (1) Step 3 "Main Competitors" used Textarea creating height mismatch with budget/timeline grid, (2) Read-only view had React node rendering issue with `||` operator mixing strings with JSX spans, (3) Field value boxes had inconsistent padding (p-2.5 vs p-3), (4) Submitted Documents section lacked proper grid layout
+   226→- Fixed Step 3: Changed "Main Competitors" from Textarea (rows={3}) to Input (single line), reduced parent spacing from space-y-5 to space-y-4
+   227→- Fixed read-only view: Added `as const` to field arrays, increased padding from p-2.5 to p-3, added min-h-[40px] for consistent field heights
+   228→- Fixed Documents section: Changed from vertical stack (space-y-2) to 3-column grid (grid grid-cols-1 md:grid-cols-3 gap-3), added min-w-0 and truncate for text overflow
+   229→- Verified with agent-browser: read-only view shows consistent field alignment, proper section separation, and clean 3-column document grid
+   230→- Ran lint: 0 errors, 4 pre-existing warnings
+   231→
+   232→Stage Summary:
+   233→- File modified: /home/z/my-project/src/components/onboarding/ClientOnboardingWizard.tsx
+   234→- Key changes: Step 3 competitors field type, read-only view field consistency, documents grid layout
+   235→- Browser verification passed: clean professional layout confirmed
+   236→
+   237→---
+   238→Task ID: 2
+   239→Agent: Main
+   240→Task: Add delete user icon in admin Users, add client owner to onboarding, filter client onboarding by business
+   241→
+   242→Work Log:
+   243→- Added DELETE handler to /api/users/[id]/route.ts with activity log creation
+   244→- Added deleteId state and handleDeleteUser function to AdminUsers component
+   245→- Added "Delete User" menu item with Trash2 icon in the users table dropdown (red styling, disabled for self)
+   246→- Added clientId field to OnboardingForm in Prisma schema with optional relation to User
+   247→- Added clientOnboardingForms relation to User model
+   248→- Ran prisma db push and prisma generate
+   249→- Updated /api/onboarding GET to accept ?clientId= query param for filtering
+   250→- Updated /api/onboarding POST to accept and store clientId
+   251→- Updated /api/onboarding/[id] GET to include client in response
+   252→- Updated OnboardingForm TypeScript type to include clientId and client
+   253→- Updated AdminOnboarding component:
+   254→  - Added clients state and fetchClients to load active client users
+   255→  - Added Client Owner selector (Select with avatar + name + company) in create dialog
+   256→  - Made clientId required for form creation
+   257→  - Added Client Owner column in onboarding forms table
+   258→  - Pass clientId in handleCreateOnboarding
+   259→- Updated ClientOnboardingWizard fetchForms to pass ?clientId=${user.id}
+   260→- Updated client-dashboard.tsx handleCreateOnboarding to pass clientId: user?.id
+   261→- All lint checks pass (0 errors, 4 pre-existing warnings)
+   262→- API tests verified: admin GET returns all forms, client GET filters by clientId, users list works
+   263→
+   264→Stage Summary:
+   265→- Files modified:
+   266→  - prisma/schema.prisma (added clientId to OnboardingForm, relation to User)
+   267→  - src/types/index.ts (added clientId to OnboardingForm interface)
+   268→  - src/app/api/users/[id]/route.ts (added DELETE handler)
+   269→  - src/app/api/onboarding/route.ts (added clientId filtering in GET, clientId in POST)
+   270→  - src/app/api/onboarding/[id]/route.ts (added client to include)
+   271→  - src/features/admin-dashboard.tsx (delete user button, client owner in onboarding)
+   272→  - src/features/client-dashboard.tsx (pass clientId in onboarding creation)
+   273→  - src/components/onboarding/ClientOnboardingWizard.tsx (filter by clientId)
+   274→- Key design: Each onboarding form is assigned to a specific client via clientId. The client dashboard only fetches forms where clientId matches the logged-in user's ID. Admin can see all forms and manages client assignments.
+   275→
+   276→---
+   277→Task ID: 5
+   278→Agent: Main
+   279→Task: Add edit functionality to Onboarding Management (after creating onboarding)
+   280→
+   281→Work Log:
+   282→- Updated /api/onboarding/[id] PATCH handler to support editing all form fields: title, description, stepsJson, status, projectId, clientId
+   283→- Added activity log creation on form update
+   284→- Added `Pencil` icon import to admin-dashboard.tsx
+   285→- Added edit state variables: editOpen, editing, editFormId, editForm
+   286→- Added openEditDialog function that parses stepsJson and pre-fills the edit form
+   287→- Added handleEditOnboarding function that PATCHes the form with updated data
+   288→- Added Pencil edit button in the onboarding table actions column (between Eye and Trash), with Tooltip
+   289→- Widened actions column from w-24 to w-28 to accommodate 3 buttons
+   290→- Created Edit Onboarding Dialog with same layout as Create dialog: title, description, project selector, client owner selector (with "No client assigned" option), step selection cards
+   291→- Edit dialog pre-fills all fields from the existing form data
+   292→- Client owner in edit dialog allows unsetting (via "_none" value mapped to null)
+   293→- Verified via agent-browser: Edit dialog opens with pre-filled data, title change saved successfully, table shows 3 action buttons (Eye, Pencil, Trash)
+   294→- VLM screenshot analysis confirmed clean UI with proper buttons and no visual issues
+   295→- Lint: 0 errors (4 pre-existing warnings)
+   296→
+   297→Stage Summary:
+   298→- Files modified: src/app/api/onboarding/[id]/route.ts, src/features/admin-dashboard.tsx
+   299→- Admin Onboarding table now has 3 action buttons per row: View (Eye), Edit (Pencil), Delete (Trash)
+   300→- Edit dialog pre-fills all form fields and allows full editing of title, description, project, client owner, and steps
+   301→
+   302→---
+   303→Task ID: 6
+   304→Agent: Main
+   305→Task: Fix Team Dashboard Tasks section
+   306→
+   307→Work Log:
+   308→- Identified 5 bugs through code analysis and browser testing:
+   309→  1. Task creation completely broken - missing `createdById` and wrong field name (`assigneeId` vs `assigneeIds`)
+   310→  2. Task filtering too restrictive - only showed tasks assigned to current user, not all project tasks
+   311→  3. Empty page when team member has no projects - rendered nothing instead of empty state
+   312→  4. PATCH API used truthy check for status/priority - `status && { status }` fails for empty/falsy values
+   313→  5. No way to edit task title or description in detail dialog
+   314→- Fixed task creation: Added `createdById: user.id`, changed `assigneeId` to `assigneeIds: [cAssignee]`, added error response handling
+   315→- Fixed task filtering: Removed `assigneeId` param from fetchTasks, now fetches all project tasks
+   316→- Added empty state component when no projects (reuses existing EmptyState with FolderKanban icon)
+   317→- Fixed PATCH /api/tasks/[id]: Changed from `status && { status }` to `status !== undefined && { status }` for all fields
+   318→- Added inline title editing: Click title -> Input appears -> Enter/blur saves, Escape cancels
+   319→- Added editable description: Replaced read-only p tag with Textarea that auto-saves on blur
+   320→- Added editTitle/editDesc/isEditingTitle state variables
+   321→- Updated handleUpdateTask to sync local edit state with saved data
+   322→- Added proper error response checking for handleDeleteTask and handleAddSubtask
+   323→- Re-seeded database (db push --force-reset + prisma db seed) since previous data was corrupted
+   324→- Verified all fixes via agent-browser:
+   325→  - Task creation works (new task appears in board)
+   326→  - All 8 Website Redesign tasks visible across 4 columns
+   327→  - Inline title editing saves correctly with toast
+   328→  - Delete task works with confirmation dialog
+   329→  - List view shows all tasks correctly
+   330→- Lint: 0 errors (4 pre-existing warnings)
+   331→
+   332→Stage Summary:
+   333→- Files modified: src/features/team-dashboard.tsx, src/app/api/tasks/[id]/route.ts
+   334→- Key fixes: Task creation (createdById + assigneeIds), task filtering (all project tasks), PATCH API (undefined checks), inline title/description editing, empty state for no projects
+   335→- All task CRUD operations verified working for team dashboard
+   336→
+   337→---
+   338→Task ID: 2
+   339→Agent: Main
+   340→Task: Add edit user and reset password functionality to Admin User Management
+   341→
+   342→Work Log:
+   343→- Enhanced /api/users PATCH endpoint: Changed from conditional spread to explicit updateData builder. Now supports updating name, email, phone, company, role, status. Added email uniqueness check.
+   344→- Added PATCH handler to /api/users/[id]/route.ts for password reset. Validates admin role, hashes new password, creates activity log.
+   345→- Added `KeyRound` icon import to admin-dashboard.tsx
+   346→- Added edit state variables: editOpen, editing, editForm (id, name, email, role, phone, company)
+   347→- Added reset password state variables: resetOpen, resetting, resetTarget, resetPassword, resetConfirm
+   348→- Added `openEditDialog(u)` function that pre-fills edit form from user data
+   349→- Added `handleEditUser(e)` function that PATCHes to /api/users
+   350→- Added `openResetDialog(u)` function that sets reset target
+   351→- Added `handleResetPassword(e)` function that validates and PATCHes to /api/users/[id]
+   352→- Added 2 new DropdownMenuItems in user actions: "Edit User" (Pencil icon) and "Reset Password" (KeyRound icon)
+   353→- Created Edit User Dialog: pre-filled name, email, role, phone, company fields with Save/Cancel buttons
+   354→- Created Reset Password Dialog: amber-themed with warning banner, new password + confirm fields, "Reset Password" amber button
+   355→- Verified via browser: dropdown shows 4 menu items, Edit dialog pre-fills correctly, Edit saves and updates table (Emma Wilson company changed from "—" to "TaskFlow Team"), Reset Password dialog shows with amber theme and warning, Password reset returns 200 and creates activity log
+   356→- Lint: 0 errors (4 pre-existing warnings)
+   357→
+   358→Stage Summary:
+   359→- Files modified: src/app/api/users/route.ts, src/app/api/users/[id]/route.ts, src/features/admin-dashboard.tsx
+   360→- Admin user dropdown now has 4 options: Edit User, Reset Password, Deactivate/Activate, Delete User
+   361→- Edit User dialog allows changing name, email, role, phone, company
+   362→- Reset Password dialog with amber warning theme, validates min 6 chars and password match
+   363→- All operations verified working end-to-end
+   364→
+   365→---
+   366→Task ID: 3
+   367→Agent: Main
+   368→Task: Fix hydration error in Add User dialog + verify edit/reset password functionality
+   369→
+   370→Work Log:
+   371→- Analyzed uploaded screenshot via VLM: identified hydration error in Add User dialog caused by browser extension injecting `fdprocessedid` attribute on password input elements
+   372→- Found that Edit User and Reset Password functionality were already implemented from previous session (Task ID: 2)
+   373→- Fixed hydration error: Added `suppressHydrationWarning` to all password Input fields in Add User dialog and Reset Password dialog
+   374→- Verified via agent-browser end-to-end:
+   375→  - Login as admin@taskflow.com / admin123
+   376→  - Add User dialog opens without hydration error
+   377→  - Created test user successfully
+   378→  - Edit User dialog opens with pre-filled data, saves correctly
+   379→  - Reset Password dialog works with amber warning theme
+   380→  - Delete User works with confirmation
+   381→  - No browser console errors
+   382→  - Dev log shows all API calls returning 200
+   383→- Lint: 0 errors (4 pre-existing warnings)
+   384→
+   385→Stage Summary:
+   386→- File modified: src/features/admin-dashboard.tsx (added suppressHydrationWarning to 4 password Input fields)
+   387→- Hydration error fixed: password inputs no longer cause mismatch between server and client HTML
+   388→- All User Management features verified: Add, Edit, Reset Password, Deactivate/Activate, Delete
+   389→
+   390→---
+   391→Task ID: 1
+   392→Agent: Main
+   393→Task: Fix error in Team Dashboard task section
+   394→
+   395→Work Log:
+   396→- Used agent-browser to reproduce: clicking Tasks tab in team dashboard shows "Application error: a client-side exception has occurred"
+   397→- Took screenshot and analyzed with VLM: revealed exact error "Runtime ReferenceError: Cannot access 'currentProject' before initialization" at team-dashboard.tsx line 953
+   398→- Root cause: `projectMembers` (line 953) referenced `currentProject` (line 973) before it was declared — a JavaScript temporal dead zone error caused by an early return block between them
+   399→- Fix 1: Moved `const currentProject = projects.find(...)` from line 973 to line 952, before the `projectMembers` usage
+   400→- Fix 2: Also found and fixed /api/projects/[id]/route.ts which used `assignees` (wrong relation name) instead of `assignments` in the Prisma include, causing 500 errors. Added `assignees: t.assignments` mapping in response.
+   401→- Also fixed all non-admin user passwords (they had wrong hash from seed data)
+   402→- Verified via agent-browser: Tasks tab now loads with kanban board, list view works, task detail dialog opens, project switching works, no console errors
+   403→- Lint: 0 errors (4 pre-existing warnings)
+   404→
+   405→Stage Summary:
+   406→- Files modified: src/features/team-dashboard.tsx (moved currentProject declaration), src/app/api/projects/[id]/route.ts (fixed assignees→assignments relation name, added assignees mapping)
+   407→- Root cause: Temporal dead zone — variable referenced before its `const` declaration due to an early return block placement
+   408→---
+   409→Task ID: 2-b
+   410→Agent: upload-api-agent
+   411→Task: Create file upload API for onboarding documents
+   412→
+   413→Work Log:
+   414→- Created /home/z/my-project/src/app/api/upload/route.ts with POST endpoint
+   415→- Accepts multipart form data with a 'file' field
+   416→- Validates file types via both extension and MIME type mapping: pdf, png, jpg, jpeg, gif, webp, doc, docx, txt, svg
+   417→- Enforces 10MB file size limit with descriptive error message
+   418→- Saves files to /home/z/my-project/public/uploads/onboarding/ with unique filenames (timestamp + 8-byte random hex)
+   419→- Creates the uploads directory recursively if it doesn't exist using fs/promises mkdir
+   420→- Uses only standard Node.js APIs (fs/promises, crypto, path) and Next.js NextRequest
+   421→- Returns JSON response: { url, filename, originalName, size, type }
+   422→- Includes proper error handling: missing file, size exceeded, type mismatch, server errors
+   423→- Ensured /home/z/my-project/public/uploads/onboarding/ directory exists
+   424→- Lint passed with 0 errors (4 pre-existing warnings)
+   425→
+   426→Stage Summary:
+   427→- Upload API ready at POST /api/upload
+   428→- Validates file type (extension + MIME consistency) and size (10MB max)
+   429→- Generates unique filenames: {timestamp}-{16hex}{ext}
+   430→- Returns public URL path (/uploads/onboarding/{filename})
+   431→
+   432→---
+   433→Task ID: 1
+   434→Agent: Main
+   435→Task: Add Save button to Task Detail + Download button for Onboarding Management
+   436→
+   437→Work Log:
+   438→- **Task Save Button (team-dashboard.tsx)**:
+   439→  - Removed all auto-save behavior: Status select, Priority select, Due Date calendar, Description textarea, and Title inline edit no longer call API on change
+   440→  - Added `hasChanges` computed boolean that compares all editable fields (title, description, status, priority, dueDate) against the original task
+   441→  - Replaced `handleUpdateTask` (auto-save) with `handleSaveTask` (batch save) that collects all changed fields into a single PATCH request
+   442→  - Added `handleDiscardChanges` function that resets all edit state to the original task values
+   443→  - Added "Unsaved changes" amber warning indicator that appears when changes are detected
+   444→  - Added "Discard" button (outline, with RotateCcw icon) that appears only when there are changes
+   445→  - Added "Save Changes" button (primary, with Save icon) that is disabled when no changes exist
+   446→  - Kept Delete button (destructive) alongside the new save controls
+   447→  - Added Save and RotateCcw icon imports from lucide-react
+   448→
+   449→- **Onboarding Download (admin-dashboard.tsx + API)**:
+   450→  - Created /api/onboarding/download/route.ts GET endpoint that:
+   451→    - Accepts `submissionId` query parameter
+   452→    - Fetches submission with client, form, project, and reviewer relations
+   453→    - Parses responsesJson to extract form fields and uploaded file references
+   454→    - Generates a formatted plain-text report with: form info, client info, all submitted data fields, uploaded document details (name, size, type, URL), review status
+   455→    - Returns as text/plain with Content-Disposition attachment header
+   456→  - Added Download icon import to admin-dashboard.tsx
+   457→  - Added "Download Report" button (outline variant) to each submission card in the submissions review dialog
+   458→  - Button opens the download URL in a new tab via window.open()
+   459→
+   460→- Also created /api/upload/route.ts (by sub-agent) for file upload support
+   461→
+   462→Stage Summary:
+   463→- Files modified: src/features/team-dashboard.tsx, src/features/admin-dashboard.tsx
+   464→- Files created: src/app/api/onboarding/download/route.ts, src/app/api/upload/route.ts
+   465→- Task detail: Changes are now local-only until "Save Changes" is clicked. "Discard" reverts. "Unsaved changes" indicator shown.
+   466→- Onboarding: Admin can download any submitted onboarding as a formatted text report via "Download Report" button
+   467→---
+   468→Task ID: 3
+   469→Agent: main
+   470→Task: Update Client Dashboard — remove stats cards, add project progress visualization with charts
+   471→
+   472→Work Log:
+   473→- Read current client-dashboard.tsx (961 lines) to understand structure
+   474→- Read Prisma schema and API routes for project/task data
+   475→- Identified recharts is already installed (v2.15.4)
+   476→- Updated GET /api/projects to include per-project task status counts (todo/in_progress/in_review/done) and computed progress percentage
+   477→- Removed StatCard component, Total Tasks and Completed Tasks stat cards
+   478→- Added ClientProject interface extending Project with taskStats and progress fields
+   479→- Added stacked BarChart (project task breakdown by status) and donut PieChart (overall status distribution) using recharts
+   480→- Added custom tooltip components for both charts
+   481→- Added "Overall Progress" indicator in header showing aggregate completion %
+   482→- Enhanced project card progress bars with color-coded gradients (red/amber/green based on %)
+   483→- Changed expand arrow from text (▲/▼) to animated ChevronRight icon
+   484→- Fixed PieChart naming conflict between Lucide icon and Recharts component (renamed to PieChartIcon)
+   485→- Updated PageSkeleton to match new layout (charts + cards)
+   486→- Fixed client user passwords (hash mismatch with 'client123')
+   487→- Added client user to all active projects for testing
+   488→- Verified with agent-browser: charts render correctly, no stat cards, project cards show progress %, task table expands, no console errors
+   489→
+   490→Stage Summary:
+   491→- Client Dashboard now shows: header with Overall Progress badge, stacked bar chart, donut chart, project cards with progress bars
+   492→- Total Tasks and Completed Tasks stat cards removed
+   493→- Progress auto-updates based on task completion data from API
+   494→- All existing functionality preserved (task table, task detail dialog, onboarding)
+   495→- Files modified: src/features/client-dashboard.tsx, src/app/api/projects/route.ts
+   496→---
+   497→Task ID: 4
+   498→Agent: main
+   499→Task: Three improvements: (1) Remove Status Distribution from Client Dashboard, (2) Add Save button to Admin Tasks, (3) Fix Team Workspace task creation
+   500→
+   501→Work Log:
+   502→- Removed Status Distribution donut chart from Client Dashboard (recharts PieChart, CustomPieTooltip, pieData, unused imports)
+   503→- Changed chart grid from lg:grid-cols-3 to single column for remaining stacked bar chart
+   504→- Rewrote AdminTasks component in admin-dashboard.tsx: replaced auto-save with buffered editing
+   505→  - Added editStatus, editPriority, editDueDate, pendingAssigneeIds state
+   506→  - Added hasChanges computed property comparing edit state to original task
+   507→  - Added "Unsaved changes" pulsing indicator
+   508→  - Added Save button (disabled when no changes, shows spinner while saving)
+   509→  - Added Discard button (only visible when changes exist)
+   510→  - Save function: sends PATCH for field changes + POST/DELETE for assignee changes, then refreshes
+   511→  - Dialog onOpenChange: auto-discards unsaved changes on close
+   512→  - Added Save icon import from lucide-react
+   513→- Fixed Team Workspace task creation bug in team-dashboard.tsx handleCreateTask:
+   514→  - Bug 1: Missing `createdById: user.id` in POST body (API requires it)
+   515→  - Bug 2: Sent `assigneeId` (singular) but API expects `assigneeIds` (array) — changed to `assigneeIds: taskAssignee ? [taskAssignee] : []`
+   516→  - Added proper error handling with API error message display
+   517→  - Simplified refresh logic (always call handleExpand after creation)
+   518→- Fixed all user passwords (hash mismatch with password123)
+   519→- Verified all three changes with agent-browser: admin Save/Discard buttons work, team task creation works, client dashboard has no donut chart
+   520→
+   521→Stage Summary:
+   522→- Client Dashboard: cleaner layout with only stacked bar chart for progress visualization
+   523→- Admin Tasks: explicit Save/Discard pattern replaces auto-save, "Unsaved changes" indicator
+   524→- Team Workspace: task creation from project view now works correctly (assignee + createdById)
+   525→- Files modified: src/features/client-dashboard.tsx, src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx
+   526→---
+   527→Task ID: 3
+   528→Agent: main
+   529→Task: Create TeamMyTasks component for viewing user's tasks across all projects
+   530→
+   531→Work Log:
+   532→- Created src/features/team-my-tasks.tsx as a new 'use client' component
+   533→- Implements header with "My Tasks" title, count badge, and subtitle
+   534→- Filter tabs: All | To Do | In Progress | In Review | Done — each with icon and count
+   535→- Fetches all projects for the current user, then fetches tasks from each project in parallel
+   536→- Filters tasks by assignee matching user.id
+   537→- Task list is card-based (not kanban) with: status dot, title (truncated, strikethrough if done), priority badge, due date (red if overdue), project name badge with color dot, subtask progress with percentage, comment count indicator, self avatar
+   538→- Tasks sorted by priority weight then due date
+   539→- Clicking a task calls setSelectedTaskId + setSelectedProjectId + setRoute to navigate to team-dashboard task tab
+   540→- Loading state: skeleton placeholders matching the layout
+   541→- Empty state: contextual message per active filter tab
+   542→- ScrollArea with max height for overflow handling
+   543→- AnimatePresence with motion.div for smooth filter transitions
+   544→- Responsive design: filter labels hidden on small screens (icons remain), flexible wrapping
+   545→- Lint passes with 0 new errors/warnings
+   546→
+   547→Stage Summary:
+   548→- New file: src/features/team-my-tasks.tsx
+   549→- Fully functional component following existing team-dashboard.tsx design patterns
+   550→- Exported as named export: TeamMyTasks
+   551→---
+   552→Task ID: 1
+   553→Agent: Main Agent
+   554→Task: Restructure Admin Panel and Team Workspace sidebar navigation
+   555→
+   556→Work Log:
+   557→- Read and analyzed all dashboard files (admin-dashboard.tsx, team-dashboard.tsx, client-dashboard.tsx, app-shell.tsx, page.tsx, types/index.ts)
+   558→- Updated AppRoute types: Admin now has `task-dashboard` and `task-view` tabs; Team simplified to `project`, `task`, `messages`, `profile`
+   559→- Updated app-shell.tsx sidebar: Admin shows 8 items (Overview, Users, Onboarding, Projects, Task Dashboard, Task, Messages, Profile); Team shows 4 items (Projects, Task, Messages, Profile)
+   560→- Updated page.tsx: Admin `task-dashboard` renders AdminTasks (table view), Admin `task-view` renders TeamTasks (kanban board); Team `task` renders TeamTasks (kanban board)
+   561→- Removed TeamMyTasks import (file now unused)
+   562→- Added Kanban icon import to app-shell.tsx
+   563→- Updated AdminTasks heading from "Tasks" to "Task Dashboard"
+   564→- Ran ESLint: 0 errors, 4 pre-existing warnings
+   565→- Verified via agent-browser: all sidebar items correct for both admin and team, all pages render correctly
+   566→
+   567→Stage Summary:
+   568→- Admin Panel sidebar: Overview → Users → Onboarding → Projects → Task Dashboard → Task → Messages → Profile
+   569→- Team Workspace sidebar: Projects → Task → Messages → Profile
+   570→- Admin "Task Dashboard" shows the table/list view of all tasks across projects
+   571→- Admin "Task" shows the same kanban board as Team Workspace "Task" (shared TeamTasks component)
+   572→- Team "My Tasks" (separate filtered task list) removed from navigation; TeamTasks kanban board is the primary task interface
+   573→---
+   574→Task ID: 2
+   575→Agent: Main Agent
+   576→Task: Fix Assignee field in Create Task modal to show all active admin + team users
+   577→
+   578→Work Log:
+   579→- Identified 5 locations in team-dashboard.tsx where assignee selection was scoped to project members only:
+   580→  1. TeamProjects Create Task modal (line ~514)
+   581→  2. TeamTasks Create Task modal (line ~1023)
+   582→  3. TeamTasks board view inline assignee popover (line ~1153)
+   583→  4. TeamTasks list view inline assignee popover (line ~1307)
+   584→  5. TeamTasks detail dialog add-assignee popover (line ~1519)
+   585→- Added `allTeamUsers` state + fetch useEffect to both TeamProjects and TeamTasks components
+   586→- Fetch calls `/api/users` and filters for `role === 'team' || role === 'admin'` with `status === 'active'`
+   587→- Replaced all `projectMembers` (ProjectMember[]) references with `assignableUsers` (User[])
+   588→- Updated all 5 assignee picker UIs to map over User[] instead of ProjectMember[]
+   589→- Each assignee entry now shows: avatar initials, name, and role label in parentheses
+   590→- Removed unused `projectMembers` variable and its `currentProject?.members` dependency
+   591→- Fixed inline `openDetail` refresh to use `allTeamUsers.find()` instead of `currentProject?.members?.find()`
+   592→- ESLint: 0 errors
+   593→- Agent-browser verified: all 3 Create Task contexts (admin kanban, team projects, team kanban) show all 4 active users (3 team + 1 admin) with role labels
+   594→
+   595→Stage Summary:
+   596→- Assignee dropdowns now show ALL active administrators and team members system-wide
+   597→- Role labels displayed: "(admin)" or "(team)" next to each user name
+   598→- Works consistently across: TeamProjects Add Task, TeamTasks Create Task, inline assignee popovers, and detail dialog
+   599→---
+   600→Task ID: 1
+   601→Agent: main
+   602→Task: Fix admin-created projects not reflecting in Team Workspace
+   603→
+   604→Work Log:
+   605→- Analyzed the root cause: AdminProjects create dialog didn't send `memberIds`, so only the admin creator was added as a member
+   606→- TeamProjects filters projects by `p.members.some(m => m.userId === user?.id)`, so team members never saw admin-only projects
+   607→- Added member selection UI (checkbox list with all active admin+team users) to Admin Create Project dialog
+   608→- Created `/api/projects/[id]/members/route.ts` API with GET (list members), POST (add members), DELETE (remove member)
+   609→- Fixed `createMany` SQLite compatibility issue by switching to individual `create` calls with existence check
+   610→- Added "Manage Members" dialog accessible by clicking the member count in the projects table
+   611→- Member count column now shows clickable button instead of plain number
+   612→- Manage Members dialog shows current members (with remove button for non-owners) and available users to add
+   613→
+   614→Stage Summary:
+   615→- Admin can now select members when creating a project via checkboxes
+   616→- Admin can manage members (add/remove) for existing projects via the Manage Members dialog
+   617→- Projects created by admin with selected members now immediately appear in those members' Team Workspace
+   618→- Files modified: `src/features/admin-dashboard.tsx`, `src/app/api/projects/route.ts` (unchanged, already supported memberIds)
+   619→- Files created: `src/app/api/projects/[id]/members/route.ts`
+   620→---
+   621→Task ID: 2
+   622→Agent: main
+   623→Task: Remove subtasks and assignment history from the entire application
+   624→
+   625→Work Log:
+   626→- Identified 11 files with subtask references across the codebase
+   627→- Identified assignment history section in team-dashboard.tsx task detail dialog
+   628→- Launched 4 parallel subagents to remove subtasks from: team-dashboard.tsx, admin-dashboard.tsx, TaskCard.tsx, TaskDetail.tsx, client-dashboard.tsx
+   629→- Removed Subtask interface from types/index.ts
+   630→- Removed subtasks from Task._count type (removed subtasks and completedSubtasks fields)
+   631→- Updated /api/tasks/route.ts: removed subtasks from taskInclude, removed completedSubtasks mapping
+   632→- Updated /api/tasks/[id]/route.ts: removed subtasks from taskInclude, removed completedSubtasks from GET and PATCH responses
+   633→- Updated /api/projects/[id]/route.ts: removed subtasks from task include, removed completedSubtasks mapping
+   634→- Deleted /api/tasks/subtasks/route.ts entirely
+   635→- Removed assignment history section (numbered entries with assignedAt times) from team-dashboard task detail
+   636→- Kept assignee display with simple date/time only (no history)
+   637→- Verified with agent-browser: admin kanban, admin task detail, client task detail — all working with zero errors
+   638→
+   639→Stage Summary:
+   640→- Subtasks completely removed from: types, 5 frontend components, 3 API routes, 1 deleted API file
+   641→- Assignment history removed from team-dashboard task detail dialog
+   642→- Assignees still show with name and avatar (no history, just current assignment)
+   643→- ESLint: 0 errors (4 pre-existing warnings)
+   644→- Agent-browser verified: all views render correctly, no console errors
+   645→---
+   646→Task ID: remove-client-dashboard
+   647→Agent: main
+   648→Task: Remove dashboard/chart section from client portal projects page — clients should only see project progress
+   649→
+   650→Work Log:
+   651→- Analyzed client-dashboard.tsx to identify the "Project Task Breakdown" stacked bar chart and "Overall Progress" header widget
+   652→- Removed the entire charts section (BarChart with recharts) from the ClientProjects component
+   653→- Removed the "Overall Progress" summary card from the page header
+   654→- Removed unused imports: recharts (BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell), TrendingUp, BarChart3 from lucide-react
+   655→- Removed unused constants and helper: STATUS_COLORS, STATUS_LABELS, CustomBarTooltip function
+   656→- Removed unused computed data: barChartData, overallProgress, totalTasksAcrossAll, totalDoneAcrossAll
+   657→- Verified with agent-browser + VLM that the client portal now only shows project cards with progress bars
+   658→
+   659→Stage Summary:
+   660→- Client portal projects page now shows only project cards with inline progress bars
+   661→- No charts, graphs, or dashboard summary statistics visible to clients
+   662→- All lint checks pass (0 errors, only pre-existing warnings)
+   663→

@@ -33,6 +33,7 @@ model User {
   groupMemberships   GroupMember[]   @relation("GroupMemberships")
   reviewedOnboardings Onboarding[]   @relation("OnboardingReviewer")
   clientOnboardingForms OnboardingForm[]  @relation("ClientOnboardingForms")
+  timeEntries      TimeEntry[]
 }
 
 model Project {
@@ -52,6 +53,7 @@ model Project {
   members         ProjectMember[]
   clientProjects  ClientProject[]
   onboardingForms OnboardingForm[]
+  timeEntries     TimeEntry[]
 }
 
 model ProjectMember {
@@ -96,6 +98,7 @@ model Task {
   assignments TaskAssignment[]
   comments    Comment[]
   subtasks    Subtask[]
+  timeEntries TimeEntry[]
 }
 
 model TaskAssignment {
@@ -221,4 +224,26 @@ model ActivityLog {
   projectId String?
   taskId    String?
   createdAt DateTime @default(now())
+}
+
+model TimeEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  projectId   String?
+  taskId      String?
+  description String?
+  date        String    // YYYY-MM-DD
+  timeIn      DateTime?
+  timeOut     DateTime?
+  duration    Int       @default(0) // minutes
+  status      String    @default("idle") // idle, timed_in, completed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([date])
 }

@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban } from 'lucide-react'
+import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban, Clock } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -134,12 +134,14 @@ function getNavItems(role: string): NavItem[] {
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'admin-dashboard', tab: 'project' } },
     { id: 'task-dashboard', label: 'Task Dashboard', icon: ListTodo, route: { page: 'admin-dashboard', tab: 'task-dashboard' } },
     { id: 'task-view', label: 'Task', icon: Kanban, route: { page: 'admin-dashboard', tab: 'task-view' } },
+    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'admin-dashboard', tab: 'time-tracking' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
   ]
   if (role === 'team') return [
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
     { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
   ]

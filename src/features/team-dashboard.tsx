@@ -63,7 +63,7 @@ import {
   X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
-  Save, RotateCcw,
+  Save, RotateCcw, Play, Square, Timer,
 } from 'lucide-react'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -1838,5 +1838,682 @@ export function TeamProfile() {
         </Card>
       </motion.div>
     </div>
+  )
+}
+
+// ─── Time Tracking Component ──────────────────────────────────
+
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+function formatElapsed(startDate: string): string {
+  const ms = Date.now() - new Date(startDate).getTime()
+  const totalSec = Math.floor(ms / 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+type TimeEntry = {
+  id: string
+  userId: string
+  projectId?: string
+  taskId?: string
+  description?: string
+  date: string
+  timeIn?: string
+  timeOut?: string
+  duration: number
+  status: 'idle' | 'timed_in' | 'completed'
+  user?: User
+  project?: Project
+  task?: Task
+}
+
+type DateFilter = 'today' | 'week' | 'month' | 'all'
+
+export function TeamTimeTracking() {
+  const { user } = useAuthStore()
+
+  const [entries, setEntries] = useState<TimeEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null)
+  const [elapsed, setElapsed] = useState('00:00:00')
+
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today')
+
+  const [showTimeInDialog, setShowTimeInDialog] = useState(false)
+  const [timeInLoading, setTimeInLoading] = useState(false)
+  const [timeOutLoading, setTimeOutLoading] = useState(false)
+
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [selectedTaskId, setSelectedTaskId] = useState('')
+  const [timeInDescription, setTimeInDescription] = useState('')
+
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const elapsedRef = useRef<ReturnType<typeof setInterval>>()
+
+  // ── Date range helpers ──
+  const getDateRange = useCallback((filter: DateFilter) => {
+    const now = new Date()
+    const today = format(now, 'yyyy-MM-dd')
+    switch (filter) {
+      case 'today':
+        return { dateFrom: today, dateTo: today }
+      case 'week': {
+        const startOfWeek = new Date(now)
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1)
+        return { dateFrom: format(startOfWeek, 'yyyy-MM-dd'), dateTo: today }
+      }
+      case 'month': {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return { dateFrom: format(startOfMonth, 'yyyy-MM-dd'), dateTo: today }
+      }
+      case 'all':
+        return { dateFrom: '2020-01-01', dateTo: '2099-12-31' }
+    }
+  }, [])
+
+  // ── Fetch entries ──
+  const fetchEntries = useCallback(async (filter: DateFilter) => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const { dateFrom, dateTo } = getDateRange(filter)
+      const res = await fetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      const data = await res.json()
+      setEntries(data.timeEntries || [])
+    } catch {
+      toast.error('Failed to load time entries')
+    } finally {
+      setLoading(false)
+    }
+  }, [user, getDateRange])
+
+  // ── Fetch active entry ──
+  const fetchActiveEntry = useCallback(async () => {
+    if (!user) return
+    try {
+      const res = await fetch(`/api/time-entries?userId=${user.id}&active=true`)
+      const data = await res.json()
+      const active = (data.timeEntries || []).find((e: TimeEntry) => e.status === 'timed_in') || null
+      setActiveEntry(active)
+    } catch {
+      // silent
+    }
+  }, [user])
+
+  // ── Summary stats ──
+  const [summary, setSummary] = useState({ today: 0, week: 0, month: 0 })
+
+  const fetchSummary = useCallback(async () => {
+    if (!user) return
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd')
+      const startOfWeek = new Date()
+      startOfWeek.setDate(new Date().getDate() - new Date().getDay() + 1)
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+
+      const [todayRes, weekRes, monthRes] = await Promise.all([
+        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${today}&dateTo=${today}`),
+        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfWeek, 'yyyy-MM-dd')}&dateTo=${today}`),
+        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfMonth, 'yyyy-MM-dd')}&dateTo=${today}`),
+      ])
+
+      const [todayData, weekData, monthData] = await Promise.all([
+        todayRes.json(),
+        weekRes.json(),
+        monthRes.json(),
+      ])
+
+      const sumMinutes = (list: TimeEntry[]) => list.reduce((a, e) => a + (e.duration || 0), 0)
+
+      setSummary({
+        today: sumMinutes(todayData.timeEntries || []),
+        week: sumMinutes(weekData.timeEntries || []),
+        month: sumMinutes(monthData.timeEntries || []),
+      })
+    } catch {
+      // silent
+    }
+  }, [user])
+
+  // ── Fetch projects ──
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      const data = await res.json()
+      setProjects(data.projects || [])
+    } catch {
+      // silent
+    }
+  }, [])
+
+  // ── Fetch tasks when project changes ──
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setTasks([])
+      setSelectedTaskId('')
+      return
+    }
+    const fetchTasks = async () => {
+      try {
+        const res = await fetch(`/api/projects/${selectedProjectId}`)
+        const data = await res.json()
+        setTasks(data.tasks || [])
+      } catch {
+        setTasks([])
+      }
+      setSelectedTaskId('')
+    }
+    fetchTasks()
+  }, [selectedProjectId])
+
+  // ── Initial load ──
+  useEffect(() => {
+    fetchEntries(dateFilter)
+    fetchActiveEntry()
+    fetchSummary()
+    fetchProjects()
+  }, [])
+
+  // ── Re-fetch on filter change ──
+  useEffect(() => {
+    fetchEntries(dateFilter)
+  }, [dateFilter, fetchEntries])
+
+  // ── Live elapsed timer ──
+  useEffect(() => {
+    if (activeEntry?.timeIn) {
+      setElapsed(formatElapsed(activeEntry.timeIn))
+      elapsedRef.current = setInterval(() => {
+        setElapsed(formatElapsed(activeEntry.timeIn!))
+      }, 1000)
+    }
+    return () => {
+      if (elapsedRef.current) clearInterval(elapsedRef.current)
+    }
+  }, [activeEntry])
+
+  // ── Time In handler ──
+  const handleTimeIn = async () => {
+    if (!user) return
+    setTimeInLoading(true)
+    try {
+      const body: Record<string, unknown> = {
+        userId: user.id,
+        action: 'time_in',
+      }
+      if (selectedProjectId) body.projectId = selectedProjectId
+      if (selectedTaskId) body.taskId = selectedTaskId
+      if (timeInDescription.trim()) body.description = timeInDescription.trim()
+
+      const res = await fetch('/api/time-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Clocked in successfully!')
+      setShowTimeInDialog(false)
+      setSelectedProjectId('')
+      setSelectedTaskId('')
+      setTimeInDescription('')
+      await fetchActiveEntry()
+      await fetchEntries(dateFilter)
+      await fetchSummary()
+    } catch {
+      toast.error('Failed to clock in')
+    } finally {
+      setTimeInLoading(false)
+    }
+  }
+
+  // ── Time Out handler ──
+  const handleTimeOut = async () => {
+    if (!activeEntry) return
+    setTimeOutLoading(true)
+    try {
+      const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'time_out' }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Clocked out successfully!')
+      setActiveEntry(null)
+      setElapsed('00:00:00')
+      await fetchEntries(dateFilter)
+      await fetchSummary()
+    } catch {
+      toast.error('Failed to clock out')
+    } finally {
+      setTimeOutLoading(false)
+    }
+  }
+
+  // ── Delete handler ──
+  const handleDelete = async () => {
+    if (!deleteId) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/time-entries/${deleteId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      toast.success('Entry deleted')
+      setDeleteId(null)
+      await fetchEntries(dateFilter)
+      await fetchSummary()
+      await fetchActiveEntry()
+    } catch {
+      toast.error('Failed to delete entry')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // ── Group entries by date ──
+  const groupedEntries: { date: string; entries: TimeEntry[] }[] = []
+  const sortedEntries = [...entries].sort((a, b) => {
+    const dateComp = b.date.localeCompare(a.date)
+    if (dateComp !== 0) return dateComp
+    return (b.timeIn || '').localeCompare(a.timeIn || '')
+  })
+  sortedEntries.forEach((entry) => {
+    const last = groupedEntries[groupedEntries.length - 1]
+    if (last && last.date === entry.date) {
+      last.entries.push(entry)
+    } else {
+      groupedEntries.push({ date: entry.date, entries: [entry] })
+    }
+  })
+
+  const filterButtons: { key: DateFilter; label: string }[] = [
+    { key: 'today', label: 'Today' },
+    { key: 'week', label: 'This Week' },
+    { key: 'month', label: 'This Month' },
+    { key: 'all', label: 'All Time' },
+  ]
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'timed_in':
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">Active</Badge>
+      case 'completed':
+        return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200">Completed</Badge>
+      default:
+        return <Badge variant="secondary">Idle</Badge>
+    }
+  }
+
+  const formatTimeRange = (entry: TimeEntry) => {
+    if (!entry.timeIn) return ''
+    const inStr = format(new Date(entry.timeIn), 'h:mm a')
+    if (!entry.timeOut) return inStr
+    const outStr = format(new Date(entry.timeOut), 'h:mm a')
+    return `${inStr} → ${outStr}`
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+          <Clock className="h-5 w-5 text-emerald-700" />
+        </div>
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">Time Tracking</h2>
+          <p className="text-sm text-muted-foreground">Track your work hours and attendance</p>
+        </div>
+      </div>
+
+      {/* Big Time In / Time Out Button */}
+      <Card className="p-6">
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
+          {!activeEntry ? (
+            <>
+              <Button
+                size="lg"
+                className="h-16 w-full max-w-xs bg-emerald-600 text-lg font-semibold text-white hover:bg-emerald-700 sm:w-auto sm:px-12"
+                onClick={() => setShowTimeInDialog(true)}
+              >
+                <Play className="mr-2 h-6 w-6" />
+                Time In
+              </Button>
+              <p className="text-sm text-muted-foreground">Start tracking your work hours</p>
+            </>
+          ) : (
+            <>
+              <Button
+                size="lg"
+                className="h-16 w-full max-w-xs bg-red-600 text-lg font-semibold text-white hover:bg-red-700 sm:w-auto sm:px-12"
+                onClick={handleTimeOut}
+                disabled={timeOutLoading}
+              >
+                {timeOutLoading ? (
+                  <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+                ) : (
+                  <Square className="mr-2 h-5 w-5" />
+                )}
+                Time Out
+              </Button>
+              <div className="flex items-center gap-2">
+                <Timer className="h-5 w-5 text-amber-600" />
+                <span className="font-mono text-2xl font-bold text-amber-700">{elapsed}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+
+      {/* Time In Dialog */}
+      <Dialog open={showTimeInDialog} onOpenChange={(open) => { if (!open) setShowTimeInDialog(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5 text-emerald-600" />
+              Clock In
+            </DialogTitle>
+            <DialogDescription>
+              Optionally select a project, task, and add a description.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Project (optional)</Label>
+              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: p.color || '#6b7280' }}
+                        />
+                        {p.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {tasks.length > 0 && (
+              <div className="space-y-2">
+                <Label>Task (optional)</Label>
+                <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tasks.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                placeholder="What are you working on?"
+                value={timeInDescription}
+                onChange={(e) => setTimeInDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTimeInDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleTimeIn}
+              disabled={timeInLoading}
+            >
+              {timeInLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              Start Timer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Summary Stats Row */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                <Clock className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Today&apos;s Hours</p>
+                <p className="text-xl font-bold text-foreground">{formatDuration(summary.today)}</p>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                <Clock className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">This Week&apos;s Hours</p>
+                <p className="text-xl font-bold text-foreground">{formatDuration(summary.week)}</p>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                <Clock className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">This Month&apos;s Hours</p>
+                <p className="text-xl font-bold text-foreground">{formatDuration(summary.month)}</p>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Date Filter */}
+      <div className="flex flex-wrap gap-2">
+        {filterButtons.map((fb) => (
+          <Button
+            key={fb.key}
+            variant={dateFilter === fb.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setDateFilter(fb.key)}
+            className={cn(dateFilter === fb.key && 'bg-emerald-600 hover:bg-emerald-700')}
+          >
+            {fb.label}
+          </Button>
+        ))}
+      </div>
+
+      {/* Time Entries List */}
+      <Card className="p-6">
+        {loading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="h-8 w-16" />
+              </div>
+            ))}
+          </div>
+        ) : groupedEntries.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-12 text-center"
+          >
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <Clock className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground">No time entries yet</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              {dateFilter === 'today'
+                ? "You haven't tracked any time today. Click \"Time In\" to get started."
+                : `No entries found for ${filterButtons.find((f) => f.key === dateFilter)?.label.toLowerCase() || 'this period'}.`}
+            </p>
+          </motion.div>
+        ) : (
+          <div className="space-y-6">
+            {groupedEntries.map((group) => (
+              <div key={group.date}>
+                {/* Date header */}
+                <div className="mb-3 flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-muted-foreground">
+                    {isToday(parseISO(group.date))
+                      ? 'Today'
+                      : format(parseISO(group.date), 'EEEE, MMM d, yyyy')}
+                  </h4>
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground">
+                    {formatDuration(group.entries.reduce((a, e) => a + (e.duration || 0), 0))}
+                  </span>
+                </div>
+
+                {/* Entries */}
+                <div className="space-y-3">
+                  <AnimatePresence mode="popLayout">
+                    {group.entries.map((entry) => (
+                      <motion.div
+                        key={entry.id}
+                        layout
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          'rounded-lg border p-4 transition-colors',
+                          entry.status === 'timed_in'
+                            ? 'border-amber-200 bg-amber-50/50'
+                            : 'border-border bg-card'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            {/* Project + Task */}
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              {entry.project && (
+                                <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                                  <span
+                                    className="inline-block h-2.5 w-2.5 rounded-full"
+                                    style={{ backgroundColor: entry.project.color || '#6b7280' }}
+                                  />
+                                  {entry.project.name}
+                                </span>
+                              )}
+                              {entry.task && (
+                                <span className="text-sm text-muted-foreground">· {entry.task.title}</span>
+                              )}
+                            </div>
+
+                            {/* Time range */}
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" />
+                                {formatTimeRange(entry)}
+                              </span>
+                              <span className="font-medium text-foreground">
+                                {formatDuration(entry.duration)}
+                              </span>
+                              {statusBadge(entry.status)}
+                            </div>
+
+                            {/* Description */}
+                            {entry.description && (
+                              <p className="mt-1.5 text-sm text-muted-foreground truncate">
+                                {entry.description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Delete button */}
+                          <AlertDialog
+                            open={deleteId === entry.id}
+                            onOpenChange={(open) => { if (!open) setDeleteId(null) }}
+                          >
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Time Entry</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this time entry? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-red-600 hover:bg-red-700"
+                                  onClick={handleDelete}
+                                  disabled={deleting}
+                                >
+                                  {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </motion.div>
   )
 }

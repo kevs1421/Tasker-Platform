@@ -3,8 +3,8 @@
 import { useAuthStore } from '@/stores/auth'
 import { DashboardShell } from '@/features/app-shell'
 import LoginPage from '@/features/login-page'
-import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile } from '@/features/admin-dashboard'
-import { TeamProjects, TeamTasks, TeamMessages, TeamProfile } from '@/features/team-dashboard'
+import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile, AdminTimeTracking } from '@/features/admin-dashboard'
+import { TeamProjects, TeamTasks, TeamMessages, TeamProfile, TeamTimeTracking } from '@/features/team-dashboard'
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -20,6 +20,7 @@ function AdminDashboard() {
         {route.tab === 'project' && <AdminProjects />}
         {route.tab === 'task-dashboard' && <AdminTasks />}
         {route.tab === 'task-view' && <TeamTasks />}
+        {route.tab === 'time-tracking' && <AdminTimeTracking />}
         {route.tab === 'messages' && <AdminMessages />}
         {route.tab === 'profile' && <AdminProfile />}
       </motion.div>
@@ -35,6 +36,7 @@ function TeamDashboard() {
       <motion.div key={route.tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
         {route.tab === 'project' && <TeamProjects />}
         {route.tab === 'task' && <TeamTasks />}
+        {route.tab === 'time-tracking' && <TeamTimeTracking />}
         {route.tab === 'messages' && <TeamMessages />}
         {route.tab === 'profile' && <TeamProfile />}
       </motion.div>
