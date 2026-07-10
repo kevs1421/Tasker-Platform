@@ -487,10 +487,9 @@ export function TeamProjects() {
                         className="overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Card className="mt-2 p-4 space-y-4">
+                        <Card className="mt-3 p-4 space-y-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-sm">Tasks</h4>
                               <div className="flex gap-1">
                                 {['all', 'todo', 'in_progress', 'in_review', 'done'].map((s) => (
                                   <Button
