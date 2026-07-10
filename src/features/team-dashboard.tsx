@@ -1413,19 +1413,30 @@ export function TeamTasks() {
                   <div className="space-y-1.5">
                     {/* Current assignees as removable chips */}
                     {detailTask.assignees && detailTask.assignees.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {detailTask.assignees.map((a) => (
-                          <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1 group">
-                            <MemberAvatar user={a.user} size="sm" />
-                            <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
-                            <button
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
-                              onClick={() => handleToggleAssignee(detailTask, a.userId)}
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {detailTask.assignees.map((a) => (
+                            <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1 group">
+                              <MemberAvatar user={a.user} size="sm" />
+                              <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
+                              <button
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
+                                onClick={() => handleToggleAssignee(detailTask, a.userId)}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Assignment History */}
+                        <div className="space-y-1 pl-0.5">
+                          {detailTask.assignees.map((a) => (
+                            <div key={a.id || a.userId} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <span className="w-14 shrink-0 truncate font-medium text-foreground/70">{a.user?.name || 'Unknown'}</span>
+                              <span>assigned {a.assignedAt ? formatRelativeTime(a.assignedAt) : '—'}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">No one assigned yet</p>
