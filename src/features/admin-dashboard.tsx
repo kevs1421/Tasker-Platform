@@ -2060,25 +2060,6 @@ export function AdminTasks() {
                     </div>
                   )}
 
-                  {/* Subtasks */}
-                  {selectedTask.subtasks && selectedTask.subtasks.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">
-                        Subtasks ({selectedTask._count?.completedSubtasks ?? 0}/{selectedTask.subtasks.length})
-                      </Label>
-                      <div className="space-y-1">
-                        {selectedTask.subtasks.map((st) => (
-                          <div key={st.id} className="flex items-center gap-2 text-sm">
-                            <div className={`h-4 w-4 rounded border ${st.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'} flex items-center justify-center`}>
-                              {st.completed && <CheckCircle2 className="h-3 w-3 text-white" />}
-                            </div>
-                            <span className={st.completed ? 'line-through text-muted-foreground' : ''}>{st.title}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Comments */}
                   <div className="space-y-3">
                     <Label className="text-xs text-muted-foreground">

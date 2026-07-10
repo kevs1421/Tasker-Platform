@@ -7,12 +7,12 @@ import {
   FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  MessageCircle, ListTodo, Check, CheckCheck, Search, ClipboardCheck, Plus,
+  MessageCircle, Check, CheckCheck, Search, ClipboardCheck, Plus,
   TrendingUp, BarChart3
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type {
-  User, Project, Task, Message, Comment, Subtask
+  User, Project, Task, Message, Comment
 } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
@@ -160,7 +160,7 @@ export function ClientProjects() {
   const [loading, setLoading] = useState(true)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
-  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }) | null>(null)
+  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number }; comments?: Comment[] }) | null>(null)
   const [taskDetailLoading, setTaskDetailLoading] = useState(false)
 
   // Onboarding creation state
@@ -628,7 +628,7 @@ export function ClientProjects() {
 function TaskDetailDialog({
   task, userId, onUpdate
 }: {
-  task: Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }
+  task: Task & { _count: { comments: number }; comments?: Comment[] }
   userId: string
   onUpdate: () => void
 }) {
@@ -724,30 +724,6 @@ function TaskDetailDialog({
               <span className="text-sm">{formatRelativeTime(task.createdAt)}</span>
             </div>
           </div>
-
-          {/* Subtasks */}
-          {task.subtasks && task.subtasks.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                <ListTodo className="w-3.5 h-3.5" />
-                Subtasks ({task._count.completedSubtasks}/{task._count.subtasks})
-              </h4>
-              <div className="space-y-1.5">
-                {task.subtasks.map(sub => (
-                  <div key={sub.id} className="flex items-center gap-2 text-sm">
-                    {sub.completed ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
-                    )}
-                    <span className={sub.completed ? 'line-through text-muted-foreground' : ''}>
-                      {sub.title}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <Separator />
 

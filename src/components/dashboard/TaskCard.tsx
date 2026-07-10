@@ -51,8 +51,6 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
   const priority = priorityConfig[task.priority]
-  const completedSubtasks = task._count?.completedSubtasks || 0
-  const totalSubtasks = task._count?.subtasks || 0
 
   return (
     <Card
@@ -75,22 +73,6 @@ export function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         <h4 className={`font-medium text-sm leading-snug ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
           {task.title}
         </h4>
-
-        {/* Subtasks progress */}
-        {totalSubtasks > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Subtasks</span>
-              <span>{completedSubtasks}/{totalSubtasks}</span>
-            </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                style={{ width: `${(completedSubtasks / totalSubtasks) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-1">

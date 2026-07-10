@@ -24,13 +24,13 @@ export interface Task {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate?: string | null; createdAt: string; updatedAt: string;
   projectId: string; createdById: string; tags: string;
-  assignees?: TaskAssignment[]; creator?: User; subtasks?: Subtask[];
-  _count?: { subtasks: number; completedSubtasks?: number; comments: number };
+  assignees?: TaskAssignment[]; creator?: User;
+  _count?: { comments: number };
   project?: Project;
 }
 
 export interface TaskAssignment { id: string; taskId: string; userId: string; assignedAt: string; user?: User; }
-export interface Subtask { id: string; title: string; completed: boolean; taskId: string; createdAt: string; }
+
 export interface Comment { id: string; content: string; createdAt: string; updatedAt: string; taskId: string; userId: string; user?: User; }
 
 export interface OnboardingForm {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { Project, ProjectMember, Task, TaskAssignment, Subtask, Comment, Message, User } from '@/types'
+import type { Project, ProjectMember, Task, TaskAssignment, Comment, Message, User } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
   formatDate, formatRelativeTime,
@@ -19,7 +19,6 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -63,7 +62,7 @@ import {
   CircleDot, Clock, Eye, CheckCircle2, Circle, ChevronDown,
   X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
-  MessageCircle, Hash, AlertCircle, UserPlus, UserMinus, History,
+  MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
   Save, RotateCcw,
 } from 'lucide-react'
 
@@ -584,12 +583,9 @@ export function TeamTasks() {
   // All active admin + team users for assignee pickers
   const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
 
-  // Detail task subtasks/comments
-  const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  // Detail task comments
   const [comments, setComments] = useState<Comment[]>([])
-  const [newSubtask, setNewSubtask] = useState('')
   const [newComment, setNewComment] = useState('')
-  const [subtaskLoading, setSubtaskLoading] = useState(false)
   const [commentLoading, setCommentLoading] = useState(false)
 
   // Detail edit
@@ -673,16 +669,11 @@ export function TeamTasks() {
     setSelectedProjectId(task.projectId)
 
     try {
-      const [stRes, cmRes] = await Promise.all([
-        fetch(`/api/tasks/subtasks?taskId=${task.id}`),
-        fetch(`/api/comments?taskId=${task.id}`),
-      ])
-      const stData = await stRes.json()
+      const cmRes = await fetch(`/api/comments?taskId=${task.id}`)
       const cmData = await cmRes.json()
-      setSubtasks(stData.subtasks || [])
       setComments(cmData.comments || [])
     } catch {
-      // Subtasks/comments may not exist
+      // Comments may not exist
     }
   }
 
@@ -744,60 +735,6 @@ export function TeamTasks() {
     }
   }
 
-  const handleAddSubtask = async () => {
-    if (!detailTask || !newSubtask.trim()) return
-    setSubtaskLoading(true)
-    try {
-      const res = await fetch('/api/tasks/subtasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newSubtask, taskId: detailTask.id }),
-      })
-      if (!res.ok) throw new Error()
-      setNewSubtask('')
-      const stRes = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
-      const data = await stRes.json()
-      setSubtasks(data.subtasks || [])
-      fetchTasks()
-    } catch {
-      toast.error('Failed to add subtask')
-    } finally {
-      setSubtaskLoading(false)
-    }
-  }
-
-  const handleToggleSubtask = async (subtaskId: string) => {
-    try {
-      await fetch('/api/tasks/subtasks', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subtaskId }),
-      })
-      if (detailTask) {
-        const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
-        const data = await res.json()
-        setSubtasks(data.subtasks || [])
-        fetchTasks()
-      }
-    } catch {
-      toast.error('Failed to toggle subtask')
-    }
-  }
-
-  const handleDeleteSubtask = async (subtaskId: string) => {
-    try {
-      await fetch(`/api/tasks/subtasks?subtaskId=${subtaskId}`, { method: 'DELETE' })
-      if (detailTask) {
-        const res = await fetch(`/api/tasks/subtasks?taskId=${detailTask.id}`)
-        const data = await res.json()
-        setSubtasks(data.subtasks || [])
-        fetchTasks()
-      }
-    } catch {
-      toast.error('Failed to delete subtask')
-    }
-  }
-
   const handleAddComment = async () => {
     if (!detailTask || !newComment.trim() || !user) return
     setCommentLoading(true)
@@ -854,13 +791,6 @@ export function TeamTasks() {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
       handleAddComment()
-    }
-  }
-
-  const handleSubtaskKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleAddSubtask()
     }
   }
 
@@ -1106,8 +1036,6 @@ export function TeamTasks() {
                         const pConf = getPriorityConfig(task.priority)
                         const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
                         const tags = task.tags ? task.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
-                        const totalSub = task._count?.subtasks || 0
-                        const doneSub = task._count?.completedSubtasks || 0
                         const commentCount = task._count?.comments || 0
 
                         return (
@@ -1157,17 +1085,6 @@ export function TeamTasks() {
                                     </span>
                                   )}
                                 </div>
-
-                                {/* Subtask progress */}
-                                {totalSub > 0 && (
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                                      <span>Subtasks</span>
-                                      <span>{doneSub}/{totalSub}</span>
-                                    </div>
-                                    <Progress value={totalSub > 0 ? (doneSub / totalSub) * 100 : 0} className="h-1" />
-                                  </div>
-                                )}
 
                                 {/* Bottom row: Assignees + Comments */}
                                 <div className="flex items-center justify-between pt-1">
@@ -1376,7 +1293,7 @@ export function TeamTasks() {
       )}
 
       {/* Task Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setSubtasks([]); setComments([]) } }}>
+      <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setComments([]) } }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           {detailTask && (
             <>
@@ -1487,7 +1404,7 @@ export function TeamTasks() {
                   </div>
                 )}
 
-                {/* Assignees + Assignment History */}
+                {/* Assignees */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs text-muted-foreground">Assignees</Label>
@@ -1558,103 +1475,6 @@ export function TeamTasks() {
                     </Popover>
                   </div>
 
-                  {/* Assignment History */}
-                  {detailTask.assignees && detailTask.assignees.length > 0 && (
-                    <div className="mt-2 pt-2 border-t">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <History className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-[10px] font-medium text-muted-foreground">Assignment History</span>
-                      </div>
-                      <div className="space-y-1">
-                        {/* First assignee (who was assigned 1st) */}
-                        {detailTask.assignees.length > 0 && (
-                          <div className="flex items-center gap-2 text-[10px]">
-                            <span className="text-muted-foreground w-14 shrink-0">1st</span>
-                            <MemberAvatar user={detailTask.assignees[0].user} size="sm" />
-                            <span className="font-medium">{detailTask.assignees[0].user?.name || 'Unknown'}</span>
-                            <span className="text-muted-foreground ml-auto">
-                              {detailTask.assignees[0].assignedAt ? formatRelativeTime(detailTask.assignees[0].assignedAt) : ''}
-                            </span>
-                          </div>
-                        )}
-                        {/* Subsequent assignees */}
-                        {detailTask.assignees.slice(1).map((a, i) => (
-                          <div key={a.id || a.userId} className="flex items-center gap-2 text-[10px]">
-                            <span className="text-muted-foreground w-14 shrink-0">#{i + 2}</span>
-                            <MemberAvatar user={a.user} size="sm" />
-                            <span className="font-medium">{a.user?.name || 'Unknown'}</span>
-                            <span className="text-muted-foreground ml-auto">
-                              {a.assignedAt ? formatRelativeTime(a.assignedAt) : ''}
-                            </span>
-                          </div>
-                        ))}
-                        {/* Task creator info */}
-                        {detailTask.creator && (
-                          <div className="flex items-center gap-2 text-[10px] pt-1 border-t mt-1">
-                            <span className="text-muted-foreground w-14 shrink-0">Created</span>
-                            <MemberAvatar user={detailTask.creator} size="sm" />
-                            <span className="font-medium">{detailTask.creator.name}</span>
-                            <span className="text-muted-foreground ml-auto">
-                              {formatRelativeTime(detailTask.createdAt)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Subtasks */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4" /> Subtasks
-                    </Label>
-                    <span className="text-xs text-muted-foreground">
-                      {subtasks.filter((s) => s.completed).length}/{subtasks.length}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {subtasks.map((st) => (
-                      <div key={st.id} className="flex items-center gap-2 group">
-                        <Checkbox
-                          checked={st.completed}
-                          onCheckedChange={() => handleToggleSubtask(st.id)}
-                          className="h-4 w-4"
-                        />
-                        <span className={cn('text-sm flex-1', st.completed && 'line-through text-muted-foreground')}>
-                          {st.title}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500"
-                          onClick={() => handleDeleteSubtask(st.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Add a subtask..."
-                      value={newSubtask}
-                      onChange={(e) => setNewSubtask(e.target.value)}
-                      onKeyDown={handleSubtaskKeyDown}
-                      className="h-8 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 px-3"
-                      onClick={handleAddSubtask}
-                      disabled={subtaskLoading || !newSubtask.trim()}
-                    >
-                      {subtaskLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                    </Button>
-                  </div>
                 </div>
 
                 <Separator />

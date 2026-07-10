@@ -4,9 +4,8 @@ import { db } from '@/lib/db'
 const taskInclude = {
   assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } }, orderBy: { assignedAt: 'asc' } },
   creator: { select: { id: true, name: true, email: true, role: true, avatar: true } },
-  subtasks: true,
   project: { select: { id: true, name: true, color: true, members: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } } } },
-  _count: { select: { comments: true, subtasks: true } }
+  _count: { select: { comments: true } }
 } as const
 
 export async function GET(request: NextRequest) {
@@ -29,8 +28,7 @@ export async function GET(request: NextRequest) {
 
     const result = tasks.map(t => ({
       ...t,
-      assignees: t.assignments,
-      _count: { ...t._count, completedSubtasks: t.subtasks.filter(s => s.completed).length }
+      assignees: t.assignments
     }))
     return NextResponse.json({ tasks: result })
   } catch (e) {
@@ -51,10 +49,7 @@ export async function POST(request: Request) {
         dueDate: dueDate ? new Date(dueDate) : null, projectId, createdById, tags: tags || '',
         assignments: { create: (assigneeIds || []).map((id: string) => ({ userId: id })) }
       },
-      include: {
-        ...taskInclude,
-        _count: { select: { comments: true, subtasks: true } }
-      }
+      include: taskInclude
     })
 
     const taskWithAssignees = { ...task, assignees: task.assignments }

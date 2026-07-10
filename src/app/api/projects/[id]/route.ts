@@ -13,8 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           include: {
             assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } }, orderBy: { assignedAt: 'asc' } },
             creator: { select: { id: true, name: true, role: true, avatar: true } },
-            subtasks: true,
-            _count: { select: { comments: true, subtasks: true } }
+            _count: { select: { comments: true } }
           },
           orderBy: { createdAt: 'desc' }
         },
@@ -25,8 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const tasks = project.tasks.map(t => ({
       ...t,
-      assignees: t.assignments,
-      _count: { ...t._count, completedSubtasks: t.subtasks.filter(s => s.completed).length }
+      assignees: t.assignments
     }))
     return NextResponse.json({ project: { ...project, tasks } })
   } catch {

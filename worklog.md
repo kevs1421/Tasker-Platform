@@ -617,3 +617,28 @@ Stage Summary:
 - Projects created by admin with selected members now immediately appear in those members' Team Workspace
 - Files modified: `src/features/admin-dashboard.tsx`, `src/app/api/projects/route.ts` (unchanged, already supported memberIds)
 - Files created: `src/app/api/projects/[id]/members/route.ts`
+---
+Task ID: 2
+Agent: main
+Task: Remove subtasks and assignment history from the entire application
+
+Work Log:
+- Identified 11 files with subtask references across the codebase
+- Identified assignment history section in team-dashboard.tsx task detail dialog
+- Launched 4 parallel subagents to remove subtasks from: team-dashboard.tsx, admin-dashboard.tsx, TaskCard.tsx, TaskDetail.tsx, client-dashboard.tsx
+- Removed Subtask interface from types/index.ts
+- Removed subtasks from Task._count type (removed subtasks and completedSubtasks fields)
+- Updated /api/tasks/route.ts: removed subtasks from taskInclude, removed completedSubtasks mapping
+- Updated /api/tasks/[id]/route.ts: removed subtasks from taskInclude, removed completedSubtasks from GET and PATCH responses
+- Updated /api/projects/[id]/route.ts: removed subtasks from task include, removed completedSubtasks mapping
+- Deleted /api/tasks/subtasks/route.ts entirely
+- Removed assignment history section (numbered entries with assignedAt times) from team-dashboard task detail
+- Kept assignee display with simple date/time only (no history)
+- Verified with agent-browser: admin kanban, admin task detail, client task detail — all working with zero errors
+
+Stage Summary:
+- Subtasks completely removed from: types, 5 frontend components, 3 API routes, 1 deleted API file
+- Assignment history removed from team-dashboard task detail dialog
+- Assignees still show with name and avatar (no history, just current assignment)
+- ESLint: 0 errors (4 pre-existing warnings)
+- Agent-browser verified: all views render correctly, no console errors

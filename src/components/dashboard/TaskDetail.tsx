@@ -12,15 +12,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { 
-  X, CalendarIcon, MessageSquare, Plus, Trash2, 
+  X, CalendarIcon, MessageSquare, Trash2, 
   ArrowRight, Check, Circle, Clock, Eye, Send, UserPlus, Users
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import type { Task, Comment, Subtask, User } from '@/types'
+import type { Task, Comment, User } from '@/types'
 import { priorityConfig, getInitials } from './TaskCard'
 import { cn } from '@/lib/utils'
 
@@ -35,8 +34,6 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
   const { user } = useAuthStore()
   const [comments, setComments] = useState<Comment[]>([])
   const [newComment, setNewComment] = useState('')
-  const [newSubtask, setNewSubtask] = useState('')
-  const [addingSubtask, setAddingSubtask] = useState(false)
   const [dueDate, setDueDate] = useState<Date | undefined>(
     task?.dueDate ? new Date(task.dueDate) : undefined
   )
@@ -52,8 +49,6 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
   if (currentTaskId !== prevTaskIdRef.current) {
     prevTaskIdRef.current = currentTaskId
     setNewComment('')
-    setNewSubtask('')
-    setAddingSubtask(false)
     setDueDate(task?.dueDate ? new Date(task.dueDate) : undefined)
     setCurrentAssigneeIds(
       new Set((task?.assignees || []).map((a: { userId: string }) => a.userId))
@@ -188,40 +183,6 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
     }
   }
 
-  const handleToggleSubtask = async (subtask: Subtask) => {
-    try {
-      const res = await fetch('/api/tasks/subtasks', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: subtask.id, completed: !subtask.completed }),
-      })
-      if (res.ok) {
-        onUpdate()
-      }
-    } catch {
-      toast.error('Failed to update subtask')
-    }
-  }
-
-  const handleAddSubtask = async () => {
-    if (!newSubtask.trim()) return
-    try {
-      const res = await fetch('/api/tasks/subtasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newSubtask, taskId: task.id }),
-      })
-      if (res.ok) {
-        setNewSubtask('')
-        setAddingSubtask(false)
-        toast.success('Subtask added')
-        onUpdate()
-      }
-    } catch {
-      toast.error('Failed to add subtask')
-    }
-  }
-
   const handleDeleteTask = async () => {
     if (!confirm('Delete this task? This cannot be undone.')) return
     try {
@@ -338,58 +299,6 @@ export function TaskDetail({ task, open, onClose, onUpdate }: TaskDetailProps) {
                 {task.description}
               </div>
             )}
-
-            {/* Subtasks */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium flex items-center gap-2">
-                  Subtasks
-                  {task._count && task._count.subtasks > 0 && (
-                    <span className="text-muted-foreground font-normal">
-                      {task._count.completedSubtasks}/{task._count.subtasks}
-                    </span>
-                  )}
-                </h4>
-                {!addingSubtask ? (
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setAddingSubtask(true)}>
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                  </Button>
-                ) : null}
-              </div>
-
-              {addingSubtask && (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Subtask title..."
-                    className="h-8 text-sm"
-                    value={newSubtask}
-                    onChange={e => setNewSubtask(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleAddSubtask()}
-                    autoFocus
-                  />
-                  <Button size="sm" className="h-8" onClick={handleAddSubtask}>Add</Button>
-                  <Button variant="ghost" size="sm" className="h-8" onClick={() => { setAddingSubtask(false); setNewSubtask('') }}>Cancel</Button>
-                </div>
-              )}
-
-              {task.subtasks && task.subtasks.length > 0 ? (
-                <div className="space-y-1">
-                  {task.subtasks.map(subtask => (
-                    <div key={subtask.id} className="flex items-center gap-3 group py-1">
-                      <Checkbox
-                        checked={subtask.completed}
-                        onCheckedChange={() => handleToggleSubtask(subtask)}
-                      />
-                      <span className={`text-sm flex-1 ${subtask.completed ? 'line-through text-muted-foreground' : ''}`}>
-                        {subtask.title}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : !addingSubtask ? (
-                <p className="text-xs text-muted-foreground">No subtasks yet</p>
-              ) : null}
-            </div>
 
             {/* Assignees */}
             <div className="space-y-3">
