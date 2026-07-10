@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 
 // shadcn/ui
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -1153,6 +1154,14 @@ export function AdminProjects() {
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', priority: 'medium', dueDate: null as Date | null, color: PRESET_COLORS[0] })
+  const [activeUsers, setActiveUsers] = useState<User[]>([])
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+   // Manage members dialog
+  const [manageMembersOpen, setManageMembersOpen] = useState(false)
+  const [manageProjectId, setManageProjectId] = useState<string>('')
+  const [manageProjectName, setManageProjectName] = useState('')
+  const [projectMembers, setProjectMembers] = useState<(ProjectMember & { user: User })[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -1165,6 +1174,17 @@ export function AdminProjects() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  // Fetch active admin + team users for member picker
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => {
+        const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team') && u.status === 'active')
+        setActiveUsers(users)
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
@@ -1182,7 +1202,8 @@ export function AdminProjects() {
           priority: form.priority,
           dueDate: form.dueDate ? form.dueDate.toISOString() : null,
           color: form.color,
-          createdBy: user.id
+          createdBy: user.id,
+          memberIds: selectedMemberIds
         })
       })
       if (!createRes.ok) {
@@ -1192,6 +1213,7 @@ export function AdminProjects() {
       toast.success('Project created successfully')
       setCreateOpen(false)
       setForm({ name: '', description: '', priority: 'medium', dueDate: null, color: PRESET_COLORS[0] })
+      setSelectedMemberIds([])
       fetchProjects()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to create project')
@@ -1223,6 +1245,52 @@ export function AdminProjects() {
       fetchProjects()
     } catch {
       toast.error('Failed to delete project')
+    }
+  }
+
+  async function openManageMembers(projectId: string, projectName: string) {
+    setManageProjectId(projectId)
+    setManageProjectName(projectName)
+    setManageMembersOpen(true)
+    setMembersLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/members`)
+      const data = await res.json()
+      setProjectMembers(data.members || [])
+    } catch {
+      toast.error('Failed to load members')
+    } finally {
+      setMembersLoading(false)
+    }
+  }
+
+  async function handleAddMembers(userIds: string[]) {
+    try {
+      const res = await fetch(`/api/projects/${manageProjectId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds })
+      })
+      if (!res.ok) throw new Error()
+      toast.success(`${userIds.length} member(s) added`)
+      // Refresh members list
+      const updated = await fetch(`/api/projects/${manageProjectId}/members`).then(r => r.json())
+      setProjectMembers(updated.members || [])
+      fetchProjects()
+    } catch {
+      toast.error('Failed to add members')
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    try {
+      const res = await fetch(`/api/projects/${manageProjectId}/members?userId=${userId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      toast.success('Member removed')
+      setProjectMembers(prev => prev.filter(m => m.userId !== userId))
+      fetchProjects()
+    } catch {
+      toast.error('Failed to remove member')
     }
   }
 
@@ -1267,7 +1335,7 @@ export function AdminProjects() {
                 <TableHead className="text-center">Tasks</TableHead>
                 <TableHead className="text-center hidden sm:table-cell">Members</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-16"></TableHead>
+                <TableHead className="w-24"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1293,7 +1361,17 @@ export function AdminProjects() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">{p._count?.tasks ?? 0}</TableCell>
-                    <TableCell className="text-center hidden sm:table-cell">{p._count?.members ?? 0}</TableCell>
+                    <TableCell className="text-center hidden sm:table-cell">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => openManageMembers(p.id, p.name)}
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        {p._count?.members ?? 0}
+                      </Button>
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -1403,6 +1481,47 @@ export function AdminProjects() {
                 ))}
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Assign Members</Label>
+              <p className="text-xs text-muted-foreground">Select team members who will have access to this project</p>
+              {activeUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No active users found</p>
+              ) : (
+                <ScrollArea className="max-h-48 rounded-md border">
+                  <div className="p-2 space-y-1">
+                    {activeUsers.map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedMemberIds.includes(u.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedMemberIds(prev =>
+                              checked
+                                ? [...prev, u.id]
+                                : prev.filter(id => id !== u.id)
+                            )
+                          }}
+                        />
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium truncate block">{u.name}</span>
+                        </div>
+                        <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>
+                          {u.role}
+                        </Badge>
+                      </label>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+              {selectedMemberIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">{selectedMemberIds.length} member(s) selected</p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -1410,6 +1529,101 @@ export function AdminProjects() {
               {creating ? 'Creating...' : 'Create Project'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Members Dialog */}
+      <Dialog open={manageMembersOpen} onOpenChange={setManageMembersOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Members</DialogTitle>
+            <DialogDescription>
+              Members of &quot;{manageProjectName}&quot;
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {membersLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Current members */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Current Members</Label>
+                  {projectMembers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2">No members yet</p>
+                  ) : (
+                    <ScrollArea className="max-h-48 rounded-md border">
+                      <div className="p-2 space-y-1">
+                        {projectMembers.map((m) => (
+                          <div key={m.id} className="flex items-center gap-3 px-2 py-1.5">
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback className="text-[10px]">{getInitials(m.user.name)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium truncate block">{m.user.name}</span>
+                              <span className="text-xs text-muted-foreground">{m.user.email}</span>
+                            </div>
+                            <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(m.user.role))}>
+                              {m.role === 'owner' ? 'owner' : m.user.role}
+                            </Badge>
+                            {m.role !== 'owner' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-rose-500"
+                                onClick={() => handleRemoveMember(m.userId)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+
+                {/* Add new members */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Add Members</Label>
+                  {activeUsers.filter(u => !projectMembers.some(m => m.userId === u.id)).length === 0 ? (
+                    <p className="text-xs text-muted-foreground">All active users are already members</p>
+                  ) : (
+                    <ScrollArea className="max-h-40 rounded-md border">
+                      <div className="p-2 space-y-1">
+                        {activeUsers
+                          .filter(u => !projectMembers.some(m => m.userId === u.id))
+                          .map((u) => (
+                            <div key={u.id} className="flex items-center gap-3 px-2 py-1.5 hover:bg-muted/50 rounded-md">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm font-medium truncate block">{u.name}</span>
+                              </div>
+                              <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>
+                                {u.role}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs"
+                                onClick={() => handleAddMembers([u.id])}
+                              >
+                                <UserPlus className="h-3 w-3 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </motion.div>

@@ -596,3 +596,24 @@ Stage Summary:
 - Assignee dropdowns now show ALL active administrators and team members system-wide
 - Role labels displayed: "(admin)" or "(team)" next to each user name
 - Works consistently across: TeamProjects Add Task, TeamTasks Create Task, inline assignee popovers, and detail dialog
+---
+Task ID: 1
+Agent: main
+Task: Fix admin-created projects not reflecting in Team Workspace
+
+Work Log:
+- Analyzed the root cause: AdminProjects create dialog didn't send `memberIds`, so only the admin creator was added as a member
+- TeamProjects filters projects by `p.members.some(m => m.userId === user?.id)`, so team members never saw admin-only projects
+- Added member selection UI (checkbox list with all active admin+team users) to Admin Create Project dialog
+- Created `/api/projects/[id]/members/route.ts` API with GET (list members), POST (add members), DELETE (remove member)
+- Fixed `createMany` SQLite compatibility issue by switching to individual `create` calls with existence check
+- Added "Manage Members" dialog accessible by clicking the member count in the projects table
+- Member count column now shows clickable button instead of plain number
+- Manage Members dialog shows current members (with remove button for non-owners) and available users to add
+
+Stage Summary:
+- Admin can now select members when creating a project via checkboxes
+- Admin can manage members (add/remove) for existing projects via the Manage Members dialog
+- Projects created by admin with selected members now immediately appear in those members' Team Workspace
+- Files modified: `src/features/admin-dashboard.tsx`, `src/app/api/projects/route.ts` (unchanged, already supported memberIds)
+- Files created: `src/app/api/projects/[id]/members/route.ts`
