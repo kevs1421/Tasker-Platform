@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
+  FolderKanban, MessageSquare, UserCircle, ArrowLeft,
   ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
   MessageCircle, Check, CheckCheck, Search, ClipboardCheck, Plus,
@@ -419,13 +419,6 @@ export function ClientProjects() {
                             <ClipboardCheck className="w-3.5 h-3.5" />
                             Onboarding
                           </Button>
-                          <motion.span
-                            className="text-muted-foreground"
-                            animate={{ rotate: isExpanded ? 180 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </motion.span>
                         </div>
                       </div>
 
