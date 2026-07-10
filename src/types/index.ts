@@ -83,5 +83,5 @@ export type Role = 'admin' | 'team' | 'client'
 export type AppRoute =
   | { page: 'login' }
   | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task' | 'messages' | 'profile' }
-  | { page: 'team-dashboard'; tab: 'project' | 'task' | 'messages' | 'profile' }
+  | { page: 'team-dashboard'; tab: 'project' | 'tasks' | 'task-dashboard' | 'messages' | 'profile' }
   | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'messages' | 'profile' }

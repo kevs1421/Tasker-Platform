@@ -523,3 +523,28 @@ Stage Summary:
 - Admin Tasks: explicit Save/Discard pattern replaces auto-save, "Unsaved changes" indicator
 - Team Workspace: task creation from project view now works correctly (assignee + createdById)
 - Files modified: src/features/client-dashboard.tsx, src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx
+---
+Task ID: 3
+Agent: main
+Task: Create TeamMyTasks component for viewing user's tasks across all projects
+
+Work Log:
+- Created src/features/team-my-tasks.tsx as a new 'use client' component
+- Implements header with "My Tasks" title, count badge, and subtitle
+- Filter tabs: All | To Do | In Progress | In Review | Done — each with icon and count
+- Fetches all projects for the current user, then fetches tasks from each project in parallel
+- Filters tasks by assignee matching user.id
+- Task list is card-based (not kanban) with: status dot, title (truncated, strikethrough if done), priority badge, due date (red if overdue), project name badge with color dot, subtask progress with percentage, comment count indicator, self avatar
+- Tasks sorted by priority weight then due date
+- Clicking a task calls setSelectedTaskId + setSelectedProjectId + setRoute to navigate to team-dashboard task tab
+- Loading state: skeleton placeholders matching the layout
+- Empty state: contextual message per active filter tab
+- ScrollArea with max height for overflow handling
+- AnimatePresence with motion.div for smooth filter transitions
+- Responsive design: filter labels hidden on small screens (icons remain), flexible wrapping
+- Lint passes with 0 new errors/warnings
+
+Stage Summary:
+- New file: src/features/team-my-tasks.tsx
+- Fully functional component following existing team-dashboard.tsx design patterns
+- Exported as named export: TeamMyTasks

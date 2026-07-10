@@ -163,19 +163,9 @@ export function TeamProjects() {
   const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
   const [expandedLoading, setExpandedLoading] = useState(false)
   const [taskFilter, setTaskFilter] = useState<string>('all')
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createLoading, setCreateLoading] = useState(false)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [createTaskLoading, setCreateTaskLoading] = useState(false)
   const [createTaskProjectId, setCreateTaskProjectId] = useState<string>('')
-
-  // Create project form
-  const [projName, setProjName] = useState('')
-  const [projDesc, setProjDesc] = useState('')
-  const [projPriority, setProjPriority] = useState('medium')
-  const [projDueDate, setProjDueDate] = useState<Date>()
-  const [projColor, setProjColor] = useState(PROJECT_COLORS[0])
-  const [projCalendarOpen, setProjCalendarOpen] = useState(false)
 
   // Create task form
   const [taskTitle, setTaskTitle] = useState('')
@@ -221,30 +211,6 @@ export function TeamProjects() {
       toast.error('Failed to load tasks')
     } finally {
       setExpandedLoading(false)
-    }
-  }
-
-  const handleCreateProject = async () => {
-    if (!projName.trim()) { toast.error('Project name is required'); return }
-    setCreateLoading(true)
-    try {
-      await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: projName, description: projDesc || null, priority: projPriority,
-          dueDate: projDueDate ? projDueDate.toISOString() : null, color: projColor,
-        }),
-      })
-      toast.success('Project created')
-      setCreateOpen(false)
-      setProjName(''); setProjDesc(''); setProjPriority('medium')
-      setProjDueDate(undefined); setProjColor(PROJECT_COLORS[0])
-      fetchProjects()
-    } catch {
-      toast.error('Failed to create project')
-    } finally {
-      setCreateLoading(false)
     }
   }
 
@@ -323,80 +289,6 @@ export function TeamProjects() {
             {projects.length} project{projects.length !== 1 ? 's' : ''} you are assigned to
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" /> Create Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Create New Project</DialogTitle>
-              <DialogDescription>Add a new project to your workspace.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label>Project Name</Label>
-                <Input placeholder="Enter project name" value={projName} onChange={(e) => setProjName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea placeholder="Describe the project..." value={projDesc} onChange={(e) => setProjDesc(e.target.value)} rows={3} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Select value={projPriority} onValueChange={setProjPriority}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Due Date</Label>
-                  <Popover open={projCalendarOpen} onOpenChange={setProjCalendarOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
-                        <CalendarIcon className="h-4 w-4" />
-                        {projDueDate ? format(projDueDate, 'PPP') : 'Pick a date'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={projDueDate} onSelect={(d) => { setProjDueDate(d); setProjCalendarOpen(false) }} />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Color</Label>
-                <div className="flex flex-wrap gap-2">
-                  {PROJECT_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className={cn(
-                        'h-8 w-8 rounded-full transition-all ring-2',
-                        projColor === c ? 'ring-offset-2 ring-offset-background scale-110' : 'ring-transparent hover:scale-105',
-                      )}
-                      style={{ backgroundColor: c, ringColor: c }}
-                      onClick={() => setProjColor(c)}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateProject} disabled={createLoading} className="gap-2">
-                {createLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create Project
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Project Grid */}
@@ -404,7 +296,7 @@ export function TeamProjects() {
         <EmptyState
           icon={FolderKanban}
           title="No projects yet"
-          description="You haven't been assigned to any projects. Create one or ask an admin to assign you."
+          description="You haven't been assigned to any projects yet. An admin will assign projects to you."
         />
       ) : (
         <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1012,7 +904,7 @@ export function TeamTasks() {
       <EmptyState
         icon={FolderKanban}
         title="No projects yet"
-        description="You haven't been assigned to any projects. Create one or ask an admin to assign you."
+        description="You haven't been assigned to any projects yet. An admin will assign projects to you."
       />
     )
   }

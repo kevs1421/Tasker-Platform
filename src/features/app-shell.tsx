@@ -138,7 +138,8 @@ function getNavItems(role: string): NavItem[] {
   ]
   if (role === 'team') return [
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
-    { id: 'tasks', label: 'Tasks', icon: ListTodo, route: { page: 'team-dashboard', tab: 'task' } },
+    { id: 'tasks', label: 'Tasks', icon: ClipboardCheck, route: { page: 'team-dashboard', tab: 'tasks' } },
+    { id: 'task-dashboard', label: 'Tasks Dashboard', icon: ListTodo, route: { page: 'team-dashboard', tab: 'task-dashboard' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
   ]
