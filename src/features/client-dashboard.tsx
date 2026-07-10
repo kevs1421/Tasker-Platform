@@ -1,35 +1,29 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  FolderKanban, MessageSquare, UserCircle, ArrowLeft,
-  ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
+  FolderKanban, UserCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  MessageCircle, Check, CheckCheck, Search, ClipboardCheck, Plus,
+  Check, ClipboardCheck, Plus,
+  Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import type {
-  User, Project, Task, Message, Comment
-} from '@/types'
+import type { User, Project } from '@/types'
 import {
-  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
-  formatDate, formatRelativeTime
+  getRoleBadgeClasses, getPriorityConfig,
+  formatDate,
 } from '@/features/route-guard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { isBefore, parseISO } from 'date-fns'
@@ -80,17 +74,6 @@ function PriorityBadge({ priority }: { priority: string }) {
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = getStatusConfig(status)
-  const Icon = cfg.icon === 'check' ? CheckCircle2 : cfg.icon === 'clock' ? Clock : cfg.icon === 'eye' ? Eye : Circle
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
-      <Icon className="w-3 h-3" />
-      {cfg.label}
-    </span>
-  )
-}
-
 function EmptyState({ icon: Icon, title, description }: {
   icon: React.ElementType; title: string; description: string
 }) {
@@ -124,10 +107,13 @@ export function ClientProjects() {
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<ClientProject[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
-  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
-  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number }; comments?: Comment[] }) | null>(null)
-  const [taskDetailLoading, setTaskDetailLoading] = useState(false)
+
+  // Upload files state
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string }>>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadProjectId, setUploadProjectId] = useState<string>('')
+  const [uploadDragOver, setUploadDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Onboarding creation state
   const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false)
@@ -152,36 +138,82 @@ export function ClientProjects() {
     }
   }, [user?.id])
 
-  useEffect(() => { fetchProjects() }, [fetchProjects])
+  // Fetch uploaded files from localStorage
+  const fetchUploadedFiles = useCallback(() => {
+    if (!user) return
+    try {
+      const stored = localStorage.getItem(`client-uploads-${user.id}`)
+      if (stored) setUploadedFiles(JSON.parse(stored))
+    } catch { /* ignore */ }
+  }, [user])
 
-  const expandProject = async (projectId: string) => {
-    if (expandedProjectId === projectId) {
-      setExpandedProjectId(null)
-      setExpandedTasks([])
+  const saveUploadedFiles = useCallback((files: typeof uploadedFiles) => {
+    if (!user) return
+    localStorage.setItem(`client-uploads-${user.id}`, JSON.stringify(files))
+  }, [user])
+
+  useEffect(() => { fetchProjects(); fetchUploadedFiles() }, [fetchProjects, fetchUploadedFiles])
+
+  // File upload handler
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    if (!uploadProjectId) {
+      toast.error('Please select a project first')
       return
     }
-    setExpandedProjectId(projectId)
-    try {
-      const res = await fetch(`/api/projects/${projectId}`)
-      const data = await res.json()
-      setExpandedTasks(data.project?.tasks || [])
-    } catch {
-      toast.error('Failed to load project tasks')
+    setUploading(true)
+    const newFiles: typeof uploadedFiles = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (!res.ok) {
+          const d = await res.json()
+          throw new Error(d.error || 'Upload failed')
+        }
+        const data = await res.json()
+        newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadProjectId })
+      } catch (e: unknown) {
+        toast.error(`${file.name}: ${e instanceof Error ? e.message : 'Upload failed'}`)
+      }
     }
+    if (newFiles.length > 0) {
+      const updated = [...uploadedFiles, ...newFiles]
+      setUploadedFiles(updated)
+      saveUploadedFiles(updated)
+      toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+    }
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const openTaskDetail = async (taskId: string) => {
-    setTaskDetailLoading(true)
-    setTaskDetail(null)
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`)
-      const data = await res.json()
-      setTaskDetail(data.task)
-    } catch {
-      toast.error('Failed to load task details')
-    } finally {
-      setTaskDetailLoading(false)
-    }
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setUploadDragOver(false)
+    handleFileUpload(e.dataTransfer.files)
+  }
+
+  const deleteUploadedFile = (idx: number) => {
+    const updated = uploadedFiles.filter((_, i) => i !== idx)
+    setUploadedFiles(updated)
+    saveUploadedFiles(updated)
+    toast.success('File removed')
+  }
+
+  const getFileIcon = (type: string) => {
+    if (type.startsWith('image/')) return <ImageIcon className="w-4 h-4 text-emerald-600" />
+    if (type.includes('pdf')) return <FileText className="w-4 h-4 text-red-500" />
+    if (type.includes('word') || type.includes('document')) return <FileText className="w-4 h-4 text-blue-500" />
+    if (type.includes('excel') || type.includes('sheet') || type.includes('spreadsheet')) return <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+    return <File className="w-4 h-4 text-muted-foreground" />
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   const openOnboardingDialog = (projectId: string, projectName: string) => {
@@ -248,6 +280,195 @@ export function ClientProjects() {
         </div>
       </div>
 
+      {/* ─── Upload Files Section ──────────────────────────────── */}
+      <motion.div {...fadeSlide} transition={{ delay: 0.05 }}>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Upload className="w-4 h-4 text-primary" />
+              Upload Files
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">Upload documents, images, and other files for your projects</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Project selector */}
+            <div className="space-y-2">
+              <Label className="text-sm">Select Project</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={uploadProjectId}
+                onChange={(e) => setUploadProjectId(e.target.value)}
+              >
+                <option value="">Choose a project...</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Drop zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setUploadDragOver(true) }}
+              onDragLeave={() => setUploadDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors',
+                uploadDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
+              )}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                className="hidden"
+                onChange={(e) => handleFileUpload(e.target.files)}
+              />
+              {uploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <p className="text-sm text-muted-foreground">Uploading...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                    <Upload className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Drop files here or click to browse</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, PDF, DOC, DOCX, XLS, XLSX and more (max 10MB each)</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Uploaded files list */}
+            {uploadedFiles.length > 0 && (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Uploaded Files ({uploadedFiles.length})</p>
+                {uploadedFiles.map((file, idx) => {
+                  const proj = projects.find(p => p.id === file.projectId)
+                  return (
+                    <motion.div
+                      key={file.filename}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/30 group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        {getFileIcon(file.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.originalName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatFileSize(file.size)} • {proj?.name || 'Unknown project'}
+                        </p>
+                      </div>
+                      <a
+                        href={file.url}
+                        download={file.originalName}
+                        className="p-1.5 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                      </a>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteUploadedFile(idx) }}
+                        className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </button>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ─── Project Progress Overview ──────────────────────────── */}
+      {projects.length > 0 && (
+        <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                Project Progress
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-5">
+                {projects.map((project) => {
+                  const todo = project.taskStats?.todo || 0
+                  const inProgress = project.taskStats?.in_progress || 0
+                  const completed = project.taskStats?.done || 0
+                  const total = todo + inProgress + completed
+                  if (total === 0) return null
+
+                  const todoPct = Math.round((todo / total) * 100)
+                  const inProgressPct = Math.round((inProgress / total) * 100)
+                  const completedPct = Math.round((completed / total) * 100)
+
+                  return (
+                    <div key={project.id} className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
+                          <span className="text-sm font-medium">{project.name}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{completedPct}%</span>
+                      </div>
+                      {/* Stacked progress bar */}
+                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+                        {todo > 0 && (
+                          <div
+                            className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+                            style={{ width: `${todoPct}%` }}
+                            title={`Not Started: ${todo}`}
+                          />
+                        )}
+                        {inProgress > 0 && (
+                          <div
+                            className="bg-amber-500 transition-all duration-500"
+                            style={{ width: `${inProgressPct}%` }}
+                            title={`In Progress: ${inProgress}`}
+                          />
+                        )}
+                        {completed > 0 && (
+                          <div
+                            className="bg-emerald-500 transition-all duration-500"
+                            style={{ width: `${completedPct}%` }}
+                            title={`Completed: ${completed}`}
+                          />
+                        )}
+                      </div>
+                      {/* Legend */}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 dark:bg-slate-500" />
+                          Not Started ({todo})
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
+                          In Progress ({inProgress})
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                          Completed ({completed})
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
@@ -259,12 +480,10 @@ export function ClientProjects() {
           {/* ─── Project Cards ──────────────────────────────────── */}
           <div className="space-y-4">
             {projects.map((project, i) => {
-              const projectTasks = expandedProjectId === project.id ? expandedTasks : []
               const doneTasks = project.taskStats?.done || 0
               const totalT = project._count?.tasks || 0
               const pct = project.progress ?? 0
               const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
-              const isExpanded = expandedProjectId === project.id
 
               // Compute progress bar gradient colors
               const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
@@ -277,9 +496,8 @@ export function ClientProjects() {
                   transition={{ delay: i * 0.05 }}
                 >
                   <Card
-                    className="cursor-pointer hover:shadow-md transition-all border-l-4"
+                    className="hover:shadow-md transition-all border-l-4"
                     style={{ borderLeftColor: project.color }}
-                    onClick={() => expandProject(project.id)}
                   >
                     <CardContent className="p-4 md:p-5">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -332,80 +550,6 @@ export function ClientProjects() {
                       </div>
                     </CardContent>
                   </Card>
-
-                  {/* Expanded tasks table */}
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        <Card className="mt-2 rounded-t-none">
-                          <CardContent className="p-0">
-                            {projectTasks.length === 0 ? (
-                              <div className="py-8 text-center text-sm text-muted-foreground">
-                                No tasks in this project yet.
-                              </div>
-                            ) : (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b bg-muted/50">
-                                      <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
-                                      <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                                      <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
-                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
-                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {projectTasks.map(task => (
-                                      <tr
-                                        key={task.id}
-                                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
-                                        onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
-                                      >
-                                        <td className="p-3">
-                                          <div className="font-medium">{task.title}</div>
-                                          {task.description && (
-                                            <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
-                                          )}
-                                        </td>
-                                        <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
-                                        <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
-                                        <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
-                                          {task.dueDate ? formatDate(task.dueDate) : '—'}
-                                        </td>
-                                        <td className="p-3 hidden lg:table-cell">
-                                          <div className="flex -space-x-2">
-                                            {task.assignees?.slice(0, 3).map(a => (
-                                              <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
-                                                <AvatarFallback className="text-[10px] bg-muted">
-                                                  {getInitials(a.user?.name || '?')}
-                                                </AvatarFallback>
-                                              </Avatar>
-                                            ))}
-                                            {(task.assignees?.length || 0) > 3 && (
-                                              <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
-                                                +{(task.assignees?.length || 0) - 3}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </motion.div>
               )
             })}
@@ -490,178 +634,7 @@ export function ClientProjects() {
         </DialogContent>
       </Dialog>
 
-      {/* Task Detail Dialog */}
-      <Dialog open={!!taskDetail} onOpenChange={(open) => { if (!open) setTaskDetail(null) }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          {taskDetailLoading ? (
-            <div className="p-6 space-y-4">
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : taskDetail ? (
-            <TaskDetailDialog task={taskDetail} userId={user?.id || ''} onUpdate={() => openTaskDetail(taskDetail.id)} />
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
-  )
-}
-
-// ─── Task Detail Dialog ─────────────────────────────────────
-function TaskDetailDialog({
-  task, userId, onUpdate
-}: {
-  task: Task & { _count: { comments: number }; comments?: Comment[] }
-  userId: string
-  onUpdate: () => void
-}) {
-  const [comments, setComments] = useState<Comment[]>(task.comments || [])
-  const [newComment, setNewComment] = useState('')
-  const [sendingComment, setSendingComment] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [comments])
-
-  const sendComment = async () => {
-    if (!newComment.trim()) return
-    setSendingComment(true)
-    try {
-      const res = await fetch('/api/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newComment.trim(), taskId: task.id, userId })
-      })
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setComments(prev => [...prev, data.comment])
-      setNewComment('')
-      toast.success('Comment added')
-    } catch {
-      toast.error('Failed to add comment')
-    } finally {
-      setSendingComment(false)
-    }
-  }
-
-  const statusCfg = getStatusConfig(task.status)
-  const priorityCfg = getPriorityConfig(task.priority)
-
-  return (
-    <>
-      <DialogHeader>
-        <div className="flex items-center gap-2 flex-wrap">
-          <DialogTitle className="text-xl">{task.title}</DialogTitle>
-          <StatusBadge status={task.status} />
-          <PriorityBadge priority={task.priority} />
-        </div>
-        {task.project && (
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: task.project.color }} />
-            <span className="text-sm text-muted-foreground">{task.project.name}</span>
-          </div>
-        )}
-      </DialogHeader>
-
-      <ScrollArea className="flex-1 -mx-6 px-6" ref={scrollRef}>
-        <div className="space-y-5 py-4">
-          {/* Description */}
-          {task.description && (
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
-              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
-            </div>
-          )}
-
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {task.dueDate && (
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Due Date</span>
-                <div className="flex items-center gap-1.5 text-sm font-medium">
-                  <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                  {formatDate(task.dueDate)}
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Assignees</span>
-              <div className="flex items-center gap-1.5">
-                {task.assignees?.map(a => (
-                  <Avatar key={a.id} className="w-6 h-6">
-                    <AvatarFallback className="text-[10px] bg-muted">
-                      {getInitials(a.user?.name || '?')}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-                {(!task.assignees || task.assignees.length === 0) && (
-                  <span className="text-sm text-muted-foreground">Unassigned</span>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Created</span>
-              <span className="text-sm">{formatRelativeTime(task.createdAt)}</span>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Comments */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-              <MessageCircle className="w-3.5 h-3.5" />
-              Comments ({comments.length})
-            </h4>
-            <div className="space-y-3">
-              {comments.map(comment => (
-                <div key={comment.id} className="flex gap-3">
-                  <Avatar className="w-8 h-8 shrink-0">
-                    <AvatarFallback className="text-xs bg-muted">
-                      {getInitials(comment.user?.name || '?')}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{comment.user?.name || 'Unknown'}</span>
-                      <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.createdAt)}</span>
-                      {comment.user?.role && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeClasses(comment.user.role)}`}>
-                          {comment.user.role}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm mt-0.5 whitespace-pre-wrap">{comment.content}</p>
-                  </div>
-                </div>
-              ))}
-              {comments.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
-
-      {/* Comment input */}
-      <div className="border-t pt-4 mt-auto">
-        <div className="flex gap-2">
-          <Input
-            value={newComment}
-            onChange={e => setNewComment(e.target.value)}
-            placeholder="Add a comment..."
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() } }}
-          />
-          <Button size="icon" onClick={sendComment} disabled={!newComment.trim() || sendingComment}>
-            {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
-        </div>
-      </div>
-    </>
   )
 }
 

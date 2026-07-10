@@ -726,3 +726,42 @@ Stage Summary:
 - API supports time_in, time_out, cancel, manual entry, filtering by user/project/date
 - Admin view: monitor all team members, active timers with live elapsed, filterable table
 - Team view: personal time tracking with prominent Time In/Out button, optional project/task/description
+---
+Task ID: 3
+Agent: main
+Task: UI & Functionality Updates - Sidebar Time In/Out, Client Upload Files, Project Progress Visualization
+
+Work Log:
+- Read and analyzed current project state (app-shell, client-dashboard, team-dashboard, admin-dashboard, page.tsx, types, prisma schema, upload API)
+- Used VLM to analyze reference screenshot - identified red rectangle content as the task detail table (Task, Status, Priority, Due Date, Assignees columns)
+- Implemented TimeInOutWidget component in app-shell.tsx with:
+  - Compact green "Time In" button / red "Time Out" with elapsed timer
+  - Clock In dialog with project/task/description selection
+  - Live 1-second interval timer
+  - Corrected API field mappings (timeEntries, timeIn, project.name, task.title)
+  - Positioned above all nav items in sidebar for Admin and Team roles
+- Added Upload Files section to Client Portal (client-dashboard.tsx):
+  - Project selector dropdown
+  - Drag & drop file upload zone
+  - Support for JPG, PNG, PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP
+  - File list with icons, size, project association
+  - Download and delete actions per file
+  - Files stored in localStorage with physical uploads via /api/upload
+- Added modern Project Progress visualization to Client Portal:
+  - Stacked progress bars per project (Not Started=gray, In Progress=amber, Completed=green)
+  - Percentage display and task count legends
+  - Auto-updates as task statuses change
+- Removed internal project management details from client view:
+  - Removed expandable task table (the "red rectangle" content)
+  - Removed TaskDetailDialog component and all related state/functions
+  - Made project cards non-expandable
+  - Cleaned up unused imports (AnimatePresence, Avatar, ScrollArea, Separator, StatusBadge, etc.)
+- Fixed all lint errors (0 errors, only pre-existing warnings)
+
+Stage Summary:
+- Admin sidebar: Time In/Out widget at top before Overview ✅
+- Team sidebar: Time In/Out widget at top before Projects ✅
+- Client portal: Upload Files section with drag & drop ✅
+- Client portal: Modern Project Progress stacked bar chart ✅
+- Client portal: Task table and internal details removed ✅
+- All changes verified via agent-browser and VLM screenshot analysis

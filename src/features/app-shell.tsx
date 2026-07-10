@@ -7,12 +7,374 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, Settings, User, LayoutDashboard, Menu, X, Bell, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban, Clock } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban, Clock, Play, Square, Loader2, Timer } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
+import { toast } from 'sonner'
+
+// ─── Time In/Out Widget ──────────────────────────────────
+
+interface ActiveTimeEntry {
+  id: string
+  timeIn: string
+  projectId?: string | null
+  project?: { id: string; name: string } | null
+  task?: { id: string; title: string } | null
+  description?: string | null
+}
+
+interface Project {
+  id: string
+  name: string
+}
+
+interface Task {
+  id: string
+  title: string
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function TimeInOutWidget({ userId }: { userId: string }) {
+  const [activeEntry, setActiveEntry] = useState<ActiveTimeEntry | null>(null)
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [clockingIn, setClockingIn] = useState(false)
+  const [clockingOut, setClockingOut] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  // Time In dialog state
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+  const [description, setDescription] = useState('')
+  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [loadingTasks, setLoadingTasks] = useState(false)
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startTimeRef = useRef<number>(0)
+
+  // Fetch active timer on mount
+  const fetchActiveTimer = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/time-entries?userId=${userId}&active=true`)
+      if (res.ok) {
+        const data = await res.json()
+        const entries = data.timeEntries || []
+        const entry: ActiveTimeEntry | null = entries.find((e: ActiveTimeEntry) => e.timeIn) || null
+        setActiveEntry(entry)
+        if (entry) {
+          startTimeRef.current = new Date(entry.timeIn).getTime()
+          setElapsedMs(Date.now() - startTimeRef.current)
+        }
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoading(false)
+    }
+  }, [userId])
+
+  useEffect(() => {
+    fetchActiveTimer()
+  }, [fetchActiveTimer])
+
+  // 1-second interval for elapsed display
+  useEffect(() => {
+    if (activeEntry) {
+      intervalRef.current = setInterval(() => {
+        setElapsedMs(Date.now() - startTimeRef.current)
+      }, 1000)
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [activeEntry])
+
+  // Open time-in dialog and fetch projects
+  const handleOpenDialog = async () => {
+    setDialogOpen(true)
+    setSelectedProjectId('')
+    setSelectedTaskId('')
+    setDescription('')
+    setTasks([])
+    setLoadingProjects(true)
+    try {
+      const res = await fetch('/api/projects')
+      if (res.ok) {
+        const data = await res.json()
+        setProjects(data.projects ?? [])
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingProjects(false)
+    }
+  }
+
+  // Fetch tasks when project changes
+  const handleProjectChange = async (projectId: string) => {
+    setSelectedProjectId(projectId)
+    setSelectedTaskId('')
+    setTasks([])
+    if (!projectId) return
+    setLoadingTasks(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setTasks(data.project?.tasks ?? [])
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingTasks(false)
+    }
+  }
+
+  // Clock in
+  const handleClockIn = async () => {
+    setClockingIn(true)
+    try {
+      const body: Record<string, unknown> = { action: 'time_in', userId }
+      if (selectedProjectId) body.projectId = selectedProjectId
+      if (selectedTaskId) body.taskId = selectedTaskId
+      if (description.trim()) body.description = description.trim()
+
+      const res = await fetch('/api/time-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to clock in')
+      }
+      const data = await res.json()
+      const entry = data.timeEntry
+      if (entry) {
+        setActiveEntry(entry)
+        startTimeRef.current = new Date(entry.timeIn).getTime()
+        setElapsedMs(Date.now() - startTimeRef.current)
+      }
+      setDialogOpen(false)
+      toast.success('Clocked in successfully')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to clock in')
+    } finally {
+      setClockingIn(false)
+    }
+  }
+
+  // Clock out
+  const handleClockOut = async () => {
+    if (!activeEntry) return
+    setClockingOut(true)
+    try {
+      const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'time_out' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to clock out')
+      }
+      setActiveEntry(null)
+      setElapsedMs(0)
+      toast.success('Clocked out successfully')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to clock out')
+    } finally {
+      setClockingOut(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 flex items-center justify-center gap-2">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Loading timer…</span>
+      </div>
+    )
+  }
+
+  if (activeEntry) {
+    return (
+      <>
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-2">
+          <Timer className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] text-red-600 dark:text-red-400 font-medium leading-none mb-0.5">
+              {activeEntry.project?.name || 'No Project'}
+            </div>
+            <div className="text-xs font-mono font-semibold text-red-700 dark:text-red-300 tabular-nums">
+              {formatElapsed(elapsedMs)}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-7 px-2 text-[11px] shrink-0"
+            onClick={handleClockOut}
+            disabled={clockingOut}
+          >
+            {clockingOut ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3 mr-1" />}
+            Out
+          </Button>
+        </div>
+
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Clock In</DialogTitle>
+              <DialogDescription>Optionally select a project, task, and add a description before clocking in.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-sm">Project (optional)</Label>
+                <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={loadingProjects}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder={loadingProjects ? 'Loading…' : 'Select project'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedProjectId && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Task (optional)</Label>
+                  <Select value={selectedTaskId} onValueChange={setSelectedTaskId} disabled={loadingTasks}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder={loadingTasks ? 'Loading…' : 'Select task'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tasks.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label className="text-sm">Description (optional)</Label>
+                <Input
+                  placeholder="What are you working on?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
+              <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+                {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                <Play className="w-3.5 h-3.5 mr-1.5" />
+                Clock In
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <button
+        onClick={handleOpenDialog}
+        className="mb-3 w-full rounded-lg border border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30 px-3 py-2 flex items-center justify-center gap-2 hover:bg-green-100 dark:hover:bg-green-950/50 transition-colors cursor-pointer"
+      >
+        <Play className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+        <Clock className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+        <span className="text-xs font-medium text-green-700 dark:text-green-300">Time In</span>
+      </button>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clock In</DialogTitle>
+            <DialogDescription>Optionally select a project, task, and add a description before clocking in.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm">Project (optional)</Label>
+              <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={loadingProjects}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder={loadingProjects ? 'Loading…' : 'Select project'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedProjectId && (
+              <div className="space-y-2">
+                <Label className="text-sm">Task (optional)</Label>
+                <Select value={selectedTaskId} onValueChange={setSelectedTaskId} disabled={loadingTasks}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder={loadingTasks ? 'Loading…' : 'Select task'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tasks.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-sm">Description (optional)</Label>
+              <Input
+                placeholder="What are you working on?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
+            <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+              {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              <Play className="w-3.5 h-3.5 mr-1.5" />
+              Clock In
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
 
 // ─── Header ─────────────────────────────────────────────
 export function AppHeader() {
@@ -158,6 +520,7 @@ export function AppSidebar() {
 
   if (!user) return null
   const navItems = getNavItems(user.role)
+  const showTimeWidget = user.role === 'admin' || user.role === 'team'
 
   const isCurrentTab = (item: NavItem) => route.page === item.route.page && route.tab === item.route.tab
 
@@ -173,6 +536,9 @@ export function AppSidebar() {
       </div>
       <Separator className="mx-4" />
       <ScrollArea className="flex-1 px-3 py-3">
+        {showTimeWidget && (
+          <TimeInOutWidget userId={user.id} />
+        )}
         <nav className="space-y-1">
           {navItems.map((item) => (
             <Button
