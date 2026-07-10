@@ -42,7 +42,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save, FileArchive, FileDown
+  KeyRound, Download, Save, FileArchive, FileDown, Play, Square
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -3081,6 +3081,16 @@ export function AdminTimeTracking() {
   const [stoppingId, setStoppingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // Admin's own timer state
+  const [myActiveEntry, setMyActiveEntry] = useState<LocalTimeEntry | null>(null)
+  const [clockInOpen, setClockInOpen] = useState(false)
+  const [clockInProjectId, setClockInProjectId] = useState('')
+  const [clockInTaskId, setClockInTaskId] = useState('')
+  const [clockInDesc, setClockInDesc] = useState('')
+  const [clockInTasks, setClockInTasks] = useState<{ id: string; title: string }[]>([])
+  const [clockingIn, setClockingIn] = useState(false)
+  const [clockingOut, setClockingOut] = useState(false)
+
   // Filter state
   const [selectedUserId, setSelectedUserId] = useState<string>('all')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
@@ -3213,6 +3223,93 @@ export function AdminTimeTracking() {
     }
   }
 
+  // Admin's own timer functions
+  const fetchMyActiveTimer = useCallback(async () => {
+    if (!currentUser) return
+    try {
+      const res = await fetch(`/api/time-entries?userId=${currentUser.id}&active=true`)
+      if (res.ok) {
+        const data = await res.json()
+        setMyActiveEntry(data.timeEntries?.[0] ?? null)
+      }
+    } catch { /* silent */ }
+  }, [currentUser])
+
+  useEffect(() => { fetchMyActiveTimer() }, [fetchMyActiveTimer])
+
+  // Fetch tasks when project is selected in clock-in dialog
+  useEffect(() => {
+    if (!clockInProjectId) { setClockInTasks([]); setClockInTaskId(''); return }
+    async function fetchTasks() {
+      try {
+        const res = await fetch(`/api/projects/${clockInProjectId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setClockInTasks((data.project?.tasks ?? []).map((t: { id: string; title: string }) => ({ id: t.id, title: t.title })))
+        }
+      } catch { /* silent */ }
+    }
+    fetchTasks()
+  }, [clockInProjectId])
+
+  async function handleAdminClockIn() {
+    if (!currentUser) return
+    setClockingIn(true)
+    try {
+      const res = await fetch('/api/time-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          projectId: clockInProjectId || undefined,
+          taskId: clockInTaskId || undefined,
+          description: clockInDesc || undefined,
+          action: 'time_in',
+        }),
+      })
+      if (res.ok) {
+        toast.success('Clocked in successfully!')
+        setClockInOpen(false)
+        setClockInProjectId('')
+        setClockInTaskId('')
+        setClockInDesc('')
+        setClockInTasks([])
+        fetchMyActiveTimer()
+        fetchEntries()
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to clock in')
+      }
+    } catch {
+      toast.error('Failed to clock in')
+    } finally {
+      setClockingIn(false)
+    }
+  }
+
+  async function handleAdminClockOut() {
+    if (!myActiveEntry) return
+    setClockingOut(true)
+    try {
+      const res = await fetch(`/api/time-entries/${myActiveEntry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'time_out' }),
+      })
+      if (res.ok) {
+        toast.success('Clocked out successfully!')
+        setMyActiveEntry(null)
+        fetchEntries()
+      } else {
+        toast.error('Failed to clock out')
+      }
+    } catch {
+      toast.error('Failed to clock out')
+    } finally {
+      setClockingOut(false)
+    }
+  }
+
   // Suppress unused variable lint (timerTick is used for re-render trigger)
   void timerTick
 
@@ -3231,6 +3328,124 @@ export function AdminTimeTracking() {
         </div>
         <p className="text-sm text-muted-foreground mt-1">Monitor team time entries and attendance</p>
       </div>
+
+      {/* Admin's Own Timer Button */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.02 }}
+      >
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            {myActiveEntry ? (
+              <>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-14 gap-3 text-red-600 border-red-200 bg-red-50 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50 dark:text-red-400 dark:hover:text-red-300 shrink-0"
+                  onClick={handleAdminClockOut}
+                  disabled={clockingOut}
+                >
+                  {clockingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
+                  <span className="text-base font-semibold">Time Out</span>
+                </Button>
+                <div className="flex flex-col items-center sm:items-start">
+                  <span className="text-xs text-muted-foreground">You are currently clocked in</span>
+                  <span className="text-2xl font-mono font-bold text-amber-600 dark:text-amber-400">
+                    {myActiveEntry.timeIn ? formatLiveTimer(myActiveEntry.timeIn) : '00:00:00'}
+                  </span>
+                  {myActiveEntry.project && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: myActiveEntry.project.color }} />
+                      <span className="text-xs text-muted-foreground">{myActiveEntry.project.name}</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <Button
+                size="lg"
+                className="h-14 gap-3 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                onClick={() => setClockInOpen(true)}
+              >
+                <Play className="h-5 w-5" />
+                <span className="text-base font-semibold">Time In</span>
+              </Button>
+            )}
+            {!myActiveEntry && (
+              <p className="text-sm text-muted-foreground">Start tracking your work hours</p>
+            )}
+          </div>
+        </Card>
+      </motion.div>
+
+      {/* Clock In Dialog */}
+      <Dialog open={clockInOpen} onOpenChange={setClockInOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-emerald-600" />
+              Clock In
+            </DialogTitle>
+            <DialogDescription>Optionally select a project and task, or add a description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Project (optional)</Label>
+              <Select value={clockInProjectId} onValueChange={(v) => { setClockInProjectId(v === '__none__' ? '' : v) }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
+                        {p.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {clockInTasks.length > 0 && (
+              <div className="space-y-2">
+                <Label>Task (optional)</Label>
+                <Select value={clockInTaskId} onValueChange={(v) => { setClockInTaskId(v === '__none__' ? '' : v) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clockInTasks.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                placeholder="What are you working on?"
+                value={clockInDesc}
+                onChange={(e) => setClockInDesc(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClockInOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAdminClockIn}
+              disabled={clockingIn}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {clockingIn && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Play className="h-4 w-4" />
+              Start Timer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
