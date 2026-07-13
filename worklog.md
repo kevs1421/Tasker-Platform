@@ -783,3 +783,24 @@ Work Log:
 Stage Summary:
 - Files created: src/app/api/time-entries/export/route.ts
 - Files modified: src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx
+---
+Task ID: 5
+Agent: main
+Task: Fix client portal file upload and ensure file isolation between clients
+
+Work Log:
+- Analyzed the error: `/api/upload` endpoint did not exist, causing JSON parse error when clients tried to upload
+- Found existing file isolation was already correct in client-dashboard.tsx:
+  - localStorage key: `client-uploads-{userId}` (per-client isolation)
+  - UI filter: `uploadedFiles.filter(f => f.projectId === project.id)` (per-project isolation)
+  - Project scope: only projects the client is a member of
+- Created `/api/upload/route.ts`: POST handler that saves files to `/upload/` directory with UUID-prefixed filenames, 10MB limit, allowed extensions validation
+- Created `/api/upload/serve/[path]/route.ts`: GET handler that serves uploaded files with correct Content-Type and Content-Disposition headers, directory traversal protection
+- Added rewrite rule in `next.config.ts`: `/upload/:path*` → `/api/upload/serve/:path*` so uploaded files are accessible via their URLs
+- Verified with agent-browser: logged in as client user John Smith, uploaded test file, confirmed it appears only under the correct project, download link works with no console errors
+
+Stage Summary:
+- Files created: src/app/api/upload/route.ts, src/app/api/upload/serve/[path]/route.ts
+- Files modified: next.config.ts (added rewrite for /upload/* → /api/upload/serve/*)
+- No "select project" dropdown exists in client portal — files are uploaded per-project via the "Upload Files" button on each project card
+- File isolation confirmed: each client user has separate localStorage storage, files scoped by projectId within that client's projects only
