@@ -109,10 +109,11 @@ export function ClientProjects() {
   const [loading, setLoading] = useState(true)
 
   // Upload files state
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string }>>([])
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string; projectId: string }>>([])
   const [uploading, setUploading] = useState(false)
-  const [uploadProjectId, setUploadProjectId] = useState<string>('')
-  const [uploadDragOver, setUploadDragOver] = useState(false)
+  const [uploadDragOver, setUploadDragOver] = useState<string | null>(null) // projectId
+  const [uploadDialogProjectId, setUploadDialogProjectId] = useState<string>('')
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Onboarding creation state
@@ -154,11 +155,11 @@ export function ClientProjects() {
 
   useEffect(() => { fetchProjects(); fetchUploadedFiles() }, [fetchProjects, fetchUploadedFiles])
 
-  // File upload handler
+  // File upload handler — always uploads to the project set in uploadDialogProjectId
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    if (!uploadProjectId) {
-      toast.error('Please select a project first')
+    if (!uploadDialogProjectId) {
+      toast.error('No project selected')
       return
     }
     setUploading(true)
@@ -174,7 +175,7 @@ export function ClientProjects() {
           throw new Error(d.error || 'Upload failed')
         }
         const data = await res.json()
-        newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadProjectId })
+        newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
       } catch (e: unknown) {
         toast.error(`${file.name}: ${e instanceof Error ? e.message : 'Upload failed'}`)
       }
@@ -189,10 +190,16 @@ export function ClientProjects() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent, projectId: string) => {
     e.preventDefault()
-    setUploadDragOver(false)
+    setUploadDragOver(null)
+    setUploadDialogProjectId(projectId)
     handleFileUpload(e.dataTransfer.files)
+  }
+
+  const openUploadDialog = (projectId: string) => {
+    setUploadDialogProjectId(projectId)
+    setUploadDialogOpen(true)
   }
 
   const deleteUploadedFile = (idx: number) => {
@@ -280,113 +287,91 @@ export function ClientProjects() {
         </div>
       </div>
 
-      {/* ─── Upload Files Section ──────────────────────────────── */}
-      <motion.div {...fadeSlide} transition={{ delay: 0.05 }}>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Upload className="w-4 h-4 text-primary" />
+      {/* ─── Upload Files Section (hidden input + dialog) ─── */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+        className="hidden"
+        onChange={(e) => { handleFileUpload(e.target.files); setUploadDialogOpen(false) }}
+      />
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => { if (!open) setUploadDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-primary" />
               Upload Files
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">Upload documents, images, and other files for your projects</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Project selector */}
-            <div className="space-y-2">
-              <Label className="text-sm">Select Project</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={uploadProjectId}
-                onChange={(e) => setUploadProjectId(e.target.value)}
-              >
-                <option value="">Choose a project...</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Drop zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setUploadDragOver(true) }}
-              onDragLeave={() => setUploadDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors',
-                uploadDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
-              )}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
-                className="hidden"
-                onChange={(e) => handleFileUpload(e.target.files)}
-              />
-              {uploading ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                  <p className="text-sm text-muted-foreground">Uploading...</p>
+            </DialogTitle>
+            <DialogDescription>Choose files to upload for this project</DialogDescription>
+          </DialogHeader>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setUploadDragOver('__dialog__') }}
+            onDragLeave={() => setUploadDragOver(null)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setUploadDragOver(null)
+              // Set the project context before handling files
+              const files = e.dataTransfer.files
+              if (files && files.length > 0) {
+                // Use a separate handler for dialog drops
+                void (async () => {
+                  setUploading(true)
+                  const newFiles: typeof uploadedFiles = []
+                  for (let i = 0; i < files.length; i++) {
+                    const file = files[i]
+                    try {
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                      if (!res.ok) {
+                        const d = await res.json()
+                        throw new Error(d.error || 'Upload failed')
+                      }
+                      const data = await res.json()
+                      newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
+                    } catch (err: unknown) {
+                      toast.error(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
+                    }
+                  }
+                  if (newFiles.length > 0) {
+                    const updated = [...uploadedFiles, ...newFiles]
+                    setUploadedFiles(updated)
+                    saveUploadedFiles(updated)
+                    toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+                  }
+                  setUploading(false)
+                })()
+              }
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+              uploadDragOver === '__dialog__' ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
+            )}
+          >
+            {uploading ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <p className="text-sm text-muted-foreground">Uploading...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-muted-foreground" />
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                    <Upload className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Drop files here or click to browse</p>
-                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, PDF, DOC, DOCX, XLS, XLSX and more (max 10MB each)</p>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium">Drop files here or click to browse</p>
+                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG, PDF, DOC, DOCX, XLS, XLSX and more (max 10MB each)</p>
                 </div>
-              )}
-            </div>
-
-            {/* Uploaded files list */}
-            {uploadedFiles.length > 0 && (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Uploaded Files ({uploadedFiles.length})</p>
-                {uploadedFiles.map((file, idx) => {
-                  const proj = projects.find(p => p.id === file.projectId)
-                  return (
-                    <motion.div
-                      key={file.filename}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/30 group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        {getFileIcon(file.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{file.originalName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatFileSize(file.size)} • {proj?.name || 'Unknown project'}
-                        </p>
-                      </div>
-                      <a
-                        href={file.url}
-                        download={file.originalName}
-                        className="p-1.5 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Download className="w-3.5 h-3.5 text-muted-foreground" />
-                      </a>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteUploadedFile(idx) }}
-                        className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                      </button>
-                    </motion.div>
-                  )
-                })}
               </div>
             )}
-          </CardContent>
-        </Card>
-      </motion.div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Project Progress Overview ──────────────────────────── */}
       {projects.length > 0 && (
@@ -488,6 +473,9 @@ export function ClientProjects() {
               // Compute progress bar gradient colors
               const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
 
+              // Files for this project only
+              const projectFiles = uploadedFiles.filter(f => f.projectId === project.id)
+
               return (
                 <motion.div
                   key={project.id}
@@ -508,7 +496,7 @@ export function ClientProjects() {
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
                         </div>
-                        <div className="flex items-center gap-3 shrink-0 text-sm">
+                        <div className="flex items-center gap-2 shrink-0 text-sm flex-wrap">
                           {project.dueDate && (
                             <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
                               <Calendar className="w-3.5 h-3.5" />
@@ -519,6 +507,15 @@ export function ClientProjects() {
                             <Users className="w-3.5 h-3.5" />
                             {project._count?.members || 0}
                           </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs"
+                            onClick={(e) => { e.stopPropagation(); openUploadDialog(project.id) }}
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            Upload Files
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -548,6 +545,50 @@ export function ClientProjects() {
                           />
                         </div>
                       </div>
+
+                      {/* Per-project uploaded files */}
+                      {projectFiles.length > 0 && (
+                        <div className="mt-4 pt-3 border-t">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                            Files ({projectFiles.length})
+                          </p>
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {projectFiles.map((file, idx) => {
+                              const globalIdx = uploadedFiles.indexOf(file)
+                              return (
+                                <motion.div
+                                  key={file.filename}
+                                  initial={{ opacity: 0, x: -8 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/30 group"
+                                >
+                                  <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+                                    {getFileIcon(file.type)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">{file.originalName}</p>
+                                    <p className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</p>
+                                  </div>
+                                  <a
+                                    href={file.url}
+                                    download={file.originalName}
+                                    className="p-1 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Download className="w-3 h-3 text-muted-foreground" />
+                                  </a>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteUploadedFile(globalIdx) }}
+                                    className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-red-500" />
+                                  </button>
+                                </motion.div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
