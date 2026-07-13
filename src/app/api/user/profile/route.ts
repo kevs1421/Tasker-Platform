@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { verifyPassword, hashPassword } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,12 +34,9 @@ export async function PATCH(request: NextRequest) {
       const user = await db.user.findUnique({ where: { id: userId } })
       if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
       // Verify current password
-      const encoder = new TextEncoder()
-      const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(currentPassword))
-      const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
-      if (hash !== user.password) return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 })
-      const newHashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(newPassword))
-      data.password = Array.from(new Uint8Array(newHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+      const valid = await verifyPassword(currentPassword, user.password)
+      if (!valid) return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 })
+      data.password = await hashPassword(newPassword)
     }
 
     const user = await db.user.update({ where: { id: userId }, data })

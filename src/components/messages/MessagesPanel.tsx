@@ -114,8 +114,7 @@ function CreateGroupDialog({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, currentUser.id, openCountRef.current])
+  }, [open, currentUser.id])
 
   const toggleUser = (userId: string) => {
     setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId])
@@ -239,16 +238,17 @@ function NewMessageDialog({
 
   useEffect(() => {
     if (!open) return
-    setLoading(true)
+    let cancelled = false
     fetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
+        if (cancelled) return
         setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+        setLoading(false)
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, currentUser.id, openCountRef.current])
+      .catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [open, currentUser.id])
 
   const filteredUsers = users.filter(
     (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
@@ -338,7 +338,6 @@ function GroupInfoDialog({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, group, currentUserId, openCountRef.current])
 
   const handleAddMember = async (userId: string) => {

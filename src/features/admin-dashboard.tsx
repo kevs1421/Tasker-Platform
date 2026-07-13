@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User, Comment } from '@/types'
+import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 

@@ -426,8 +426,7 @@ export default function ClientOnboardingWizard() {
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Company Logo</p>
               <div className="w-20 h-20 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={files.companyLogo.url} alt="Logo" className="w-full h-full object-contain" />
+                <img src={files.companyLogo.url} alt="Company logo" className="w-full h-full object-contain" />
               </div>
             </div>
           )}

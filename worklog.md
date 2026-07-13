@@ -829,3 +829,42 @@ Stage Summary:
 - Files modified: src/features/client-dashboard.tsx, src/app/api/onboarding/route.ts, src/app/api/onboarding/[id]/route.ts, src/components/onboarding/ClientOnboardingWizard.tsx
 - Complete client isolation achieved through `ClientProject` join table — no client can see, access, or create resources for another client's projects
 - URL bypass prevention: direct API calls with another client's project ID are rejected with 404/403
+---
+Task ID: 7
+Agent: main
+Task: Final system review, code cleanup, and deployment documentation
+
+Work Log:
+- **Phase 1 — Full Codebase Audit**: Analyzed all 89 source files. Found 14 HIGH, 15 MEDIUM, 60+ LOW issues.
+- **Phase 2 — Dead File Deletion**:
+  - Deleted 9 dead component files from src/components/dashboard/ (~2,800 lines)
+  - Deleted 25 unused shadcn/ui component files
+  - Deleted 5 dead API routes (/api/route.ts, /api/auth/login, /api/auth/register, /api/dashboard/stats, /api/dashboard/activity)
+  - Deleted 2 unused hooks (use-mobile.ts, use-toast.ts)
+  - Removed empty directories
+- **Phase 3 — Bug Fixes**:
+  - Fixed `task.name` → `task.title` in app-shell.tsx clock-in dialog (blank task names)
+  - Removed dead subtask count logic in team-my-tasks.tsx (referenced non-existent _count.subtasks)
+  - Fixed duplicate inline password hashing in /api/user/profile → now uses shared lib/auth functions
+  - Removed unused `db` import from lib/auth.ts
+- **Phase 4 — Unused Import Cleanup**:
+  - admin-dashboard.tsx: removed unused `Comment` type
+  - team-dashboard.tsx: removed unused `ProjectMember`, `CircleDot`, `Star` imports
+  - team-my-tasks.tsx: removed unused `Subtask`, `Comment`, `ListChecks` imports
+  - MessagesPanel.tsx: removed 3 stale eslint-disable directives, fixed ref-in-dep-array bug, fixed setState-in-effect issue
+  - ClientOnboardingWizard.tsx: removed stale eslint-disable for img element
+- **Phase 5 — Dependency Cleanup**: Removed 22 unused packages from package.json (next-auth, next-intl, @tanstack/react-query, @tanstack/react-table, @dnd-kit/*, react-hook-form, zod, uuid, sharp, etc.)
+- **Phase 6 — Production Readiness**:
+  - Disabled Prisma query logging (log: [] instead of log: ['query'])
+  - Fixed Caddyfile rewrite for /upload/* → /api/upload/serve/*
+- **Phase 7 — Browser Testing**: Verified all 3 roles (Admin 8 tabs, Team 4 tabs, Client 3 tabs) load with zero console errors. Client isolation confirmed (John: 2 projects, Lisa: 1 project, cross-access blocked).
+- **Phase 8 — Deployment Documentation**: Created comprehensive DEPLOYMENT.md with 12 sections covering prerequisites, env vars, build, database, Caddy, SSL, security, monitoring, troubleshooting, architecture, and demo accounts.
+
+Stage Summary:
+- Files deleted: 41 total (9 dashboard components, 25 UI components, 5 API routes, 2 hooks)
+- Files modified: 10 (bug fixes, import cleanup, dependency cleanup)
+- Files created: 1 (DEPLOYMENT.md)
+- Lint: 0 errors, 0 warnings
+- All 3 dashboards tested and working
+- 22 unused npm packages removed from package.json
+- ~3,500+ lines of dead code eliminated

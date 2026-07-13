@@ -1,5 +1,3 @@
-import { db } from '@/lib/db'
-
 export async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder()
   const data = encoder.encode(password)

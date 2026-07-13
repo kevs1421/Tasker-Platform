@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { Task, User, Subtask, Comment } from '@/types'
+import type { Task, User } from '@/types'
 import { getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 
@@ -23,7 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2, MessageSquare, ListTodo, CircleDot,
   Clock, Eye, Circle, CalendarIcon, FolderKanban,
-  ListChecks, Inbox,
+  Inbox,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────
@@ -279,9 +279,6 @@ export function TeamMyTasks() {
                 const statusConf = getStatusConfig(task.status)
                 const priorityConf = getPriorityConfig(task.priority)
                 const overdue = isOverdue(task.dueDate, task.status)
-                const subtaskTotal = task._count?.subtasks ?? 0
-                const subtaskDone = task._count?.completedSubtasks ?? 0
-                const hasSubtasks = subtaskTotal > 0
                 const commentCount = task._count?.comments ?? 0
                 const hasDueDate = !!task.dueDate
 
@@ -363,26 +360,11 @@ export function TeamMyTasks() {
                             )}
                           </div>
 
-                          {/* Indicators row: subtasks + comments */}
-                          {(hasSubtasks || commentCount > 0) && (
-                            <div className="flex items-center gap-3 mt-2">
-                              {hasSubtasks && (
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  <ListChecks className="h-3 w-3" />
-                                  {subtaskDone}/{subtaskTotal} subtask{subtaskTotal !== 1 ? 's' : ''}
-                                  {subtaskDone > 0 && (
-                                    <span className="text-emerald-500 font-medium ml-0.5">
-                                      ({Math.round((subtaskDone / subtaskTotal) * 100)}%)
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                              {commentCount > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  <MessageSquare className="h-3 w-3" />
-                                  {commentCount}
-                                </span>
-                              )}
+                          {/* Indicators row: comments */}
+                          {commentCount > 0 && (
+                            <div className="flex items-center gap-1 mt-2">
+                              <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">{commentCount}</span>
                             </div>
                           )}
                         </div>

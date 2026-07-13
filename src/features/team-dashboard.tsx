@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { Project, ProjectMember, Task, TaskAssignment, Comment, Message, User } from '@/types'
+import type { Project, Task, TaskAssignment, Comment, Message, User } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
   formatDate, formatRelativeTime,
@@ -59,8 +59,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Search, MoreHorizontal, Trash2, LayoutGrid, List,
   Send, MessageSquare, CalendarIcon, Tag, Users, FolderKanban,
-  CircleDot, Clock, Eye, CheckCircle2, Circle, ChevronDown,
-  X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
+  Clock, Eye, CheckCircle2, Circle, ChevronDown,
+  X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
   Save, RotateCcw, Play, Square, Timer,

@@ -276,7 +276,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
                     </SelectTrigger>
                     <SelectContent>
                       {tasks.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
