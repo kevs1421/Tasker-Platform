@@ -37,27 +37,24 @@ export async function GET(request: NextRequest) {
 
     // Build CSV
     const BOM = '\uFEFF' // UTF-8 BOM for Excel compatibility
-    const header = 'Date,User,Email,Project,Task,Description,Time In,Time Out,Duration (hrs),Status'
+    const header = 'Date,User,Email,Time In,Time Out,Duration (hrs),Status'
     const rows = entries.map((e) => {
       const date = e.date
       const userName = e.user?.name ?? 'Unknown'
       const userEmail = e.user?.email ?? ''
-      const projectName = e.project?.name ?? ''
-      const taskTitle = e.task?.title ?? ''
-      const description = (e.description ?? '').replace(/"/g, '""')
       const timeIn = e.timeIn ? new Date(e.timeIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
       const timeOut = e.timeOut ? new Date(e.timeOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
       const durationHrs = (e.duration / 60).toFixed(2)
       const status = e.status === 'completed' ? 'Completed' : e.status === 'timed_in' ? 'Active' : 'Idle'
-      return `${date},"${userName}","${userEmail}","${projectName}","${taskTitle}","${description}",${timeIn},${timeOut},${durationHrs},${status}`
+      return `${date},"${userName}","${userEmail}",${timeIn},${timeOut},${durationHrs},${status}`
     })
 
     // Add summary row
     const totalMinutes = entries.reduce((sum, e) => sum + e.duration, 0)
     const totalHrs = (totalMinutes / 60).toFixed(2)
     rows.push('')
-    rows.push(`,,,,,Total Hours,,,,${totalHrs}`)
-    rows.push(`,,,,,Total Entries,,,,${entries.length}`)
+    rows.push(`,,,Total Hours,,,${totalHrs}`)
+    rows.push(`,,,Total Entries,,,${entries.length}`)
 
     const csv = BOM + header + '\n' + rows.join('\n')
 
