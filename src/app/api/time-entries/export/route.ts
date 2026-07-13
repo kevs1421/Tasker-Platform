@@ -35,28 +35,54 @@ export async function GET(request: NextRequest) {
       orderBy: [{ date: 'desc' }, { timeIn: 'desc' }],
     })
 
-    // Build CSV
+    // Build CSV - grouped by user
     const BOM = '\uFEFF' // UTF-8 BOM for Excel compatibility
     const header = 'Date,User,Email,Time In,Time Out,Duration (hrs),Status'
-    const rows = entries.map((e) => {
-      const date = e.date
-      const userName = e.user?.name ?? 'Unknown'
-      const userEmail = e.user?.email ?? ''
-      const timeIn = e.timeIn ? new Date(e.timeIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
-      const timeOut = e.timeOut ? new Date(e.timeOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
-      const durationHrs = (e.duration / 60).toFixed(2)
-      const status = e.status === 'completed' ? 'Completed' : e.status === 'timed_in' ? 'Active' : 'Idle'
-      return `${date},"${userName}","${userEmail}",${timeIn},${timeOut},${durationHrs},${status}`
-    })
 
-    // Add summary row
-    const totalMinutes = entries.reduce((sum, e) => sum + e.duration, 0)
-    const totalHrs = (totalMinutes / 60).toFixed(2)
+    const rows: string[] = []
+    let grandTotalMinutes = 0
+
+    // Group entries by user
+    const userGroups = new Map<string, { userName: string; userEmail: string; entries: typeof entries }>()
+    for (const e of entries) {
+      const uid = e.userId
+      if (!userGroups.has(uid)) {
+        userGroups.set(uid, {
+          userName: e.user?.name ?? 'Unknown',
+          userEmail: e.user?.email ?? '',
+          entries: [],
+        })
+      }
+      userGroups.get(uid)!.entries.push(e)
+    }
+
+    for (const [, group] of userGroups) {
+      // Section header for each user
+      rows.push('')
+      rows.push(`"${group.userName}" (${group.userEmail})`)
+      rows.push(header)
+
+      let userTotalMinutes = 0
+      for (const e of group.entries) {
+        const timeIn = e.timeIn ? new Date(e.timeIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
+        const timeOut = e.timeOut ? new Date(e.timeOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
+        const durationHrs = (e.duration / 60).toFixed(2)
+        const status = 'Completed'
+        rows.push(`${e.date},"${group.userName}","${group.userEmail}",${timeIn},${timeOut},${durationHrs},${status}`)
+        userTotalMinutes += e.duration
+      }
+
+      const userTotalHrs = (userTotalMinutes / 60).toFixed(2)
+      rows.push(`,,,,,Total: ${userTotalHrs} hrs`)
+      grandTotalMinutes += userTotalMinutes
+    }
+
+    // Grand total
     rows.push('')
-    rows.push(`,,,Total Hours,,,${totalHrs}`)
-    rows.push(`,,,Total Entries,,,${entries.length}`)
+    rows.push(`,,,,,Grand Total: ${(grandTotalMinutes / 60).toFixed(2)} hrs`)
+    rows.push(`,,,,,Total Entries: ${entries.length}`)
 
-    const csv = BOM + header + '\n' + rows.join('\n')
+    const csv = BOM + rows.join('\n')
 
     // Generate filename with date range
     const now = new Date()
