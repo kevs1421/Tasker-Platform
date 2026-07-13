@@ -3028,7 +3028,7 @@ interface LocalTimeEntry {
   task?: { id: string; title: string };
 }
 
-type DatePreset = 'today' | 'week' | 'month' | 'all'
+type DatePreset = 'today' | 'week' | 'month' | 'all' | 'custom'
 
 function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60)
@@ -3046,9 +3046,16 @@ function formatLiveTimer(startTime: string): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function getDateRange(preset: DatePreset): { from?: string; to?: string } {
+function getDateRange(preset: DatePreset, customFrom?: Date, customTo?: Date): { from?: string; to?: string } {
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
+
+  if (preset === 'custom') {
+    return {
+      from: customFrom ? format(customFrom, 'yyyy-MM-dd') : undefined,
+      to: customTo ? format(customTo, 'yyyy-MM-dd') : todayStr,
+    }
+  }
 
   switch (preset) {
     case 'today':
@@ -3096,6 +3103,8 @@ export function AdminTimeTracking() {
   const [selectedUserId, setSelectedUserId] = useState<string>('all')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
   const [datePreset, setDatePreset] = useState<DatePreset>('today')
+  const [customDateFrom, setCustomDateFrom] = useState<Date>()
+  const [customDateTo, setCustomDateTo] = useState<Date>()
 
   // Live timer tick
   const [timerTick, setTimerTick] = useState(0)
@@ -3130,7 +3139,7 @@ export function AdminTimeTracking() {
       const params = new URLSearchParams()
       if (selectedUserId !== 'all') params.set('userId', selectedUserId)
       if (selectedProjectId !== 'all') params.set('projectId', selectedProjectId)
-      const { from, to } = getDateRange(datePreset)
+      const { from, to } = getDateRange(datePreset, customDateFrom, customDateTo)
       if (from) params.set('dateFrom', from)
       if (to) params.set('dateTo', to)
 
@@ -3144,7 +3153,7 @@ export function AdminTimeTracking() {
     } finally {
       setLoading(false)
     }
-  }, [selectedUserId, selectedProjectId, datePreset])
+  }, [selectedUserId, selectedProjectId, datePreset, customDateFrom, customDateTo])
 
   useEffect(() => {
     fetchEntries()
@@ -3319,7 +3328,7 @@ export function AdminTimeTracking() {
       params.set('role', 'admin')
       if (selectedUserId !== 'all') params.set('userId', selectedUserId)
       if (selectedProjectId !== 'all') params.set('projectId', selectedProjectId)
-      const { from, to } = getDateRange(datePreset)
+      const { from, to } = getDateRange(datePreset, customDateFrom, customDateTo)
       if (from) params.set('dateFrom', from)
       if (to) params.set('dateTo', to)
 
@@ -3575,12 +3584,13 @@ export function AdminTimeTracking() {
             {/* Date Preset */}
             <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground whitespace-nowrap">Period:</Label>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {([
                   { key: 'today' as DatePreset, label: 'Today' },
                   { key: 'week' as DatePreset, label: 'This Week' },
                   { key: 'month' as DatePreset, label: 'This Month' },
                   { key: 'all' as DatePreset, label: 'All Time' },
+                  { key: 'custom' as DatePreset, label: 'Custom' },
                 ]).map((preset) => (
                   <Button
                     key={preset.key}
@@ -3594,6 +3604,60 @@ export function AdminTimeTracking() {
                 ))}
               </div>
             </div>
+
+            {/* Custom Date Range */}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateFrom && 'text-muted-foreground')}>
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={customDateFrom}
+                      onSelect={(d) => {
+                        setCustomDateFrom(d)
+                        if (d && customDateTo && d > customDateTo) setCustomDateTo(undefined)
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-xs text-muted-foreground">to</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateTo && 'text-muted-foreground')}>
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={customDateTo}
+                      onSelect={(d) => setCustomDateTo(d)}
+                      disabled={(d) => customDateFrom ? d < customDateFrom : false}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {customDateFrom && customDateTo && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => { setCustomDateFrom(undefined); setCustomDateTo(undefined) }}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Project Filter */}
             <div className="flex items-center gap-2 min-w-[160px]">

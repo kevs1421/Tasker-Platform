@@ -1876,7 +1876,7 @@ type TimeEntry = {
   task?: Task
 }
 
-type DateFilter = 'today' | 'week' | 'month' | 'all'
+type DateFilter = 'today' | 'week' | 'month' | 'all' | 'custom'
 
 export function TeamTimeTracking() {
   const { user } = useAuthStore()
@@ -1887,6 +1887,8 @@ export function TeamTimeTracking() {
   const [elapsed, setElapsed] = useState('00:00:00')
 
   const [dateFilter, setDateFilter] = useState<DateFilter>('today')
+  const [customDateFrom, setCustomDateFrom] = useState<Date>()
+  const [customDateTo, setCustomDateTo] = useState<Date>()
 
   const [showTimeInDialog, setShowTimeInDialog] = useState(false)
   const [timeInLoading, setTimeInLoading] = useState(false)
@@ -1904,9 +1906,15 @@ export function TeamTimeTracking() {
   const elapsedRef = useRef<ReturnType<typeof setInterval>>()
 
   // ── Date range helpers ──
-  const getDateRange = useCallback((filter: DateFilter) => {
+  const getDateRange = useCallback((filter: DateFilter, customFrom?: Date, customTo?: Date) => {
     const now = new Date()
     const today = format(now, 'yyyy-MM-dd')
+    if (filter === 'custom') {
+      return {
+        dateFrom: customFrom ? format(customFrom, 'yyyy-MM-dd') : today,
+        dateTo: customTo ? format(customTo, 'yyyy-MM-dd') : today,
+      }
+    }
     switch (filter) {
       case 'today':
         return { dateFrom: today, dateTo: today }
@@ -1925,11 +1933,11 @@ export function TeamTimeTracking() {
   }, [])
 
   // ── Fetch entries ──
-  const fetchEntries = useCallback(async (filter: DateFilter) => {
+  const fetchEntries = useCallback(async (filter: DateFilter, from?: Date, to?: Date) => {
     if (!user) return
     setLoading(true)
     try {
-      const { dateFrom, dateTo } = getDateRange(filter)
+      const { dateFrom, dateTo } = getDateRange(filter, from, to)
       const res = await fetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
       const data = await res.json()
       setEntries(data.timeEntries || [])
@@ -2029,8 +2037,8 @@ export function TeamTimeTracking() {
 
   // ── Re-fetch on filter change ──
   useEffect(() => {
-    fetchEntries(dateFilter)
-  }, [dateFilter, fetchEntries])
+    fetchEntries(dateFilter, customDateFrom, customDateTo)
+  }, [dateFilter, customDateFrom, customDateTo, fetchEntries])
 
   // ── Live elapsed timer ──
   useEffect(() => {
@@ -2070,7 +2078,7 @@ export function TeamTimeTracking() {
       setSelectedTaskId('')
       setTimeInDescription('')
       await fetchActiveEntry()
-      await fetchEntries(dateFilter)
+      await fetchEntries(dateFilter, customDateFrom, customDateTo)
       await fetchSummary()
     } catch {
       toast.error('Failed to clock in')
@@ -2093,7 +2101,7 @@ export function TeamTimeTracking() {
       toast.success('Clocked out successfully!')
       setActiveEntry(null)
       setElapsed('00:00:00')
-      await fetchEntries(dateFilter)
+      await fetchEntries(dateFilter, customDateFrom, customDateTo)
       await fetchSummary()
     } catch {
       toast.error('Failed to clock out')
@@ -2111,7 +2119,7 @@ export function TeamTimeTracking() {
       if (!res.ok) throw new Error()
       toast.success('Entry deleted')
       setDeleteId(null)
-      await fetchEntries(dateFilter)
+      await fetchEntries(dateFilter, customDateFrom, customDateTo)
       await fetchSummary()
       await fetchActiveEntry()
     } catch {
@@ -2142,6 +2150,7 @@ export function TeamTimeTracking() {
     { key: 'week', label: 'This Week' },
     { key: 'month', label: 'This Month' },
     { key: 'all', label: 'All Time' },
+    { key: 'custom', label: 'Custom' },
   ]
 
   const statusBadge = (status: string) => {
@@ -2352,18 +2361,72 @@ export function TeamTimeTracking() {
       </div>
 
       {/* Date Filter */}
-      <div className="flex flex-wrap gap-2">
-        {filterButtons.map((fb) => (
-          <Button
-            key={fb.key}
-            variant={dateFilter === fb.key ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setDateFilter(fb.key)}
-            className={cn(dateFilter === fb.key && 'bg-emerald-600 hover:bg-emerald-700')}
-          >
-            {fb.label}
-          </Button>
-        ))}
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {filterButtons.map((fb) => (
+            <Button
+              key={fb.key}
+              variant={dateFilter === fb.key ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setDateFilter(fb.key)}
+              className={cn(dateFilter === fb.key && 'bg-emerald-600 hover:bg-emerald-700')}
+            >
+              {fb.label}
+            </Button>
+          ))}
+        </div>
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateFrom && 'text-muted-foreground')}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={customDateFrom}
+                  onSelect={(d) => {
+                    setCustomDateFrom(d)
+                    if (d && customDateTo && d > customDateTo) setCustomDateTo(undefined)
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-xs text-muted-foreground">to</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateTo && 'text-muted-foreground')}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={customDateTo}
+                  onSelect={(d) => setCustomDateTo(d)}
+                  disabled={(d) => customDateFrom ? d < customDateFrom : false}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            {customDateFrom && customDateTo && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => { setCustomDateFrom(undefined); setCustomDateTo(undefined) }}
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Time Entries List */}
