@@ -63,7 +63,7 @@ import {
   X, Loader2, Check, Star, FileText, Pencil, Phone, Building2,
   Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
-  Save, RotateCcw, Play, Square, Timer, Download,
+  Save, RotateCcw, Play, Square, Timer,
 } from 'lucide-react'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -1900,7 +1900,6 @@ export function TeamTimeTracking() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [exporting, setExporting] = useState(false)
 
   const elapsedRef = useRef<ReturnType<typeof setInterval>>()
 
@@ -2164,39 +2163,6 @@ export function TeamTimeTracking() {
     return `${inStr} → ${outStr}`
   }
 
-  // ── Download report handler ──
-  async function handleDownloadReport() {
-    if (!user) return
-    setExporting(true)
-    try {
-      const { dateFrom, dateTo } = getDateRange(dateFilter)
-      const params = new URLSearchParams()
-      params.set('role', 'team')
-      params.set('userId', user.id)
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-
-      const res = await fetch(`/api/time-entries/export?${params.toString()}`)
-      if (!res.ok) throw new Error()
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      const disposition = res.headers.get('Content-Disposition')
-      const filenameMatch = disposition?.match(/filename="(.+)"/)
-      a.download = filenameMatch?.[1] || 'time-report.csv'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-      toast.success('Report downloaded successfully!')
-    } catch {
-      toast.error('Failed to download report')
-    } finally {
-      setExporting(false)
-    }
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -2205,26 +2171,14 @@ export function TeamTimeTracking() {
       className="space-y-6"
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-            <Clock className="h-5 w-5 text-emerald-700" />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">Time Tracking</h2>
-            <p className="text-sm text-muted-foreground">Track your work hours and attendance</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+          <Clock className="h-5 w-5 text-emerald-700" />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 shrink-0"
-          onClick={handleDownloadReport}
-          disabled={exporting || loading}
-        >
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Download Report
-        </Button>
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">Time Tracking</h2>
+          <p className="text-sm text-muted-foreground">Track your work hours and attendance</p>
+        </div>
       </div>
 
       {/* Big Time In / Time Out Button */}
