@@ -125,13 +125,13 @@ export function ClientProjects() {
   const [creatingOnboarding, setCreatingOnboarding] = useState(false)
 
   const fetchProjects = useCallback(async () => {
+    if (!user?.id) return
     try {
-      const res = await fetch('/api/projects')
+      // Use the client-only endpoint that queries through ClientProject table
+      // This ensures only projects explicitly assigned to this client are returned
+      const res = await fetch(`/api/client/projects?clientId=${user.id}`)
       const data = await res.json()
-      // Filter to active projects and those the client is a member of
-      const clientProjects = (data.projects || [])
-        .filter((p: Project) => p.status === 'active' && p.members?.some(m => m.userId === user?.id))
-      setProjects(clientProjects)
+      setProjects(data.projects || [])
     } catch {
       toast.error('Failed to load projects')
     } finally {

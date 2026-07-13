@@ -258,7 +258,7 @@ export default function ClientOnboardingWizard() {
   const openForm = async (formId: string) => {
     setFormLoading(true)
     try {
-      const res = await fetch(`/api/onboarding/${formId}`)
+      const res = await fetch(`/api/onboarding/${formId}?clientId=${user?.id}`)
       const data = await res.json()
       setSelectedForm(data.form)
       setCurrentStep(0)

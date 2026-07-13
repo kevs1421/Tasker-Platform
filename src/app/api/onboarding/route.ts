@@ -27,6 +27,16 @@ export async function POST(request: NextRequest) {
     const { title, description, stepsJson, projectId, status, clientId } = await request.json()
     if (!title || !projectId || !stepsJson) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
+    // If a clientId is provided (client is creating), verify they own the project
+    if (clientId) {
+      const ownership = await db.clientProject.findUnique({
+        where: { clientId_projectId: { clientId, projectId } }
+      })
+      if (!ownership) {
+        return NextResponse.json({ error: 'You do not have access to this project' }, { status: 403 })
+      }
+    }
+
     const form = await db.onboardingForm.create({
       data: {
         title, description: description || null, stepsJson, projectId,

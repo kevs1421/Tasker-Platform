@@ -5,6 +5,9 @@ import { db } from '@/lib/db'
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const { searchParams } = new URL(req.url)
+    const clientId = searchParams.get('clientId')
+
     const form = await db.onboardingForm.findUnique({
       where: { id },
       include: {
@@ -18,6 +21,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     })
     if (!form) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // If clientId is provided, verify the form's project belongs to this client
+    if (clientId) {
+      const ownership = await db.clientProject.findUnique({
+        where: { clientId_projectId: { clientId, projectId: form.projectId } }
+      })
+      if (!ownership) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+    }
+
     return NextResponse.json({ form })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
 }

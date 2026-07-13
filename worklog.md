@@ -804,3 +804,28 @@ Stage Summary:
 - Files modified: next.config.ts (added rewrite for /upload/* → /api/upload/serve/*)
 - No "select project" dropdown exists in client portal — files are uploaded per-project via the "Upload Files" button on each project card
 - File isolation confirmed: each client user has separate localStorage storage, files scoped by projectId within that client's projects only
+---
+Task ID: 6
+Agent: main
+Task: Implement client dashboard project access restrictions for complete data privacy
+
+Work Log:
+- Analyzed security issue: `/api/projects` returns ALL projects; client-dashboard.tsx filtered by `ProjectMember` which included all 4 projects for John Smith (he was added as member to all)
+- The `ClientProject` table is the real source of truth: John owns 2 projects (Website Redesign, Mobile App), Lisa owns 1 (Marketing Campaign)
+- Created `/api/client/projects/route.ts`: GET endpoint that queries through `ClientProject` join table with `clientId` param, returns only projects explicitly assigned to that client, computes task stats
+- Created `/api/client/projects/[id]/route.ts`: GET endpoint that validates project ownership via `ClientProject` before returning project details — prevents URL/project ID bypass
+- Updated `client-dashboard.tsx`: Changed `fetchProjects` from `/api/projects` to `/api/client/projects?clientId=${user.id}`, removed unreliable client-side filtering
+- Hardened `/api/onboarding/route.ts` POST: Added ownership check when `clientId` is provided — verifies the client owns the project before creating onboarding forms
+- Hardened `/api/onboarding/[id]/route.ts` GET: Added `clientId` query param check — verifies the onboarding form's project belongs to the requesting client
+- Updated `ClientOnboardingWizard.tsx`: `openForm` now passes `clientId` query param to the onboarding detail API
+- Verified with agent-browser:
+  - John Smith sees only 2 projects (Website Redesign, Mobile App Development) ✓
+  - Lisa Davis sees only 1 project (Marketing Campaign) ✓
+  - URL bypass test: Lisa trying `/api/client/projects/{john's-project}?clientId=lisa` returns 403 ✓
+  - Cross-client test: John trying to access Lisa's project returns 403 ✓
+
+Stage Summary:
+- Files created: src/app/api/client/projects/route.ts, src/app/api/client/projects/[id]/route.ts
+- Files modified: src/features/client-dashboard.tsx, src/app/api/onboarding/route.ts, src/app/api/onboarding/[id]/route.ts, src/components/onboarding/ClientOnboardingWizard.tsx
+- Complete client isolation achieved through `ClientProject` join table — no client can see, access, or create resources for another client's projects
+- URL bypass prevention: direct API calls with another client's project ID are rejected with 404/403
