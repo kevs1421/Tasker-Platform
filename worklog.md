@@ -765,3 +765,21 @@ Stage Summary:
 - Client portal: Modern Project Progress stacked bar chart ✅
 - Client portal: Task table and internal details removed ✅
 - All changes verified via agent-browser and VLM screenshot analysis
+---
+Task ID: 1
+Agent: Main Agent
+Task: Add Download Report button to Admin and Team Time Tracking pages
+
+Work Log:
+- Created CSV export API route at /api/time-entries/export/route.ts
+- Supports filtering by userId, projectId, dateFrom, dateTo, role
+- Admin can export all team entries; Team can only export their own
+- CSV includes: Date, User, Email, Project, Task, Description, Time In, Time Out, Duration (hrs), Status
+- Includes total hours and entry count summary rows
+- Added Download Report button to Admin and Team Time Tracking headers
+- Verified both buttons render correctly via agent-browser
+- Lint passes with no new errors
+
+Stage Summary:
+- Files created: src/app/api/time-entries/export/route.ts
+- Files modified: src/features/admin-dashboard.tsx, src/features/team-dashboard.tsx

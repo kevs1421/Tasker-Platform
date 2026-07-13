@@ -3080,6 +3080,7 @@ export function AdminTimeTracking() {
   const [loading, setLoading] = useState(true)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   // Admin's own timer state
   const [myActiveEntry, setMyActiveEntry] = useState<LocalTimeEntry | null>(null)
@@ -3310,6 +3311,40 @@ export function AdminTimeTracking() {
     }
   }
 
+  // Download report handler
+  async function handleDownloadReport() {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('role', 'admin')
+      if (selectedUserId !== 'all') params.set('userId', selectedUserId)
+      if (selectedProjectId !== 'all') params.set('projectId', selectedProjectId)
+      const { from, to } = getDateRange(datePreset)
+      if (from) params.set('dateFrom', from)
+      if (to) params.set('dateTo', to)
+
+      const res = await fetch(`/api/time-entries/export?${params.toString()}`)
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // Extract filename from Content-Disposition
+      const disposition = res.headers.get('Content-Disposition')
+      const filenameMatch = disposition?.match(/filename="(.+)"/)
+      a.download = filenameMatch?.[1] || 'time-report.csv'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Report downloaded successfully!')
+    } catch {
+      toast.error('Failed to download report')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // Suppress unused variable lint (timerTick is used for re-render trigger)
   void timerTick
 
@@ -3321,12 +3356,21 @@ export function AdminTimeTracking() {
       transition={{ duration: 0.25 }}
     >
       {/* Header */}
-      <div>
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-emerald-600" />
           <h2 className="text-lg font-semibold">Time Tracking</h2>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">Monitor team time entries and attendance</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={handleDownloadReport}
+          disabled={exporting || loading}
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Download Report
+        </Button>
       </div>
 
       {/* Admin's Own Timer Button */}
