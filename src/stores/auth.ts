@@ -1,8 +1,6 @@
 import { create } from 'zustand'
 import type { User, AppRoute } from '@/types'
 
-const STORAGE_KEY = 'taskflow-session'
-
 // ─── Demo users for auto-login via URL hash ─────────────
 const DEMO_USERS: Record<string, User> = {
   admin: { id: 'demo-admin', email: 'admin@taskflow.com', name: 'Alex Morgan', role: 'admin', status: 'active', createdAt: '', updatedAt: '' },
@@ -90,58 +88,19 @@ function getDefaultRoute(role: string): AppRoute {
   return { page: 'team-dashboard', tab: 'project' }
 }
 
-function loadSession(): User | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) return JSON.parse(stored) as User
-  } catch { /* ignore */ }
-  return null
-}
-
-function saveSession(user: User | null) {
-  if (typeof window === 'undefined') return
-  try {
-    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    else localStorage.removeItem(STORAGE_KEY)
-  } catch { /* ignore */ }
-}
-
-// ─── Resolve initial state from hash > localStorage ─────
-
-function resolveInitialState(): { user: User | null; route: AppRoute } {
-  if (typeof window === 'undefined') return { user: null, route: { page: 'login' } }
-
-  const hash = window.location.hash
-  if (hash && hash !== '#') {
-    const parsed = parseHash(hash)
-    if (parsed.user) saveSession(parsed.user)
-    if (parsed.route.page !== 'login') return parsed
-  }
-
-  const cached = loadSession()
-  if (cached) return { user: cached, route: getDefaultRoute(cached.role) }
-
-  return { user: null, route: { page: 'login' } }
-}
-
-const init = resolveInitialState()
-
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: init.user,
-  route: init.route,
+  user: null,
+  route: { page: 'login' },
   selectedProjectId: null,
   selectedTaskId: null,
   sidebarOpen: false,
 
   login: (user) => {
-    saveSession(user)
     const route = getDefaultRoute(user.role)
     window.location.hash = routeToHash(route)
     set({ user, route, selectedProjectId: null, selectedTaskId: null })
   },
   logout: () => {
-    saveSession(null)
     window.location.hash = ''
     set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false })
   },
