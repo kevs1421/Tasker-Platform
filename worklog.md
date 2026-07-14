@@ -1022,3 +1022,23 @@ Stage Summary:
 - Key decision: Use _hydrated flag to prevent login flash on page load — return null until hydration completes
 - Browser-verified: login → reload stays on dashboard, route/tab persists across reload, logout clears localStorage, offline banner shows/hides correctly
 - All tests passed with zero console errors
+---
+Task ID: remove-demo-unused
+Agent: main
+Task: Remove all demo-related code and unused files from the project
+
+Work Log:
+- Audited entire codebase to identify demo code and unused files
+- Deleted 6 unused files: team-my-tasks.tsx (382 lines dead code), api/logout/route.ts (no-op, never called), api/upload/serve/[path]/route.ts (never called), api/client/projects/[id]/route.ts (never called), components/ui/sheet.tsx (unused shadcn), components/ui/sonner.tsx (unused wrapper)
+- Cleaned empty directories: api/logout/, api/upload/serve/, api/client/projects/[id]/
+- Fixed layout.tsx import: changed `from "@/components/ui/sonner"` to `from "sonner"` (direct library import)
+- Rewrote auth.ts: removed DEMO_USERS constant, cleaned parseHash() to return AppRoute|null instead of injecting demo users, simplified hashchange listener to only handle tab navigation (removed role-switch reload logic)
+- Rewrote login-page.tsx: removed DEMO_ACCOUNTS constant, handleQuickAccess function, quick-access 3-button grid, "or sign in manually" separator; removed unused imports (Shield, Users, Briefcase, Separator, User type)
+- Rewrote route-guard.tsx: removed RouteGuard component, useMounted helper, and their imports (useSyncExternalStore, useAuthStore, Role type); kept only the 6 utility function exports
+- Ran lint: 0 errors
+- Browser-verified: login page shows only email/password form, admin dashboard loads with data, navigation works, persistence across refresh works, zero console errors
+
+Stage Summary:
+- Removed ~500+ lines of demo/dead code across 8 files
+- 6 files deleted, 4 files rewritten, 1 file fixed (layout.tsx import)
+- App still fully functional with proper auth flow (no more demo bypass)

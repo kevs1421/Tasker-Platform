@@ -30,12 +30,7 @@ function persistUser(user: User | null) {
   }
 }
 
-// ─── Demo users for auto-login via URL hash ─────────────
-const DEMO_USERS: Record<string, User> = {
-  admin: { id: 'demo-admin', email: 'admin@taskflow.com', name: 'Alex Morgan', role: 'admin', status: 'active', createdAt: '', updatedAt: '' },
-  team: { id: 'demo-team', email: 'sarah@taskflow.com', name: 'Sarah Chen', role: 'team', status: 'active', createdAt: '', updatedAt: '' },
-  client: { id: 'demo-client', email: 'john@client.com', name: 'John Smith', role: 'client', status: 'active', createdAt: '', updatedAt: '' },
-}
+// ─── Hash-based tab routing ─────────────────────────────
 
 const HASH_ROUTES: Record<string, AppRoute> = {
   // Admin
@@ -64,21 +59,10 @@ const HASH_ROUTES: Record<string, AppRoute> = {
   'client/profile': { page: 'client-dashboard', tab: 'profile' },
 }
 
-function parseHash(hash: string): { user: User | null; route: AppRoute } {
+function parseHash(hash: string): AppRoute | null {
   const clean = hash.replace(/^#\/?/, '').replace(/\/$/, '')
-  if (!clean) return { user: null, route: { page: 'login' } }
-
-  if (HASH_ROUTES[clean]) {
-    const role = clean.split('/')[0]
-    return { user: DEMO_USERS[role] || null, route: HASH_ROUTES[clean] }
-  }
-
-  const prefix = clean.split('/')[0]
-  if (DEMO_USERS[prefix]) {
-    return { user: DEMO_USERS[prefix], route: getDefaultRoute(prefix) }
-  }
-
-  return { user: null, route: { page: 'login' } }
+  if (!clean) return null
+  return HASH_ROUTES[clean] ?? null
 }
 
 function routeToHash(route: AppRoute): string {
@@ -93,7 +77,7 @@ function routeToHash(route: AppRoute): string {
   return `#/${page}/${tab}`
 }
 
-// ─── Helpers ────────────────────────────────────────────
+// ─── Store ──────────────────────────────────────────────
 
 interface AuthState {
   user: User | null
@@ -132,13 +116,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (get()._hydrated) return
     const persisted = loadPersistedUser()
     if (persisted) {
-      // Check if the URL hash has a specific tab for this role
+      // Restore the correct tab from the URL hash if it matches the user's role
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       let route = getDefaultRoute(persisted.role)
       if (hash && hash !== '#') {
         const parsed = parseHash(hash)
-        if (parsed.route.page !== 'login' && parsed.route.page.includes(persisted.role)) {
-          route = parsed.route
+        if (parsed && parsed.page.includes(persisted.role)) {
+          route = parsed
         }
       }
       set({ user: persisted, route, _hydrated: true })
@@ -170,22 +154,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 }))
 
-// ─── Browser back/forward: role switch needs reload ─────
+// ─── Browser back/forward support ───────────────────────
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash
     if (!hash || hash === '#') return
     const parsed = parseHash(hash)
-    if (parsed.user) {
-      const current = get().user
-      if (!current || current.role !== parsed.user.role) {
-        window.location.reload()
-        return
-      }
-    }
-    if (parsed.route.page !== 'login') {
-      set({ route: parsed.route, selectedProjectId: null, selectedTaskId: null })
+    if (parsed && parsed.page !== 'login') {
+      set({ route: parsed, selectedProjectId: null, selectedTaskId: null })
     }
   })
 }

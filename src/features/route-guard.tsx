@@ -1,27 +1,3 @@
-'use client'
-
-import { useSyncExternalStore } from 'react'
-import { useAuthStore } from '@/stores/auth'
-import type { Role } from '@/types'
-
-const emptySubscribe = () => () => {}
-
-function useMounted() {
-  return useSyncExternalStore(emptySubscribe, () => true, () => false)
-}
-
-export function RouteGuard({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: Role[] }) {
-  const { user, route } = useAuthStore()
-  const mounted = useMounted()
-
-  if (!mounted) return null
-  if (!user) return null
-  if (allowedRoles && !allowedRoles.includes(user.role as Role)) return null
-  if (route.page === 'login') return null
-
-  return <>{children}</>
-}
-
 export function getRoleBadgeClasses(role: string) {
   switch (role) {
     case 'admin': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
