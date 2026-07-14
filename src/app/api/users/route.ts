@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/auth'
 
 export async function GET() {
   try {
@@ -10,7 +9,7 @@ export async function GET() {
     })
     return NextResponse.json({ users })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
   }
 }
 
@@ -42,8 +41,7 @@ export async function PATCH(request: Request) {
     const user = await db.user.update({ where: { id }, data: updateData })
     const { password: _, ...safeUser } = user
     return NextResponse.json({ user: safeUser })
-  } catch (err) {
-    console.error('User update error:', err)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
   }
 }

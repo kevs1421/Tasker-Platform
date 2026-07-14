@@ -1,21 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+function sanitizeCsv(value: string): string {
+  // Prevent CSV injection by escaping dangerous characters
+  if (value.startsWith('=') || value.startsWith('+') || value.startsWith('-') || value.startsWith('@')) {
+    return `'${value}`
+  }
+  return value
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId') // for team member's own entries
+    const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
-    const role = searchParams.get('role') // 'admin' or 'team' to determine scope
+    const role = searchParams.get('role')
 
     const where: Record<string, unknown> = { status: 'completed' }
 
-    if (userId && role === 'team') {
-      // Team member can only export their own entries
+    // Always scope to the specific user if provided (regardless of role param)
+    if (userId) {
       where.userId = userId
     }
+
     if (projectId && projectId !== 'all') {
       where.projectId = projectId
     }
@@ -37,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     // Build CSV - grouped by user
     const BOM = '\uFEFF' // UTF-8 BOM for Excel compatibility
-    const header = 'Date,User,Email,Time In,Time Out,Duration (hrs),Status'
+    const header = 'Date,User,Email,Project,Task,Time In,Time Out,Duration (hrs),Status'
 
     const rows: string[] = []
     let grandTotalMinutes = 0
@@ -57,9 +66,8 @@ export async function GET(request: NextRequest) {
     }
 
     for (const [, group] of userGroups) {
-      // Section header for each user
       rows.push('')
-      rows.push(`"${group.userName}" (${group.userEmail})`)
+      rows.push(`"${sanitizeCsv(group.userName)}" (${sanitizeCsv(group.userEmail)})`)
       rows.push(header)
 
       let userTotalMinutes = 0
@@ -67,24 +75,23 @@ export async function GET(request: NextRequest) {
         const timeIn = e.timeIn ? new Date(e.timeIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
         const timeOut = e.timeOut ? new Date(e.timeOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
         const durationHrs = (e.duration / 60).toFixed(2)
-        const status = 'Completed'
-        rows.push(`${e.date},"${group.userName}","${group.userEmail}",${timeIn},${timeOut},${durationHrs},${status}`)
+        const projectName = sanitizeCsv(e.project?.name || 'No Project')
+        const taskTitle = sanitizeCsv(e.task?.title || '')
+        rows.push(`${e.date},"${sanitizeCsv(group.userName)}","${sanitizeCsv(group.userEmail)}","${projectName}","${taskTitle}",${timeIn},${timeOut},${durationHrs},Completed`)
         userTotalMinutes += e.duration
       }
 
       const userTotalHrs = (userTotalMinutes / 60).toFixed(2)
-      rows.push(`,,,,,Total: ${userTotalHrs} hrs`)
+      rows.push(`,,,,,,Total: ${userTotalHrs} hrs`)
       grandTotalMinutes += userTotalMinutes
     }
 
-    // Grand total
     rows.push('')
-    rows.push(`,,,,,Grand Total: ${(grandTotalMinutes / 60).toFixed(2)} hrs`)
-    rows.push(`,,,,,Total Entries: ${entries.length}`)
+    rows.push(`,,,,,,Grand Total: ${(grandTotalMinutes / 60).toFixed(2)} hrs`)
+    rows.push(`,,,,,,Total Entries: ${entries.length}`)
 
     const csv = BOM + rows.join('\n')
 
-    // Generate filename with date range
     const now = new Date()
     const dateStr = now.toISOString().split('T')[0]
     const fromLabel = dateFrom || 'all'
@@ -98,8 +105,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${fileName}"`,
       },
     })
-  } catch (error) {
-    console.error('Export time-entries error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to export time entries' }, { status: 500 })
   }
 }

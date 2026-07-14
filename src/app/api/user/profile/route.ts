@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ user })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch user profile' }, { status: 500 })
   }
 }
 

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     return NextResponse.json({ members })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch project members' }, { status: 500 })
   }
 }
 
@@ -44,9 +44,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
 
     return NextResponse.json({ members })
-  } catch (error) {
-    console.error('Add members error:', error)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to add project members' }, { status: 500 })
   }
 }
 
@@ -61,6 +60,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.projectMember.deleteMany({ where: { projectId: id, userId } })
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to remove project member' }, { status: 500 })
   }
 }

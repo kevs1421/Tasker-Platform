@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
-  Pencil, MoreVertical, SquarePen, MessageCirclePlus,
+  SquarePen, MessageCirclePlus,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -91,15 +91,6 @@ function CreateGroupDialog({
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const openCountRef = useRef(0)
-  const prevIsOpen = useRef(false)
-
-  useEffect(() => {
-    if (open && !prevIsOpen.current) {
-      openCountRef.current++
-    }
-    prevIsOpen.current = open
-  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -226,15 +217,6 @@ function NewMessageDialog({
   const [users, setUsers] = useState<User[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const openCountRef = useRef(0)
-  const prevIsOpen = useRef(false)
-
-  useEffect(() => {
-    if (open && !prevIsOpen.current) {
-      openCountRef.current++
-    }
-    prevIsOpen.current = open
-  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -316,16 +298,6 @@ function GroupInfoDialog({
   const [loading, setLoading] = useState(false)
   const [showAddUser, setShowAddUser] = useState(false)
   const [search, setSearch] = useState('')
-  const openCountRef = useRef(0)
-  const prevIsOpen = useRef(false)
-
-  useEffect(() => {
-    if (open && !prevIsOpen.current) {
-      openCountRef.current++
-    }
-    prevIsOpen.current = open
-  }, [open])
-
   useEffect(() => {
     if (!open || !group) return
     setLoading(true)
@@ -338,7 +310,7 @@ function GroupInfoDialog({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [open, group, currentUserId, openCountRef.current])
+  }, [open, group, currentUserId])
 
   const handleAddMember = async (userId: string) => {
     if (!group) return

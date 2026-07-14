@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ task: { ...task, assignees: task.assignments } })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 })
   }
 }
 
@@ -40,22 +40,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     if (status) {
-      await db.activityLog.create({ data: { action: 'task_moved', details: `Moved "${task.title}" to ${status.replace('_', ' ')}`, userId: task.createdById, projectId: task.projectId, taskId: task.id } })
+      const updatedBy = body.updatedBy || task.createdById
+      await db.activityLog.create({ data: { action: 'task_moved', details: `Moved "${task.title}" to ${status.replace('_', ' ')}`, userId: updatedBy, projectId: task.projectId, taskId: task.id } })
     }
     return NextResponse.json({ task: { ...task, assignees: task.assignments } })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    let deletedBy = ''
+    try { const b = await req.json(); deletedBy = b.deletedBy || '' } catch { /* no body */ }
     const task = await db.task.findUnique({ where: { id } })
     await db.task.delete({ where: { id } })
-    if (task) await db.activityLog.create({ data: { action: 'task_deleted', details: `Deleted "${task.title}"`, projectId: task.projectId } })
+    if (task) await db.activityLog.create({ data: { action: 'task_deleted', details: `Deleted "${task.title}"`, userId: deletedBy || task.createdById, projectId: task.projectId, taskId: task.id } })
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 })
   }
 }

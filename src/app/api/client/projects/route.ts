@@ -53,8 +53,7 @@ export async function GET(request: NextRequest) {
       })
 
     return NextResponse.json({ projects })
-  } catch (error) {
-    console.error('Client projects error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 })
   }
 }

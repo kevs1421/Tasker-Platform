@@ -51,8 +51,7 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({ timeEntries, total })
-  } catch (error) {
-    console.error('GET time-entries error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch time entries' }, { status: 500 })
   }
 }
@@ -129,8 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action. Use "time_in" or "manual".' }, { status: 400 })
-  } catch (error) {
-    console.error('POST time-entries error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to create time entry' }, { status: 500 })
   }
 }

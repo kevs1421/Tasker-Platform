@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ user })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 })
   }
 }
 
@@ -70,8 +70,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     return NextResponse.json({ success: true, message: `Password has been reset for "${user.name}"` })
-  } catch (err) {
-    console.error('Password reset error:', err)
+  } catch {
     return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
   }
 }

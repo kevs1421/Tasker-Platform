@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User } from '@/types'
+import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 
@@ -29,16 +29,16 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 // recharts
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 
 // date-fns
 import { format } from 'date-fns'
 
 // icons
 import {
-  FileCheck, FileText, FolderKanban, ListTodo, MessageSquare,
+  FileCheck, FileText, FolderKanban, ListTodo,
   CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
-  Plus, Trash2, Eye, Send, ChevronDown, Check,
+  Plus, Trash2, Eye, ChevronDown, Check,
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
@@ -191,7 +191,11 @@ export function AdminOverview() {
                     <RechartsTooltip
                       contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
                     />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {chartData.map((entry, index) => (
+                        <Cell key={index} fill={entry.fill} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -304,8 +308,6 @@ export function AdminOnboarding() {
     clientId: '',
     selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
   })
-  const [stepSearch, setStepSearch] = useState('')
-
   // Edit onboarding form state
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -507,10 +509,6 @@ export function AdminOnboarding() {
         : [...prev.selectedSteps, stepId],
     }))
   }
-
-  const filteredSteps = ONBOARDING_STEPS_CONFIG.filter(s =>
-    !stepSearch || s.label.toLowerCase().includes(stepSearch.toLowerCase()) || s.description.toLowerCase().includes(stepSearch.toLowerCase())
-  )
 
   if (loading) {
     return (
@@ -2129,6 +2127,7 @@ export function AdminUsers() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [adding, setAdding] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<User | null>(null)
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', confirmPassword: '',
     role: 'team' as 'admin' | 'team' | 'client',
@@ -2351,6 +2350,7 @@ export function AdminUsers() {
       }
       toast.success(`User "${u.name}" deleted`)
       fetchUsers()
+      setDeleteConfirmUserId(null)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete user')
     } finally {
@@ -2539,15 +2539,11 @@ export function AdminUsers() {
                               )}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleDeleteUser(u)}
-                              disabled={u.id === adminUser?.id || deletingId === u.id}
+                              onClick={() => setDeleteConfirmUserId(u)}
+                              disabled={u.id === adminUser?.id}
                               className="text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-900/20"
                             >
-                              {deletingId === u.id ? (
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4 mr-2" />
-                              )}
+                              <Trash2 className="h-4 w-4 mr-2" />
                               Delete User
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -2561,6 +2557,29 @@ export function AdminUsers() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete User Confirmation */}
+      <AlertDialog open={!!deleteConfirmUserId} onOpenChange={(open) => { if (!open) setDeleteConfirmUserId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteConfirmUserId?.name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirmUserId && handleDeleteUser(deleteConfirmUserId)}
+              disabled={!!deletingId}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              {deletingId ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add User Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

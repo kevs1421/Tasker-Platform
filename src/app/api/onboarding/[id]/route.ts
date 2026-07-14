@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return NextResponse.json({ form })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to fetch onboarding form' }, { status: 500 }) }
 }
 
 // PATCH /api/onboarding/:id - update form or review submission
@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     return NextResponse.json({ form })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to update onboarding' }, { status: 500 }) }
 }
 
 // DELETE /api/onboarding/:id - delete onboarding form and its submissions
@@ -129,5 +129,5 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await db.onboardingForm.delete({ where: { id } })
     await db.activityLog.create({ data: { action: 'onboarding_deleted', details: `Deleted onboarding form "${form.title}"` } })
     return NextResponse.json({ success: true })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to delete onboarding form' }, { status: 500 }) }
 }

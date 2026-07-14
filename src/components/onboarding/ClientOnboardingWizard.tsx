@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth'
-import type { OnboardingForm, Onboarding, User } from '@/types'
+import type { OnboardingForm, Onboarding } from '@/types'
 import { getInitials, formatRelativeTime, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 
@@ -342,7 +342,7 @@ export default function ClientOnboardingWizard() {
           ...(submissionId ? {} : { formId: selectedForm.id, clientId: user.id }),
         }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Submission failed') }
       toast.success('Onboarding submitted successfully!')
       setSelectedForm(null)
       fetchForms()

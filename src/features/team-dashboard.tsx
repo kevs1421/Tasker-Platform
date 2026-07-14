@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { Project, Task, TaskAssignment, Comment, Message, User } from '@/types'
+import type { Project, Task, Comment, User } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
   formatDate, formatRelativeTime,
@@ -57,14 +57,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 // lucide-react
 import {
-  Plus, Search, MoreHorizontal, Trash2, LayoutGrid, List,
-  Send, MessageSquare, CalendarIcon, Tag, Users, FolderKanban,
-  Clock, Eye, CheckCircle2, Circle, ChevronDown,
+  Plus, Trash2, LayoutGrid, List, CheckCircle2,
+  Send, CalendarIcon, Tag, Users, FolderKanban,
+  Clock, Circle,
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
-  Mail, Lock, Shield, ArrowUpDown, StickyNote, UserCircle,
+  Lock, Shield,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
   Save, RotateCcw, Play, Square, Timer,
 } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -74,16 +76,6 @@ const STATUS_COLUMNS = [
   { key: 'in_review' as const, label: 'In Review', color: 'bg-purple-500', bgColor: 'bg-purple-50/50 dark:bg-purple-900/20', headerBg: 'bg-purple-100 dark:bg-purple-900/40' },
   { key: 'done' as const, label: 'Done', color: 'bg-emerald-500', bgColor: 'bg-emerald-50/50 dark:bg-emerald-900/20', headerBg: 'bg-emerald-100 dark:bg-emerald-900/40' },
 ]
-
-const PROJECT_COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
-  '#14b8a6', '#06b6d4', '#8b5cf6', '#d946ef', '#ec4899',
-  '#64748b', '#78716c',
-]
-
-function cn(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(' ')
-}
 
 // ─── Shared Sub-components ──────────────────────────────────
 
@@ -696,6 +688,10 @@ export function TeamTasks() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
+      if (!res.ok) {
+        toast.error('Failed to save')
+        return
+      }
       const data = await res.json()
       const updatedTask = data.task || { ...detailTask, ...updates }
       setDetailTask(updatedTask as Task)
@@ -1320,7 +1316,7 @@ export function TeamTasks() {
                     />
                   ) : (
                     <DialogTitle
-                      className="text-lg cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors"
+                      className="group text-lg cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors"
                       onClick={() => setIsEditingTitle(true)}
                     >
                       {editTitle}
@@ -1659,6 +1655,10 @@ export function TeamProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id, name, email, phone: phone || null, company: company || null }),
       })
+      if (!res.ok) {
+        toast.error('Failed to save')
+        return
+      }
       const data = await res.json()
       setProfile(data.user || profile)
       toast.success('Profile updated')
@@ -1684,11 +1684,15 @@ export function TeamProfile() {
     }
     setPasswordSaving(true)
     try {
-      await fetch('/api/user/profile', {
+      const res = await fetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id, currentPassword, newPassword }),
       })
+      if (!res.ok) {
+        toast.error('Failed to save')
+        return
+      }
       toast.success('Password changed')
       setCurrentPassword('')
       setNewPassword('')
@@ -2001,11 +2005,15 @@ export function TeamTimeTracking() {
     try {
       const res = await fetch('/api/projects')
       const data = await res.json()
-      setProjects(data.projects || [])
+      const allProjects = data.projects || []
+      const myProjects = allProjects.filter((p: Project & { members: Array<{ userId: string }> }) =>
+        p.members?.some((m: { userId: string }) => m.userId === user?.id)
+      )
+      setProjects(myProjects)
     } catch {
       // silent
     }
-  }, [])
+  }, [user])
 
   // ── Fetch tasks when project changes ──
   useEffect(() => {

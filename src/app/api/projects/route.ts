@@ -30,7 +30,7 @@ export async function GET() {
 
     return NextResponse.json({ projects: projectsWithStats })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to process project request' }, { status: 500 })
   }
 }
 
@@ -54,6 +54,6 @@ export async function POST(request: NextRequest) {
     await db.activityLog.create({ data: { action: 'project_created', details: `Created project "${name}"`, userId: createdBy, projectId: project.id } })
     return NextResponse.json({ project }, { status: 201 })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to process project request' }, { status: 500 })
   }
 }

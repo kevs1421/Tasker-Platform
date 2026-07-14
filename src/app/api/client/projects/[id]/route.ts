@@ -60,8 +60,7 @@ export async function GET(
     }))
 
     return NextResponse.json({ project: { ...project, tasks } })
-  } catch (error) {
-    console.error('Client project detail error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })
   }
 }

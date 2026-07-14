@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json({ assignment }, { status: 201 })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to assign task' }, { status: 500 }) }
 }
 
 export async function DELETE(request: Request) {
@@ -36,5 +36,5 @@ export async function DELETE(request: Request) {
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     await db.taskAssignment.deleteMany({ where: { userId, taskId } })
     return NextResponse.json({ success: true })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to remove task assignment' }, { status: 500 }) }
 }

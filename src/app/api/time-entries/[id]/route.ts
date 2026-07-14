@@ -85,8 +85,7 @@ export async function PATCH(
       },
     })
     return NextResponse.json({ timeEntry: updated })
-  } catch (error) {
-    console.error('PATCH time-entry error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to update time entry' }, { status: 500 })
   }
 }
@@ -99,8 +98,7 @@ export async function DELETE(
     const { id } = await params
     await db.timeEntry.delete({ where: { id } })
     return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('DELETE time-entry error:', error)
+  } catch {
     return NextResponse.json({ error: 'Failed to delete time entry' }, { status: 500 })
   }
 }

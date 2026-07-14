@@ -31,9 +31,8 @@ export async function GET(request: NextRequest) {
       assignees: t.assignments
     }))
     return NextResponse.json({ tasks: result })
-  } catch (e) {
-    console.error('Tasks GET error:', e)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to process task request' }, { status: 500 })
   }
 }
 
@@ -55,8 +54,7 @@ export async function POST(request: Request) {
     const taskWithAssignees = { ...task, assignees: task.assignments }
     await db.activityLog.create({ data: { action: 'task_created', details: `Created task "${title}"`, userId: createdById, projectId, taskId: task.id } })
     return NextResponse.json({ task: taskWithAssignees }, { status: 201 })
-  } catch (e) {
-    console.error('Tasks POST error:', e)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to process task request' }, { status: 500 })
   }
 }

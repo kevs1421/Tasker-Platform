@@ -119,8 +119,7 @@ export async function GET(request: NextRequest) {
           } : null,
         }))
       })
-      } catch (innerErr) {
-        console.error('Conversation list error:', innerErr)
+      } catch {
         return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 })
       }
     }
@@ -147,9 +146,8 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ messages })
-  } catch (error) {
-    console.error('Messages GET error:', error)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 }
 
@@ -183,9 +181,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ message }, { status: 201 })
-  } catch (error) {
-    console.error('Messages POST error:', error)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
   }
 }
 
@@ -243,8 +240,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid delete request' }, { status: 400 })
-  } catch (error) {
-    console.error('Messages DELETE error:', error)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Failed to delete message' }, { status: 500 })
   }
 }

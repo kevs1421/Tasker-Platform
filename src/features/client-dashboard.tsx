@@ -10,7 +10,7 @@ import {
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import type { User, Project } from '@/types'
+import type { Project } from '@/types'
 import {
   getRoleBadgeClasses, getPriorityConfig,
   formatDate,
@@ -21,7 +21,6 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, DialogDescription,
@@ -389,12 +388,14 @@ export function ClientProjects() {
                 {projects.map((project) => {
                   const todo = project.taskStats?.todo || 0
                   const inProgress = project.taskStats?.in_progress || 0
+                  const inReview = project.taskStats?.in_review || 0
                   const completed = project.taskStats?.done || 0
-                  const total = todo + inProgress + completed
+                  const total = todo + inProgress + inReview + completed
                   if (total === 0) return null
 
                   const todoPct = Math.round((todo / total) * 100)
                   const inProgressPct = Math.round((inProgress / total) * 100)
+                  const inReviewPct = Math.round((inReview / total) * 100)
                   const completedPct = Math.round((completed / total) * 100)
 
                   return (
@@ -422,6 +423,13 @@ export function ClientProjects() {
                             title={`In Progress: ${inProgress}`}
                           />
                         )}
+                        {inReview > 0 && (
+                          <div
+                            className="bg-blue-500 transition-all duration-500"
+                            style={{ width: `${inReviewPct}%` }}
+                            title={`In Review: ${inReview}`}
+                          />
+                        )}
                         {completed > 0 && (
                           <div
                             className="bg-emerald-500 transition-all duration-500"
@@ -439,6 +447,10 @@ export function ClientProjects() {
                         <span className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
                           In Progress ({inProgress})
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+                          In Review ({inReview})
                         </span>
                         <span className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
@@ -534,8 +546,7 @@ export function ClientProjects() {
                           <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
                           <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
                         </div>
-                        <div className="relative">
-                          <Progress value={pct} className="h-2.5" />
+                        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-primary/20">
                           <div
                             className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
                             style={{

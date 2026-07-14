@@ -39,6 +39,6 @@ export async function PATCH(request: Request) {
     }
     return NextResponse.json({ userStats })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch user stats' }, { status: 500 })
   }
 }

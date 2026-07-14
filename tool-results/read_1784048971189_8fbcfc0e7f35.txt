@@ -1,0 +1,974 @@
+     1→# TaskFlow — Production Deployment Guide
+     2→
+     3→> **Version:** 0.2.0
+     4→> **Last Updated:** July 2025
+     5→> **Stack:** Next.js 16 (App Router) · TypeScript 5 · Tailwind CSS 4 · Prisma · SQLite · Bun · Caddy
+     6→
+     7→---
+     8→
+     9→## Table of Contents
+    10→
+    11→1. [Project Prerequisites](#1-project-prerequisites)
+    12→2. [Environment Variables](#2-environment-variables)
+    13→3. [Installation & Development Setup](#3-installation--development-setup)
+    14→4. [Production Build & Deployment](#4-production-build--deployment)
+    15→5. [Database](#5-database)
+    16→6. [Caddy / Reverse Proxy Configuration](#6-caddy--reverse-proxy-configuration)
+    17→7. [SSL & Domain Configuration](#7-ssl--domain-configuration)
+    18→8. [Security Considerations](#8-security-considerations)
+    19→9. [Monitoring & Maintenance](#9-monitoring--maintenance)
+    20→10. [Troubleshooting](#10-troubleshooting)
+    21→11. [Architecture Overview](#11-architecture-overview)
+    22→12. [Demo Accounts](#12-demo-accounts)
+    23→
+    24→---
+    25→
+    26→## 1. Project Prerequisites
+    27→
+    28→Install the following software on the target server before deploying.
+    29→
+    30→| Software | Minimum Version | Recommended | Purpose |
+    31→|---|---|---|---|
+    32→| **Bun** | 1.0+ | Latest stable | JavaScript runtime, package manager, script runner |
+    33→| **Node.js** | 18+ (LTS) | 20+ LTS | Required by some Prisma tooling and Next.js internals |
+    34→| **Git** | 2.30+ | Latest | Source code management |
+    35→| **Caddy** | 2.7+ | Latest stable | Reverse proxy, automatic HTTPS via Let's Encrypt |
+    36→| **SQLite3** | 3.35+ | System package | Database runtime (bundled with Prisma, but useful for CLI inspection) |
+    37→
+    38→### Quick Install (Ubuntu/Debian)
+    39→
+    40→```bash
+    41→# System packages
+    42→sudo apt update && sudo apt install -y git sqlite3 curl unzip
+    43→
+    44→# Bun
+    45→curl -fsSL https://bun.sh/install | bash
+    46→source ~/.bashrc
+    47→
+    48→# Caddy
+    49→sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+    50→curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    51→curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+    52→sudo apt update && sudo apt install -y caddy
+    53→```
+    54→
+    55→### Verify Installations
+    56→
+    57→```bash
+    58→bun --version    # e.g. 1.2.x
+    59→node --version   # e.g. 20.x
+    60→caddy version    # e.g. 2.8.x
+    61→sqlite3 --version
+    62→```
+    63→
+    64→---
+    65→
+    66→## 2. Environment Variables
+    67→
+    68→TaskFlow uses a single required environment variable. Create a `.env` file in the project root.
+    69→
+    70→### Configuration
+    71→
+    72→```env
+    73→# Required — Path to the SQLite database file
+    74→DATABASE_URL=file:/path/to/taskflow/db/dev.db
+    75→```
+    76→
+    77→| Variable | Required | Default | Description |
+    78→|---|---|---|---|
+    79→| `DATABASE_URL` | **Yes** | — | SQLite connection string. Must use the `file:` prefix followed by an absolute path. |
+    80→| `NODE_ENV` | No | `development` | Set to `production` by the start script. Do not set manually. |
+    81→
+    82→### Example Production `.env`
+    83→
+    84→```env
+    85→DATABASE_URL=file:/opt/taskflow/db/dev.db
+    86→```
+    87→
+    88→> **Note:** The `bun run start` script in `package.json` automatically sets `NODE_ENV=production`. No additional environment variables are needed for a standard deployment.
+    89→
+    90→---
+    91→
+    92→## 3. Installation & Development Setup
+    93→
+    94→### Clone the Repository
+    95→
+    96→```bash
+    97→git clone <repository-url> /opt/taskflow
+    98→cd /opt/taskflow
+    99→```
+   100→
+   101→### Install Dependencies
+   102→
+   103→```bash
+   104→bun install
+   105→```
+   106→
+   107→### Database Setup
+   108→
+   109→```bash
+   110→# Generate Prisma client
+   111→bun run db:generate
+   112→
+   113→# Push schema to database (creates tables if they don't exist)
+   114→bun run db:push
+   115→```
+   116→
+   117→### Seed the Database
+   118→
+   119→```bash
+   120→bun run prisma db seed
+   121→```
+   122→
+   123→This populates the database with demo users, projects, tasks, comments, messages, and onboarding forms. See [Demo Accounts](#12-demo-accounts) for login credentials.
+   124→
+   125→### Start the Development Server
+   126→
+   127→```bash
+   128→bun run dev
+   129→```
+   130→
+   131→The development server starts on **http://localhost:3000** with hot-reload enabled. Logs are written to both stdout and `dev.log`.
+   132→
+   133→---
+   134→
+   135→## 4. Production Build & Deployment
+   136→
+   137→### Build
+   138→
+   139→```bash
+   140→bun run build
+   141→```
+   142→
+   143→This command performs two steps:
+   144→
+   145→1. **`next build`** — Compiles the Next.js application in standalone output mode. All required dependencies, traces, and server code are bundled into `.next/standalone/`.
+   146→2. **Asset copy** — Copies `.next/static` and `public/` into the standalone directory so all assets are self-contained:
+   147→
+   148→```bash
+   149→cp -r .next/static .next/standalone/.next/
+   150→cp -r public .next/standalone/
+   151→```
+   152→
+   153→### Start the Production Server
+   154→
+   155→```bash
+   156→bun run start
+   157→```
+   158→
+   159→This runs:
+   160→
+   161→```bash
+   162→NODE_ENV=production bun .next/standalone/server.js
+   163→```
+   164→
+   165→The server listens on **port 3000** by default. Logs are written to both stdout and `server.log`.
+   166→
+   167→### Standalone Output Mode
+   168→
+   169→The `next.config.ts` sets `output: "standalone"`, which means:
+   170→
+   171→- The build produces a **self-contained server** in `.next/standalone/`
+   172→- Only `node_modules` required at runtime are traced and included
+   173→- No need to install `node_modules` on the production server after building
+   174→- The standalone directory contains its own `node_modules/`, `.next/`, and `server.js`
+   175→
+   176→This is ideal for Docker containers, VMs, and bare-metal deployments where you want a minimal footprint.
+   177→
+   178→### File Storage Configuration
+   179→
+   180→Uploaded files are stored in the local `upload/` directory relative to the project root (`process.cwd()`).
+   181→
+   182→| Setting | Value |
+   183→|---|---|
+   184→| **Upload directory** | `upload/` (relative to CWD) |
+   185→| **Max file size** | 10 MB |
+   186→| **Allowed extensions** | `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.svg`, `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.txt`, `.zip` |
+   187→| **Filename format** | `{uuid}-{sanitized-original-name}` |
+   188→| **Serving** | Rewritten via `next.config.ts`: `/upload/:path*` → `/api/upload/serve/:path*` |
+   189→
+   190→#### Important for Production
+   191→
+   192→After building with standalone mode, the `upload/` directory **must exist at the working directory** where the server runs. Ensure:
+   193→
+   194→```bash
+   195→# Create the upload directory if it doesn't exist
+   196→mkdir -p /opt/taskflow/upload
+   197→
+   198→# Set appropriate permissions
+   199→chmod 750 /opt/taskflow/upload
+   200→```
+   201→
+   202→When deploying the standalone build, the `upload/` directory must be **alongside** the standalone output, or you must set the working directory appropriately:
+   203→
+   204→```bash
+   205→# Option A: Run from project root (upload/ is already there)
+   206→cd /opt/taskflow
+   207→NODE_ENV=production bun .next/standalone/server.js
+   208→
+   209→# Option B: If deploying only the standalone directory, symlink or copy upload/
+   210→mkdir -p /opt/taskflow/.next/standalone/upload
+   211→# Or bind-mount in Docker: -v /opt/taskflow/upload:/app/upload
+   212→```
+   213→
+   214→---
+   215→
+   216→## 5. Database
+   217→
+   218→### SQLite Setup
+   219→
+   220→TaskFlow uses SQLite via Prisma ORM. The database file is a single file on disk — no external database server required.
+   221→
+   222→- **Default location:** `db/dev.db`
+   223→- **Configured via:** `DATABASE_URL` in `.env`
+   224→
+   225→### Schema Management
+   226→
+   227→#### Push Schema (Recommended for Development)
+   228→
+   229→Applies the Prisma schema to the database without creating migration files. Useful for rapid prototyping.
+   230→
+   231→```bash
+   232→bun run db:push
+   233→```
+   234→
+   235→#### Migrate (Recommended for Production)
+   236→
+   237→Creates and applies versioned migration files. Provides rollback capability.
+   238→
+   239→```bash
+   240→# Create and apply a new migration
+   241→bun run db:migrate
+   242→
+   243→# Reset the database (drops all data, re-applies all migrations)
+   244→bun run db:reset
+   245→```
+   246→
+   247→### Seeding
+   248→
+   249→Populate the database with demo data:
+   250→
+   251→```bash
+   252→bun run prisma db seed
+   253→```
+   254→
+   255→> **Warning:** Seeding will fail if the database already contains data (duplicate email unique constraints). Drop the database first or use `bun run db:reset` to start fresh.
+   256→
+   257→### Backup
+   258→
+   259→SQLite is a single file — backup is a simple copy operation.
+   260→
+   261→```bash
+   262→# Create a timestamped backup
+   263→cp /opt/taskflow/db/dev.db "/opt/taskflow/db/backup-$(date +%Y%m%d-%H%M%S).db"
+   264→
+   265→# Automated daily backup (add to crontab)
+   266→crontab -e
+   267→# Add this line (runs daily at 2 AM):
+   268→0 2 * * * cp /opt/taskflow/db/dev.db "/opt/taskflow/db/backup-$(date +\%Y\%m\%d-\%H\%M\%S).db"
+   269→```
+   270→
+   271→### Restore
+   272→
+   273→```bash
+   274→# Stop the application first
+   275→pm2 stop taskflow  # or kill the process
+   276→
+   277→# Replace the database file
+   278→cp /opt/taskflow/db/backup-20250701-020000.db /opt/taskflow/db/dev.db
+   279→
+   280→# Restart the application
+   281→pm2 start taskflow
+   282→```
+   283→
+   284→### Inspecting the Database
+   285→
+   286→```bash
+   287→sqlite3 /opt/taskflow/db/dev.db
+   288→
+   289→# Useful queries
+   290→.tables
+   291→.schema User
+   292→SELECT email, role, status FROM User;
+   293→.quit
+   294→```
+   295→
+   296→---
+   297→
+   298→## 6. Caddy / Reverse Proxy Configuration
+   299→
+   300→### Overview
+   301→
+   302→TaskFlow includes a `Caddyfile` that configures Caddy as a reverse proxy. The current configuration uses the **XTransformPort gateway pattern** for dynamic port routing.
+   303→
+   304→### Current Caddyfile
+   305→
+   306→```caddyfile
+   307→:81 {
+   308→    @transform_port_query {
+   309→        query XTransformPort=*
+   310→    }
+   311→
+   312→    handle @transform_port_query {
+   313→        reverse_proxy localhost:{query.XTransformPort} {
+   314→            header_up Host {host}
+   315→            header_up X-Forwarded-For {remote_host}
+   316→            header_up X-Forwarded-Proto {scheme}
+   317→            header_up X-Real-IP {remote_host}
+   318→        }
+   319→    }
+   320→
+   321→    handle {
+   322→        reverse_proxy localhost:3000 {
+   323→            header_up Host {host}
+   324→            header_up X-Forwarded-For {remote_host}
+   325→            header_up X-Forwarded-Proto {scheme}
+   326→            header_up X-Real-IP {remote_host}
+   327→        }
+   328→    }
+   329→}
+   330→```
+   331→
+   332→### How It Works
+   333→
+   334→1. **XTransformPort Gateway** — If a request includes `?XTransformPort=<port>` in the query string, Caddy proxies to that port on localhost. This is useful in sandboxed / multi-tenant environments where the port is dynamically assigned.
+   335→
+   336→2. **Default Proxy** — All other requests are proxied to `localhost:3000` (the Next.js server).
+   337→
+   338→3. **Headers** — All proxy forwarding sets standard headers (`Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP`) so Next.js can correctly determine the original client information.
+   339→
+   340→### Production Domain Configuration
+   341→
+   342→Replace the port-based config with a domain-based one:
+   343→
+   344→```caddyfile
+   345→taskflow.yourdomain.com {
+   346→    reverse_proxy localhost:3000 {
+   347→        header_up Host {host}
+   348→        header_up X-Forwarded-For {remote_host}
+   349→        header_up X-Forwarded-Proto {scheme}
+   350→        header_up X-Real-IP {remote_host}
+   351→    }
+   352→}
+   353→```
+   354→
+   355→### Deploy the Caddyfile
+   356→
+   357→```bash
+   358→# Copy to Caddy's config location (if using system Caddy)
+   359→sudo cp /opt/taskflow/Caddyfile /etc/caddy/Caddyfile
+   360→
+   361→# Validate the configuration
+   362→sudo caddy validate --config /etc/caddy/Caddyfile
+   363→
+   364→# Reload Caddy (zero downtime)
+   365→sudo systemctl reload caddy
+   366→```
+   367→
+   368→---
+   369→
+   370→## 7. SSL & Domain Configuration
+   371→
+   372→### Automatic HTTPS with Caddy
+   373→
+   374→Caddy automatically provisions and renews SSL/TLS certificates from **Let's Encrypt** when you specify a domain name in the Caddyfile. No manual certificate management is required.
+   375→
+   376→### Setup Steps
+   377→
+   378→1. **Point your domain** to the server's public IP address via DNS (A record).
+   379→
+   380→2. **Update the Caddyfile** to use your domain:
+   381→
+   382→   ```caddyfile
+   383→   taskflow.yourdomain.com {
+   384→       reverse_proxy localhost:3000
+   385→   }
+   386→   ```
+   387→
+   388→3. **Ensure ports 80 and 443 are open** in your firewall:
+   389→
+   390→   ```bash
+   391→   sudo ufw allow 80/tcp
+   392→   sudo ufw allow 443/tcp
+   393→   ```
+   394→
+   395→4. **Reload Caddy** — certificates will be provisioned automatically on first request.
+   396→
+   397→### Custom Domain with Subdomain
+   398→
+   399→```caddyfile
+   400→# Main application
+   401→app.yourdomain.com {
+   402→    reverse_proxy localhost:3000
+   403→}
+   404→
+   405→# Optional: API subdomain
+   406→api.yourdomain.com {
+   407→    reverse_proxy localhost:3000
+   408→}
+   409→```
+   410→
+   411→### DNS Configuration
+   412→
+   413→| Type | Name | Value |
+   414→|---|---|---|
+   415→| A | `taskflow` (or `app`) | `<your-server-ip>` |
+   416→
+   417→Allow up to 5 minutes for DNS propagation after updating records.
+   418→
+   419→### Self-Signed Certificates (Development Only)
+   420→
+   421→For local development without a public domain, Caddy will use its internal CA. To trust it locally:
+   422→
+   423→```bash
+   424→caddy trust
+   425→```
+   426→
+   427→---
+   428→
+   429→## 8. Security Considerations
+   430→
+   431→### Current Security Model
+   432→
+   433→TaskFlow implements a **client-side session model** using Zustand. The authentication flow is:
+   434→
+   435→1. User submits credentials to `POST /api/login`
+   436→2. Server verifies email/password against the database
+   437→3. Server returns the user object (without the password hash) to the client
+   438→4. Client stores the user in Zustand state (in-memory, per tab)
+   439→5. The `RouteGuard` component checks the Zustand state before rendering protected routes
+   440→
+   441→#### Password Hashing
+   442→
+   443→Passwords are hashed using **SHA-256** via the Web Crypto API (`crypto.subtle.digest`).
+   444→
+   445→```typescript
+   446→// src/lib/auth.ts
+   447→export async function hashPassword(password: string): Promise<string> {
+   448→  const encoder = new TextEncoder()
+   449→  const data = encoder.encode(password)
+   450→  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+   451→  const hashArray = Array.from(new Uint8Array(hashBuffer))
+   452→  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+   453→}
+   454→```
+   455→
+   456→> **Production Warning:** SHA-256 without salting is **not** recommended for production password storage. See [Recommended Hardening](#recommended-production-hardening) below.
+   457→
+   458→### Client Data Isolation
+   459→
+   460→Client users can only see projects they are explicitly assigned to via the `ClientProject` join table:
+   461→
+   462→```
+   463→User (client) ←→ ClientProject ←→ Project
+   464→```
+   465→
+   466→- `john@client.com` is linked to 2 projects via `ClientProject` records
+   467→- `lisa@client.com` is linked to 1 project via `ClientProject` records
+   468→- API routes filter projects by `clientId` to enforce isolation
+   469→
+   470→### File Upload Restrictions
+   471→
+   472→| Restriction | Implementation |
+   473→|---|---|
+   474→| Max file size | 10 MB (`MAX_FILE_SIZE` in upload route) |
+   475→| Allowed types | Whitelist of 13 extensions (images, docs, archives) |
+   476→| Filename sanitization | Non-alphanumeric chars replaced with `_` |
+   477→| Unique filenames | UUID prefix prevents collisions |
+   478→| Directory traversal | `path.resolve()` + `startsWith()` check in serve route |
+   479→| File serving | Rewritten through API route, not served as static files |
+   480→
+   481→### API Access Patterns
+   482→
+   483→- **Registration** (`POST /api/register`): Requires a valid `adminUserId` — verifies the requester has admin role before creating users
+   484→- **Login** (`POST /api/login`): Checks user existence, password verification, and account status (`inactive` users are blocked)
+   485→- **Route Guard** (`RouteGuard` component): Client-side role check — supports `allowedRoles` prop to restrict UI sections
+   486→
+   487→### Recommended Production Hardening
+   488→
+   489→Apply these improvements before going to production:
+   490→
+   491→#### 1. Server-Side Session Management
+   492→
+   493→Replace the Zustand-only session with proper server-side sessions:
+   494→
+   495→```typescript
+   496→// Use httpOnly cookies + server-side session validation
+   497→// Consider: iron-session, jose (JWE), or a session table in SQLite
+   498→```
+   499→
+   500→#### 2. Password Hashing Upgrade
+   501→
+   502→Replace SHA-256 with bcrypt, scrypt, or Argon2:
+   503→
+   504→```bash
+   505→bun add bcryptjs @types/bcryptjs
+   506→```
+   507→
+   508→```typescript
+   509→import bcrypt from 'bcryptjs'
+   510→const hash = await bcrypt.hash(password, 12)
+   511→const valid = await bcrypt.compare(password, hash)
+   512→```
+   513→
+   514→#### 3. Rate Limiting
+   515→
+   516→Add rate limiting to all API routes, especially authentication endpoints:
+   517→
+   518→```typescript
+   519→// Consider: @upstash/ratelimit, or a simple in-memory/token-bucket approach
+   520→// Priority routes to protect: /api/login, /api/register
+   521→```
+   522→
+   523→#### 4. CSRF Protection
+   524→
+   525→Since there are no cookies currently, CSRF risk is low. When adding cookie-based sessions, implement CSRF tokens.
+   526→
+   527→#### 5. API Middleware
+   528→
+   529→Create a Next.js middleware (`src/middleware.ts`) for:
+   530→
+   531→- Authentication verification on all `/api/*` routes
+   532→- Request logging
+   533→- IP-based rate limiting
+   534→- CORS configuration
+   535→
+   536→#### 6. Remove Demo Accounts
+   537→
+   538→Before production deployment, either remove the seeded demo accounts or change their passwords:
+   539→
+   540→```bash
+   541→# Option A: Fresh database without seed data
+   542→rm /opt/taskflow/db/dev.db
+   543→bun run db:push
+   544→# Create admin user manually via the registration API
+   545→
+   546→# Option B: Change demo passwords via SQLite
+   547→sqlite3 /opt/taskflow/db/dev.db
+   548→UPDATE User SET password = '<new-bcrypt-hash>' WHERE email = 'admin@taskflow.com';
+   549→```
+   550→
+   551→#### 7. File Upload Hardening
+   552→
+   553→- Add authentication check to `POST /api/upload`
+   554→- Add authentication check to `GET /api/upload/serve/[path]`
+   555→- Consider virus scanning for uploaded files
+   556→- Set `Content-Disposition: attachment` for non-image files to prevent XSS
+   557→
+   558→#### 8. Environment Isolation
+   559→
+   560→- Never commit `.env` to version control (already in `.gitignore`)
+   561→- Use different `DATABASE_URL` paths for dev/staging/production
+   562→- Restrict file permissions: `chmod 600 .env`
+   563→
+   564→---
+   565→
+   566→## 9. Monitoring & Maintenance
+   567→
+   568→### Health Check
+   569→
+   570→There is no dedicated `/api/health` endpoint yet. Monitor availability by checking the root URL:
+   571→
+   572→```bash
+   573→curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/
+   574→# Returns 200 if the server is running
+   575→```
+   576→
+   577→To add a proper health endpoint, create `src/app/api/health/route.ts`:
+   578→
+   579→```typescript
+   580→import { NextResponse } from 'next/server'
+   581→
+   582→export async function GET() {
+   583→  return NextResponse.json({ status: 'ok', timestamp: new Date().toISOString() })
+   584→}
+   585→```
+   586→
+   587→### Process Management
+   588→
+   589→Use **PM2** or **systemd** to keep the application running and auto-restart on crashes.
+   590→
+   591→#### PM2 Setup
+   592→
+   593→```bash
+   594→bun add -g pm2
+   595→
+   596→# Create ecosystem.config.js in project root
+   597→cat > /opt/taskflow/ecosystem.config.js << 'EOF'
+   598→module.exports = {
+   599→  apps: [{
+   600→    name: 'taskflow',
+   601→    script: '.next/standalone/server.js',
+   602→    cwd: '/opt/taskflow',
+   603→    interpreter: 'bun',
+   604→    env: { NODE_ENV: 'production' },
+   605→    instances: 1,
+   606→    autorestart: true,
+   607→    max_memory_restart: '512M',
+   608→    error_file: '/opt/taskflow/logs/error.log',
+   609→    out_file: '/opt/taskflow/logs/out.log',
+   610→    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+   611→  }]
+   612→}
+   613→EOF
+   614→
+   615→# Start
+   616→pm2 start ecosystem.config.js
+   617→pm2 save
+   618→pm2 startup  # generates startup script
+   619→```
+   620→
+   621→#### systemd Service
+   622→
+   623→```ini
+   624→# /etc/systemd/system/taskflow.service
+   625→[Unit]
+   626→Description=TaskFlow Application
+   627→After=network.target
+   628→
+   629→[Service]
+   630→Type=simple
+   631→User=www-data
+   632→WorkingDirectory=/opt/taskflow
+   633→ExecStart=/home/<user>/.bun/bin/bun .next/standalone/server.js
+   634→Environment=NODE_ENV=production
+   635→Restart=on-failure
+   636→RestartSec=5
+   637→
+   638→[Install]
+   639→WantedBy=multi-user.target
+   640→```
+   641→
+   642→```bash
+   643→sudo systemctl daemon-reload
+   644→sudo systemctl enable taskflow
+   645→sudo systemctl start taskflow
+   646→```
+   647→
+   648→### Log Locations
+   649→
+   650→| Log | Location | Description |
+   651→|---|---|---|
+   652→| Application stdout/stderr | `server.log` (via `tee`) | All console output from the Next.js server |
+   653→| Development log | `dev.log` | Development server output |
+   654→| Caddy access log | `/var/log/caddy/access.log` | HTTP request logs (configure in Caddyfile) |
+   655→| Caddy error log | `/var/log/caddy/error.log` | Caddy errors |
+   656→| PM2 logs | `/opt/taskflow/logs/out.log`, `/opt/taskflow/logs/error.log` | If using PM2 |
+   657→| systemd journal | `journalctl -u taskflow -f` | If using systemd |
+   658→
+   659→### Updating the Application
+   660→
+   661→```bash
+   662→cd /opt/taskflow
+   663→
+   664→# 1. Pull latest code
+   665→git pull origin main
+   666→
+   667→# 2. Install updated dependencies
+   668→bun install
+   669→
+   670→# 3. Regenerate Prisma client (if schema changed)
+   671→bun run db:generate
+   672→
+   673→# 4. Apply any database schema changes
+   674→bun run db:push    # or: bun run db:migrate
+   675→
+   676→# 5. Build the production bundle
+   677→bun run build
+   678→
+   679→# 6. Copy static assets into standalone (done by build script, but verify)
+   680→# The build script already runs: cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
+   681→
+   682→# 7. Restart the application
+   683→pm2 restart taskflow    # if using PM2
+   684→# or: sudo systemctl restart taskflow
+   685→```
+   686→
+   687→### Rollback Procedure
+   688→
+   689→```bash
+   690→cd /opt/taskflow
+   691→
+   692→# 1. Revert to the previous commit
+   693→git log --oneline -5           # Find the previous commit hash
+   694→git checkout <previous-commit> # e.g., git checkout abc1234
+   695→
+   696→# 2. Reinstall and rebuild
+   697→bun install
+   698→bun run build
+   699→
+   700→# 3. If database schema changed, restore from backup
+   701→cp /opt/taskflow/db/backup-<timestamp>.db /opt/taskflow/db/dev.db
+   702→
+   703→# 4. Restart
+   704→pm2 restart taskflow
+   705→```
+   706→
+   707→For a more robust rollback strategy, consider:
+   708→
+   709→- Tagging releases: `git tag v0.2.0 && git push --tags`
+   710→- Keeping the previous standalone build: `cp -r .next/standalone .next/standalone.bak` before building
+   711→
+   712→---
+   713→
+   714→## 10. Troubleshooting
+   715→
+   716→### Common Issues & Solutions
+   717→
+   718→#### Port 3000 Already in Use
+   719→
+   720→```
+   721→Error: listen EADDRINUSE: address already in use :::3000
+   722→```
+   723→
+   724→**Solution:**
+   725→
+   726→```bash
+   727→# Find the process using port 3000
+   728→lsof -i :3000
+   729→# or
+   730→ss -tlnp | grep 3000
+   731→
+   732→# Kill the process
+   733→kill <PID>
+   734→
+   735→# Or use a different port
+   736→PORT=3001 bun run start
+   737→```
+   738→
+   739→#### Database Locked or Corruption
+   740→
+   741→```
+   742→Error: SQLITE_BUSY: database is locked
+   743→```
+   744→
+   745→**Solution:**
+   746→
+   747→```bash
+   748→# 1. Stop the application
+   749→pm2 stop taskflow
+   750→
+   751→# 2. Check for stale lock files
+   752→ls -la /opt/taskflow/db/
+   753→
+   754→# 3. Run integrity check
+   755→sqlite3 /opt/taskflow/db/dev.db "PRAGMA integrity_check;"
+   756→
+   757→# 4. If corrupted, restore from backup
+   758→cp /opt/taskflow/db/backup-<latest>.db /opt/taskflow/db/dev.db
+   759→
+   760→# 5. Restart
+   761→pm2 start taskflow
+   762→```
+   763→
+   764→#### Prisma Client Not Generated
+   765→
+   766→```
+   767→Error: @prisma/client did not initialize yet
+   768→```
+   769→
+   770→**Solution:**
+   771→
+   772→```bash
+   773→bun run db:generate
+   774→# Then restart the server
+   775→```
+   776→
+   777→#### Build Fails — Module Not Found
+   778→
+   779→```
+   780→Error: Cannot find module '...'
+   781→```
+   782→
+   783→**Solution:**
+   784→
+   785→```bash
+   786→rm -rf node_modules .next
+   787→bun install
+   788→bun run build
+   789→```
+   790→
+   791→#### Uploaded Files Not Accessible
+   792→
+   793→**Symptoms:** Uploads succeed (200 response) but files return 404 when accessed via `/upload/<filename>`.
+   794→
+   795→**Solution:**
+   796→
+   797→1. Verify the `upload/` directory exists at the server's working directory:
+   798→
+   799→   ```bash
+   800→   ls -la /opt/taskflow/upload/
+   801→   ```
+   802→
+   803→2. If using standalone mode, ensure the rewrite is working. The `next.config.ts` rewrites `/upload/:path*` to `/api/upload/serve/:path*`. In standalone mode, this rewrite is part of the compiled server.
+   804→
+   805→3. Check file permissions:
+   806→
+   807→   ```bash
+   808→   chmod 755 /opt/taskflow/upload/
+   809→   chmod 644 /opt/taskflow/upload/*
+   810→   ```
+   811→
+   812→#### Caddy 502 Bad Gateway
+   813→
+   814→**Cause:** Next.js server is not running or not listening on the expected port.
+   815→
+   816→```bash
+   817→# Check if Next.js is running
+   818→curl http://localhost:3000/
+   819→
+   820→# Check Caddy status
+   821→sudo systemctl status caddy
+   822→
+   823→# Check Caddy logs
+   824→sudo journalctl -u caddy --since "5 minutes ago"
+   825→```
+   826→
+   827→#### Blank Page After Deployment
+   828→
+   829→**Cause:** Static assets not copied into the standalone directory.
+   830→
+   831→```bash
+   832→# Verify assets exist
+   833→ls /opt/taskflow/.next/standalone/.next/static/
+   834→ls /opt/taskflow/.next/standalone/public/
+   835→
+   836→# If missing, copy them manually
+   837→cp -r /opt/taskflow/.next/static /opt/taskflow/.next/standalone/.next/
+   838→cp -r /opt/taskflow/public /opt/taskflow/.next/standalone/
+   839→
+   840→# Restart
+   841→pm2 restart taskflow
+   842→```
+   843→
+   844→#### SQLite WAL Mode (Recommended for Production)
+   845→
+   846→Improve concurrent read performance and reduce locking issues:
+   847→
+   848→```bash
+   849→sqlite3 /opt/taskflow/db/dev.db "PRAGMA journal_mode=WAL;"
+   850→```
+   851→
+   852→Consider adding this to your `prisma/schema.prisma` or applying it as a post-deployment step.
+   853→
+   854→---
+   855→
+   856→## 11. Architecture Overview
+   857→
+   858→### Request Flow
+   859→
+   860→```
+   861→┌─────────┐      ┌──────────────┐      ┌──────────────┐      ┌─────────┐
+   862→│  Client  │ ──▶ │    Caddy     │ ──▶  │   Next.js    │ ──▶  │ Prisma  │ ──▶ SQLite
+   863→│ (Browser)│ ◀── │  (Reverse    │ ◀──  │  (App Router │ ◀──  │  ORM    │ ◀── (file)
+   864→└─────────┘      │   Proxy)    │      │   + API)     │      └─────────┘
+   865→                 └──────────────┘      └──────────────┘
+   866→                       :81                :3000
+   867→```
+   868→
+   869→1. **Caddy** (port 81/80/443) receives the request, applies SSL termination, and proxies to Next.js.
+   870→2. **Next.js** (port 3000) handles routing — either serving static pages (React SSR/CSR) or routing to API handlers.
+   871→3. **API Routes** (`src/app/api/*/route.ts`) contain business logic, validation, and database queries.
+   872→4. **Prisma ORM** translates queries into optimized SQL.
+   873→5. **SQLite** stores all data in a single file on disk.
+   874→
+   875→### Client Isolation via ClientProject Join Table
+   876→
+   877→```
+   878→┌──────────┐     ┌───────────────┐     ┌──────────┐
+   879→│   User   │────▶│ ClientProject │◀────│ Project  │
+   880→│ (client) │     │  clientId     │     │          │
+   881→│          │     │  projectId    │     │          │
+   882→└──────────┘     └───────────────┘     └──────────┘
+   883→                       │
+   884→                       ▼
+   885→              Only projects where a
+   886→              ClientProject record exists
+   887→              for this clientId are visible
+   888→```
+   889→
+   890→- Client users call `GET /api/client/projects` which filters by their user ID
+   891→- The `ClientProject` table enforces a many-to-many relationship
+   892→- `john@client.com` → 2 projects, `lisa@client.com` → 1 project
+   893→
+   894→### File Upload Flow
+   895→
+   896→```
+   897→┌─────────┐   POST /api/upload   ┌──────────────┐   write   ┌────────────┐
+   898→│  Client  │ ──────────────────▶  │  Upload API  │ ────────▶ │ upload/    │
+   899→│ (Browser)│ ◀──────────────────  │  (10MB max,  │           │ {uuid}-    │
+   900→└─────────┘   { url: /upload/.. } │   13 exts)   │           │  filename  │
+   901→                                     │             │           └────────────┘
+   902→                                     └──────────────┘
+   903→                                           │
+   904→┌─────────┐   GET /upload/{file}  ┌───────▼──────┐   read    ┌────────────┐
+   905→│  Client  │ ──────────────────▶  │  Serve API   │ ────────▶ │ upload/    │
+   906→│ (Browser)│ ◀──────────────────  │  (path check,│           │ {uuid}-    │
+   907→└─────────┘   file bytes + headers│   MIME type) │           │  filename  │
+   908→                                     └───────▲──────┘           └────────────┘
+   909→                                             │
+   910→                          next.config.ts rewrite:
+   911→                          /upload/:path* → /api/upload/serve/:path*
+   912→```
+   913→
+   914→1. Client uploads via `POST /api/upload` (multipart form data).
+   915→2. Server validates file size (10 MB), extension (13 allowed), and generates a UUID-prefixed filename.
+   916→3. File is written to the `upload/` directory.
+   917→4. The server returns the public URL: `/upload/{uuid}-{filename}`.
+   918→5. Next.js `rewrites` in `next.config.ts` transparently map `/upload/*` to `/api/upload/serve/*`.
+   919→6. The serve route validates against directory traversal, reads the file, and returns it with proper `Content-Type` and `Content-Disposition` headers.
+   920→
+   921→### Mini Services Architecture
+   922→
+   923→The `mini-services/` directory is reserved for future microservice extensions (currently contains only a `.gitkeep` placeholder). Example use cases include:
+   924→
+   925→- **WebSocket service** — Real-time notifications and live updates (see `examples/websocket/` for reference implementations)
+   926→- **Background workers** — Email sending, report generation
+   927→- **Scheduled tasks** — Cron-based maintenance, data cleanup
+   928→
+   929→Each mini service would run as an independent process and communicate with the main Next.js application via HTTP or WebSocket connections.
+   930→
+   931→### Key Technology Stack
+   932→
+   933→| Layer | Technology | Purpose |
+   934→|---|---|---|
+   935→| Frontend | React 19, Next.js 16 (App Router) | UI framework, SSR, routing |
+   936→| Styling | Tailwind CSS 4, shadcn/ui | Utility-first CSS, component library |
+   937→| Animation | Framer Motion | Page transitions, UI animations |
+   938→| State | Zustand | Client-side state management (auth, UI) |
+   939→| Charts | Recharts | Dashboard data visualizations |
+   940→| Backend | Next.js API Routes | Server-side business logic |
+   941→| ORM | Prisma 6 | Type-safe database queries |
+   942→| Database | SQLite | Zero-config embedded database |
+   943→| Runtime | Bun | Fast JavaScript runtime |
+   944→| Proxy | Caddy | Reverse proxy, auto-SSL |
+   945→
+   946→---
+   947→
+   948→## 12. Demo Accounts
+   949→
+   950→The following accounts are created by the database seed script (`prisma/seed.ts`).
+   951→
+   952→> **Warning:** These accounts use simple passwords and should be removed or changed before production deployment.
+   953→
+   954→| Role | Email | Password | Name | Notes |
+   955→|---|---|---|---|---|
+   956→| **Admin** | `admin@taskflow.com` | `admin123` | Alex Morgan | Full access to all features |
+   957→| **Team** | `sarah@taskflow.com` | `team123` | Sarah Chen | Assigned to multiple projects |
+   958→| **Team** | `mike@taskflow.com` | `team123` | Mike Johnson | Assigned to multiple projects |
+   959→| **Team** | `emma@taskflow.com` | `team123` | Emma Wilson | Assigned to multiple projects |
+   960→| **Client** | `john@client.com` | `client123` | John Smith | 2 projects (Website Redesign, Mobile App Dev) |
+   961→| **Client** | `lisa@client.com` | `client123` | Lisa Davis | 1 project (Marketing Campaign) |
+   962→
+   963→### Quick Login Credentials Reference
+   964→
+   965→```
+   966→Admin:   admin@taskflow.com  / admin123
+   967→Team:    sarah@taskflow.com  / team123
+   968→Client:  john@client.com     / client123
+   969→         lisa@client.com     / client123
+   970→```
+   971→
+   972→---
+   973→
+   974→*This document is part of the TaskFlow project. For questions or updates, contact the development team.*

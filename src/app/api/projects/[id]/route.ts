@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }))
     return NextResponse.json({ project: { ...project, tasks } })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })
   }
 }
 
@@ -39,18 +39,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const project = await db.project.update({
       where: { id },
       data: {
-        ...(body.name && { name: body.name }),
+        ...(body.name !== undefined && { name: body.name }),
         ...(body.description !== undefined && { description: body.description }),
-        ...(body.color && { color: body.color }),
-        ...(body.priority && { priority: body.priority }),
+        ...(body.color !== undefined && { color: body.color }),
+        ...(body.priority !== undefined && { priority: body.priority }),
         ...(body.dueDate !== undefined && { dueDate: body.dueDate ? new Date(body.dueDate) : null }),
-        ...(body.status && { status: body.status }),
+        ...(body.status !== undefined && { status: body.status }),
       },
       include: { _count: { select: { tasks: true, members: true } } }
     })
     return NextResponse.json({ project })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 })
   }
 }
 
@@ -60,6 +60,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.project.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
   }
 }

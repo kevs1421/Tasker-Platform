@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     })
     return NextResponse.json({ forms })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to fetch onboarding forms' }, { status: 500 }) }
 }
 
 export async function POST(request: NextRequest) {
@@ -50,5 +50,5 @@ export async function POST(request: NextRequest) {
       }
     })
     return NextResponse.json({ form }, { status: 201 })
-  } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }
+  } catch { return NextResponse.json({ error: 'Failed to process onboarding request' }, { status: 500 }) }
 }

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     })
     return NextResponse.json({ comments })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch comments' }, { status: 500 })
   }
 }
 
@@ -32,6 +32,6 @@ export async function POST(request: Request) {
     if (task) await db.activityLog.create({ data: { action: 'comment_added', details: `Commented on "${task.title}"`, userId, projectId: task.projectId, taskId } })
     return NextResponse.json({ comment }, { status: 201 })
   } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create comment' }, { status: 500 })
   }
 }

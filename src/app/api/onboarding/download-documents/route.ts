@@ -85,7 +85,6 @@ export async function GET(request: NextRequest) {
         const fileBuffer = await readFile(filePath)
         zip.file(zipName, fileBuffer)
       } catch {
-        console.warn(`File not found on disk: ${filePath}`)
         zip.file(`${zipName} - MISSING.txt`,
           `This file was uploaded as "${file.originalName}" but is no longer available on the server.\nOriginal path: ${file.url}`)
       }
@@ -101,8 +100,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${encodeURIComponent(safeName)}"`,
       },
     })
-  } catch (e) {
-    console.error('Document download error:', e)
+  } catch {
     return NextResponse.json({ error: 'Failed to download documents' }, { status: 500 })
   }
 }

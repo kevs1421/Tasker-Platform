@@ -246,62 +246,6 @@ function TimeInOutWidget({ userId }: { userId: string }) {
             Out
           </Button>
         </div>
-
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Clock In</DialogTitle>
-              <DialogDescription>Optionally select a project, task, and add a description before clocking in.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label className="text-sm">Project (optional)</Label>
-                <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={loadingProjects}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder={loadingProjects ? 'Loading…' : 'Select project'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {selectedProjectId && (
-                <div className="space-y-2">
-                  <Label className="text-sm">Task (optional)</Label>
-                  <Select value={selectedTaskId} onValueChange={setSelectedTaskId} disabled={loadingTasks}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder={loadingTasks ? 'Loading…' : 'Select task'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tasks.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label className="text-sm">Description (optional)</Label>
-                <Input
-                  placeholder="What are you working on?"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
-              <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
-                {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                <Play className="w-3.5 h-3.5 mr-1.5" />
-                Clock In
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </>
     )
   }

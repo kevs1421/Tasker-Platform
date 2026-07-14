@@ -107,8 +107,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${encodeURIComponent(safeFilename)}"`,
       },
     })
-  } catch (e) {
-    console.error('Download error:', e)
+  } catch {
     return NextResponse.json({ error: 'Failed to generate download' }, { status: 500 })
   }
 }
