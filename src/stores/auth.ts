@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { User, AppRoute } from '@/types'
 
+const STORAGE_KEY = 'taskflow-session'
+
 interface AuthState {
   user: User | null
   route: AppRoute
@@ -23,15 +25,43 @@ function getDefaultRoute(role: string): AppRoute {
   return { page: 'team-dashboard', tab: 'project' }
 }
 
+function loadSession(): User | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) return JSON.parse(stored) as User
+  } catch { /* ignore */ }
+  return null
+}
+
+function saveSession(user: User | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  } catch { /* ignore */ }
+}
+
+const cachedUser = loadSession()
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  route: { page: 'login' },
+  user: cachedUser,
+  route: cachedUser ? getDefaultRoute(cachedUser.role) : { page: 'login' },
   selectedProjectId: null,
   selectedTaskId: null,
   sidebarOpen: false,
 
-  login: (user) => set({ user, route: getDefaultRoute(user.role), selectedProjectId: null, selectedTaskId: null }),
-  logout: () => set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false }),
+  login: (user) => {
+    saveSession(user)
+    set({ user, route: getDefaultRoute(user.role), selectedProjectId: null, selectedTaskId: null })
+  },
+  logout: () => {
+    saveSession(null)
+    set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false })
+  },
   setRoute: (route) => set({ route }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
   setSelectedTaskId: (id) => set({ selectedTaskId: id }),
