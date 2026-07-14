@@ -50,8 +50,8 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginData) })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Login failed')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
       login(data.user)
       toast.success(`Welcome back, ${data.user.name}!`)
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Login failed') }
