@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useSyncExternalStore } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { DashboardShell } from '@/features/app-shell'
 import LoginPage from '@/features/login-page'
@@ -7,6 +8,11 @@ import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, 
 import { TeamProjects, TeamTasks, TeamMessages, TeamProfile, TeamTimeTracking } from '@/features/team-dashboard'
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { AnimatePresence, motion } from 'framer-motion'
+
+const emptySubscribe = () => () => {}
+function useMounted() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false)
+}
 
 function AdminDashboard() {
   const { route } = useAuthStore()
@@ -60,7 +66,19 @@ function ClientDashboard() {
 }
 
 export default function Home() {
-  const { user, route } = useAuthStore()
+  const mounted = useMounted()
+  const user = useAuthStore((s) => s.user)
+  const route = useAuthStore((s) => s.route)
+  const hydrated = useAuthStore((s) => s._hydrated)
+  const hydrateFromStorage = useAuthStore((s) => s.hydrateFromStorage)
+
+  // Hydrate user from localStorage on first client mount
+  useEffect(() => {
+    hydrateFromStorage()
+  }, [hydrateFromStorage])
+
+  // Before hydration completes on client, show nothing (avoids flash of login page)
+  if (!mounted || !hydrated) return null
 
   if (!user || route.page === 'login') {
     return <LoginPage />

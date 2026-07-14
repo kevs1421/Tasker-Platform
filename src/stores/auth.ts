@@ -1,6 +1,35 @@
 import { create } from 'zustand'
 import type { User, AppRoute } from '@/types'
 
+// ─── localStorage persistence key ───────────────────────
+const STORAGE_KEY = 'taskflow-auth'
+
+function loadPersistedUser(): User | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as User
+    if (parsed && parsed.id && parsed.email && parsed.role) return parsed
+    return null
+  } catch {
+    return null
+  }
+}
+
+function persistUser(user: User | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  } catch {
+    // localStorage unavailable (e.g. private browsing quota)
+  }
+}
+
 // ─── Demo users for auto-login via URL hash ─────────────
 const DEMO_USERS: Record<string, User> = {
   admin: { id: 'demo-admin', email: 'admin@taskflow.com', name: 'Alex Morgan', role: 'admin', status: 'active', createdAt: '', updatedAt: '' },
@@ -72,6 +101,7 @@ interface AuthState {
   selectedProjectId: string | null
   selectedTaskId: string | null
   sidebarOpen: boolean
+  _hydrated: boolean
 
   login: (user: User) => void
   logout: () => void
@@ -80,6 +110,8 @@ interface AuthState {
   setSelectedTaskId: (id: string | null) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
+  /** Restore user from localStorage (call once on client mount) */
+  hydrateFromStorage: () => void
 }
 
 function getDefaultRoute(role: string): AppRoute {
@@ -94,14 +126,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   selectedProjectId: null,
   selectedTaskId: null,
   sidebarOpen: false,
+  _hydrated: false,
+
+  hydrateFromStorage: () => {
+    if (get()._hydrated) return
+    const persisted = loadPersistedUser()
+    if (persisted) {
+      // Check if the URL hash has a specific tab for this role
+      const hash = typeof window !== 'undefined' ? window.location.hash : ''
+      let route = getDefaultRoute(persisted.role)
+      if (hash && hash !== '#') {
+        const parsed = parseHash(hash)
+        if (parsed.route.page !== 'login' && parsed.route.page.includes(persisted.role)) {
+          route = parsed.route
+        }
+      }
+      set({ user: persisted, route, _hydrated: true })
+    } else {
+      set({ _hydrated: true })
+    }
+  },
 
   login: (user) => {
     const route = getDefaultRoute(user.role)
     window.location.hash = routeToHash(route)
-    set({ user, route, selectedProjectId: null, selectedTaskId: null })
+    persistUser(user)
+    set({ user, route, selectedProjectId: null, selectedTaskId: null, _hydrated: true })
   },
   logout: () => {
     window.location.hash = ''
+    persistUser(null)
     set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false })
   },
   setRoute: (route) => {

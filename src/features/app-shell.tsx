@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban, Clock, Play, Square, Loader2, Timer } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Monitor, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -528,9 +528,37 @@ export function AppSidebar() {
 }
 
 // ─── Dashboard Shell ────────────────────────────────────
+function OfflineBanner() {
+  const [isOffline, setIsOffline] = useState(() => {
+    if (typeof navigator === 'undefined') return false
+    return !navigator.onLine
+  })
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  if (!isOffline) return null
+
+  return (
+    <div className="bg-amber-500 text-white text-center text-xs font-medium py-1.5 px-4 flex items-center justify-center gap-2">
+      <WifiOff className="w-3.5 h-3.5 shrink-0" />
+      <span>You are offline. Some features may be unavailable until connection is restored.</span>
+    </div>
+  )
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <OfflineBanner />
       <AppHeader />
       <div className="flex flex-1 overflow-hidden">
         <AppSidebar />

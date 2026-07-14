@@ -1003,3 +1003,22 @@ Stage Summary:
 - ~150 lines of dead code removed, 19 console statements removed, 29 error messages improved
 - DEPLOYMENT.md comprehensive with 14 sections including deployment guide, architecture, resolved issues, and production checklist
 - 5 known limitations documented for future v1.1 (auth middleware, bcrypt, strict mode, build errors, Prisma enums)
+---
+Task ID: offline-bypass
+Agent: main
+Task: Implement offline bypass - persist auth session in localStorage so refresh doesn't lose login
+
+Work Log:
+- Analyzed the root cause: Zustand auth store was in-memory only, lost on page refresh
+- First attempt: Initialize store from localStorage at module scope — failed because Next.js SSR evaluates module on server where window===undefined, then client hydrates server state (user: null)
+- Second attempt: Added `_hydrated` flag + `hydrateFromStorage()` method to store; called via useEffect in page.tsx on first client mount
+- Added `persistUser()` on login success and `persistUser(null)` on logout
+- Hash route restoration: hydrateFromStorage checks URL hash and restores the correct tab for the persisted user's role
+- Added OfflineBanner component in app-shell.tsx with navigator.onLine detection + online/offline event listeners
+- Initialized isOffline via lazy useState to avoid lint error (react-hooks/set-state-in-effect)
+
+Stage Summary:
+- Modified files: src/stores/auth.ts (localStorage persistence + hydrateFromStorage), src/app/page.tsx (client hydration + _hydrated gate), src/features/app-shell.tsx (OfflineBanner)
+- Key decision: Use _hydrated flag to prevent login flash on page load — return null until hydration completes
+- Browser-verified: login → reload stays on dashboard, route/tab persists across reload, logout clears localStorage, offline banner shows/hides correctly
+- All tests passed with zero console errors
