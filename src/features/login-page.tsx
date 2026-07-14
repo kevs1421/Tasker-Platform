@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { CheckCircle2, Loader2, Sun, Moon, Monitor } from 'lucide-react'
+import { CheckCircle2, Loader2, Sun, Moon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 export default function LoginPage() {
@@ -41,13 +41,9 @@ export default function LoginPage() {
             variant="outline"
             size="icon"
             className="rounded-full w-9 h-9 bg-card/80 backdrop-blur border-border/50 shadow-sm"
-            onClick={() => {
-              if (theme === 'dark') setTheme('light')
-              else if (theme === 'light') setTheme('system')
-              else setTheme('dark')
-            }}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           >
-            {theme === 'dark' ? <Moon className="w-4 h-4" /> : theme === 'light' ? <Sun className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+            {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
           </Button>
         </div>
       )}
