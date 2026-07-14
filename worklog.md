@@ -1003,3 +1003,21 @@ Stage Summary:
 - ~150 lines of dead code removed, 19 console statements removed, 29 error messages improved
 - DEPLOYMENT.md comprehensive with 14 sections including deployment guide, architecture, resolved issues, and production checklist
 - 5 known limitations documented for future v1.1 (auth middleware, bcrypt, strict mode, build errors, Prisma enums)
+
+---
+Task ID: 9
+Agent: main
+Task: Fix login page JSON parse error (from user screenshot)
+
+Work Log:
+- Analyzed user screenshot showing JSON parse error on login: "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"
+- Root cause: `handleLogin` in login-page.tsx called `await res.json()` without a `.catch()` — if the server returned HTML (error page, redirect, etc.), it would throw an unhandled JSON parse error
+- Fix: Changed `const data = await res.json()` to `const data = await res.json().catch(() => ({}))` so any non-JSON response gracefully falls back to empty object
+- The `.catch()` ensures the error toast shows "Login failed" instead of a cryptic JSON parse error
+- Verified: Wrong password → clean error toast (no crash); Correct password → dashboard loads
+- Lint: 0 errors
+
+Stage Summary:
+- 1 file modified: src/features/login-page.tsx (line 53)
+- Manual login now safely handles non-JSON server responses
+- Quick-access buttons already had offline bypass (from prior session)
