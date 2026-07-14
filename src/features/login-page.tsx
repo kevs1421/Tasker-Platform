@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { CheckCircle2, LayoutDashboard, Loader2, Sun, Moon, Monitor } from 'lucide-react'
+import { CheckCircle2, Loader2, Sun, Moon, Monitor } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 export default function LoginPage() {
@@ -55,10 +55,10 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
           <div className="text-center mb-8">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.1 }} className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground mb-4">
-              <LayoutDashboard className="w-7 h-7" />
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.1 }} className="inline-flex items-center justify-center mb-4">
+              <img src="/logo.svg" alt="Yber Digitals" className="w-14 h-14 rounded-2xl object-contain" />
             </motion.div>
-            <h1 className="text-3xl font-bold tracking-tight">TaskFlow</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Yber Digitals</h1>
             <p className="text-muted-foreground mt-1">Manage projects, track progress, collaborate</p>
           </div>
 

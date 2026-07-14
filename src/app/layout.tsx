@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TaskFlow - Project & Task Management",
+  title: "Yber Digitals - Project & Task Management",
   description: "Manage projects, track tasks, and collaborate with your team. Asana-like task management for admins, team members, and clients.",
-  keywords: ["TaskFlow", "task management", "project management", "collaboration", "kanban"],
+  keywords: ["Yber Digitals", "task management", "project management", "collaboration", "kanban"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
