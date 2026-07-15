@@ -1,0 +1,652 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Progress } from '@/components/ui/progress'
+     8→import { Separator } from '@/components/ui/separator'
+     9→import { ScrollArea } from '@/components/ui/scroll-area'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from '@/components/ui/table'
+    20→import { TaskCard } from './TaskCard'
+    21→import { TaskDetail } from './TaskDetail'
+    22→import { useAuthStore } from '@/stores/auth'
+    23→import type { Project, Task, DashboardStats } from '@/types'
+    24→import { toast } from 'sonner'
+    25→import { format, isPast, isToday } from 'date-fns'
+    26→import { motion, AnimatePresence } from 'framer-motion'
+    27→import {
+    28→  FolderOpen,
+    29→  CheckCircle2,
+    30→  Clock,
+    31→  BarChart3,
+    32→  ArrowLeft,
+    33→  X,
+    34→  Calendar,
+    35→  ChevronRight,
+    36→  ListChecks,
+    37→} from 'lucide-react'
+    38→
+    39→// ─── Config Maps ────────────────────────────────────────────────────────────
+    40→
+    41→const priorityConfig: Record<string, { label: string; color: string }> = {
+    42→  urgent: { label: 'Urgent', color: 'bg-red-500 text-white' },
+    43→  high: { label: 'High', color: 'bg-orange-500 text-white' },
+    44→  medium: { label: 'Medium', color: 'bg-amber-500 text-white' },
+    45→  low: { label: 'Low', color: 'bg-slate-400 text-white' },
+    46→}
+    47→
+    48→const statusConfig: Record<string, { label: string; color: string }> = {
+    49→  todo: { label: 'To Do', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+    50→  in_progress: { label: 'In Progress', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+    51→  in_review: { label: 'In Review', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' },
+    52→  done: { label: 'Done', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+    53→}
+    54→
+    55→function getInitials(name: string) {
+    56→  return name
+    57→    .split(' ')
+    58→    .map((n) => n[0])
+    59→    .join('')
+    60→    .toUpperCase()
+    61→    .slice(0, 2)
+    62→}
+    63→
+    64→// ─── Stat Card Skeleton ─────────────────────────────────────────────────────
+    65→
+    66→function StatCardSkeleton() {
+    67→  return (
+    68→    <Card className="py-4">
+    69→      <CardContent className="flex items-center gap-4">
+    70→        <Skeleton className="h-11 w-11 rounded-xl" />
+    71→        <div className="space-y-2 flex-1">
+    72→          <Skeleton className="h-4 w-20" />
+    73→          <Skeleton className="h-7 w-12" />
+    74→        </div>
+    75→      </CardContent>
+    76→    </Card>
+    77→  )
+    78→}
+    79→
+    80→// ─── Project Card Skeleton ──────────────────────────────────────────────────
+    81→
+    82→function ProjectCardSkeleton() {
+    83→  return (
+    84→    <Card className="py-4">
+    85→      <CardContent className="space-y-3">
+    86→        <div className="flex items-start gap-3">
+    87→          <Skeleton className="h-9 w-1.5 rounded-full shrink-0" />
+    88→          <div className="flex-1 space-y-2">
+    89→            <Skeleton className="h-5 w-36" />
+    90→            <Skeleton className="h-3.5 w-full max-w-[240px]" />
+    91→          </div>
+    92→        </div>
+    93→        <div className="flex items-center gap-3 pl-5">
+    94→          <Skeleton className="h-2 w-full rounded-full" />
+    95→        </div>
+    96→        <div className="flex items-center justify-between pl-5">
+    97→          <Skeleton className="h-5 w-16 rounded-full" />
+    98→          <Skeleton className="h-3.5 w-20" />
+    99→        </div>
+   100→      </CardContent>
+   101→    </Card>
+   102→  )
+   103→}
+   104→
+   105→// ─── Main Component ─────────────────────────────────────────────────────────
+   106→
+   107→export default function ClientDashboard() {
+   108→  const { user } = useAuthStore()
+   109→
+   110→  // State
+   111→  const [projects, setProjects] = useState<Project[]>([])
+   112→  const [stats, setStats] = useState<DashboardStats | null>(null)
+   113→  const [projectTasks, setProjectTasks] = useState<Record<string, Task[]>>({})
+   114→  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+   115→  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+   116→  const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+   117→  const [loadingProjects, setLoadingProjects] = useState(true)
+   118→  const [loadingStats, setLoadingStats] = useState(true)
+   119→  const [loadingTasks, setLoadingTasks] = useState<Record<string, boolean>>({})
+   120→
+   121→  // ── Fetch stats ─────────────────────────────────────────────────────────
+   122→  const fetchStats = useCallback(async () => {
+   123→    if (!user?.id) return
+   124→    try {
+   125→      setLoadingStats(true)
+   126→      const res = await fetch(`/api/dashboard/stats?userId=${user.id}`)
+   127→      if (!res.ok) throw new Error('Failed to fetch stats')
+   128→      const data = await res.json()
+   129→      setStats(data.stats)
+   130→    } catch {
+   131→      toast.error('Failed to load dashboard stats')
+   132→    } finally {
+   133→      setLoadingStats(false)
+   134→    }
+   135→  }, [user?.id])
+   136→
+   137→  // ── Fetch projects ──────────────────────────────────────────────────────
+   138→  const fetchProjects = useCallback(async () => {
+   139→    try {
+   140→      setLoadingProjects(true)
+   141→      const res = await fetch('/api/projects')
+   142→      if (!res.ok) throw new Error('Failed to fetch projects')
+   143→      const data = await res.json()
+   144→      setProjects(data.projects || [])
+   145→    } catch {
+   146→      toast.error('Failed to load projects')
+   147→    } finally {
+   148→      setLoadingProjects(false)
+   149→    }
+   150→  }, [])
+   151→
+   152→  // ── Fetch tasks for a project ──────────────────────────────────────────
+   153→  const fetchProjectTasks = useCallback(async (projectId: string) => {
+   154→    if (projectTasks[projectId]) return // already cached
+   155→    try {
+   156→      setLoadingTasks((prev) => ({ ...prev, [projectId]: true }))
+   157→      const res = await fetch(`/api/tasks?projectId=${projectId}`)
+   158→      if (!res.ok) throw new Error('Failed to fetch tasks')
+   159→      const data = await res.json()
+   160→      setProjectTasks((prev) => ({ ...prev, [projectId]: data.tasks || [] }))
+   161→    } catch {
+   162→      toast.error('Failed to load tasks for this project')
+   163→    } finally {
+   164→      setLoadingTasks((prev) => ({ ...prev, [projectId]: false }))
+   165→    }
+   166→  }, [projectTasks])
+   167→
+   168→  // ── Refresh tasks (after detail modal update) ──────────────────────────
+   169→  const refreshTasks = useCallback(async (projectId: string) => {
+   170→    try {
+   171→      const res = await fetch(`/api/tasks?projectId=${projectId}`)
+   172→      if (!res.ok) return
+   173→      const data = await res.json()
+   174→      setProjectTasks((prev) => ({ ...prev, [projectId]: data.tasks || [] }))
+   175→    } catch {
+   176→      // silent
+   177→    }
+   178→    fetchStats()
+   179→  }, [fetchStats])
+   180→
+   181→  // ── Effects ─────────────────────────────────────────────────────────────
+   182→  useEffect(() => {
+   183→    fetchStats()
+   184→    fetchProjects()
+   185→  }, [fetchStats, fetchProjects])
+   186→
+   187→  // When a project is expanded, fetch its tasks
+   188→  useEffect(() => {
+   189→    if (expandedProjectId) {
+   190→      fetchProjectTasks(expandedProjectId)
+   191→    }
+   192→  }, [expandedProjectId, fetchProjectTasks])
+   193→
+   194→  // ── Handlers ────────────────────────────────────────────────────────────
+   195→  const handleProjectClick = (projectId: string) => {
+   196→    if (expandedProjectId === projectId) {
+   197→      setExpandedProjectId(null)
+   198→    } else {
+   199→      setExpandedProjectId(projectId)
+   200→      // Scroll to tasks section smoothly
+   201→      setTimeout(() => {
+   202→        document.getElementById(`project-tasks-${projectId}`)?.scrollIntoView({
+   203→          behavior: 'smooth',
+   204→          block: 'start',
+   205→        })
+   206→      }, 100)
+   207→    }
+   208→  }
+   209→
+   210→  const handleTaskClick = (task: Task) => {
+   211→    setSelectedTask(task)
+   212→    setTaskDetailOpen(true)
+   213→  }
+   214→
+   215→  const handleTaskDetailClose = () => {
+   216→    setTaskDetailOpen(false)
+   217→    setSelectedTask(null)
+   218→  }
+   219→
+   220→  const handleTaskUpdate = () => {
+   221→    if (expandedProjectId) {
+   222→      refreshTasks(expandedProjectId)
+   223→    }
+   224→  }
+   225→
+   226→  // ── Computed ────────────────────────────────────────────────────────────
+   227→  const expandedProject = projects.find((p) => p.id === expandedProjectId)
+   228→  const tasks = expandedProjectId ? projectTasks[expandedProjectId] || [] : []
+   229→  const totalTasks = tasks.length
+   230→  const completedTasks = tasks.filter((t) => t.status === 'done').length
+   231→  const taskCompletionPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+   232→
+   233→  const getProjectProgress = (project: Project): { completed: number; total: number; pct: number } => {
+   234→    const pTasks = projectTasks[project.id] || []
+   235→    const done = pTasks.filter((t) => t.status === 'done').length
+   236→    const total = pTasks.length
+   237→    return { completed: done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 }
+   238→  }
+   239→
+   240→  // ── Due date formatting ─────────────────────────────────────────────────
+   241→  const formatDueDate = (dueDate: string | null) => {
+   242→    if (!dueDate) return null
+   243→    const date = new Date(dueDate)
+   244→    if (isToday(date)) return { text: 'Due today', className: 'text-amber-600 dark:text-amber-400' }
+   245→    if (isPast(date)) {
+   246→      const days = Math.ceil((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+   247→      return { text: `${days}d overdue`, className: 'text-red-500' }
+   248→    }
+   249→    return { text: format(date, 'MMM d, yyyy'), className: 'text-muted-foreground' }
+   250→  }
+   251→
+   252→  // ── Stat cards data ─────────────────────────────────────────────────────
+   253→  const statCards = [
+   254→    {
+   255→      label: 'My Projects',
+   256→      value: stats?.activeProjects ?? 0,
+   257→      icon: FolderOpen,
+   258→      color: 'text-amber-600 dark:text-amber-400',
+   259→      bg: 'bg-amber-100 dark:bg-amber-900/30',
+   260→    },
+   261→    {
+   262→      label: 'Total Tasks',
+   263→      value: stats?.totalTasks ?? 0,
+   264→      icon: BarChart3,
+   265→      color: 'text-rose-600 dark:text-rose-400',
+   266→      bg: 'bg-rose-100 dark:bg-rose-900/30',
+   267→    },
+   268→    {
+   269→      label: 'Completed',
+   270→      value: stats?.completedTasks ?? 0,
+   271→      icon: CheckCircle2,
+   272→      color: 'text-emerald-600 dark:text-emerald-400',
+   273→      bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+   274→    },
+   275→    {
+   276→      label: 'In Progress',
+   277→      value: (stats?.inProgressTasks ?? 0) + (stats?.inReviewTasks ?? 0),
+   278→      icon: Clock,
+   279→      color: 'text-orange-600 dark:text-orange-400',
+   280→      bg: 'bg-orange-100 dark:bg-orange-900/30',
+   281→    },
+   282→  ]
+   283→
+   284→  // ── Render ──────────────────────────────────────────────────────────────
+   285→  return (
+   286→    <div className="flex flex-col gap-6 p-4 md:p-6 lg:p-8 min-h-screen">
+   287→      {/* Header */}
+   288→      <div>
+   289→        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+   290→          Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+   291→        </h1>
+   292→        <p className="text-muted-foreground mt-1 text-sm md:text-base">
+   293→          Here&apos;s an overview of your projects and tasks.
+   294→        </p>
+   295→      </div>
+   296→
+   297→      {/* ─── Overview Stats ─────────────────────────────────────────────── */}
+   298→      <section aria-label="Dashboard overview statistics">
+   299→        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+   300→          {loadingStats
+   301→            ? Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+   302→            : statCards.map((stat) => (
+   303→                <motion.div
+   304→                  key={stat.label}
+   305→                  initial={{ opacity: 0, y: 16 }}
+   306→                  animate={{ opacity: 1, y: 0 }}
+   307→                  transition={{ duration: 0.3, ease: 'easeOut' }}
+   308→                >
+   309→                  <Card className="py-4 hover:shadow-md transition-shadow">
+   310→                    <CardContent className="flex items-center gap-4">
+   311→                      <div
+   312→                        className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${stat.bg}`}
+   313→                      >
+   314→                        <stat.icon className={`h-5 w-5 ${stat.color}`} />
+   315→                      </div>
+   316→                      <div className="min-w-0">
+   317→                        <p className="text-xs text-muted-foreground truncate">{stat.label}</p>
+   318→                        <p className="text-2xl font-bold tracking-tight leading-tight">
+   319→                          {stat.value}
+   320→                        </p>
+   321→                      </div>
+   322→                    </CardContent>
+   323→                  </Card>
+   324→                </motion.div>
+   325→              ))}
+   326→        </div>
+   327→      </section>
+   328→
+   329→      <Separator />
+   330→
+   331→      {/* ─── Projects Section ───────────────────────────────────────────── */}
+   332→      <section aria-label="My projects" className="flex-1">
+   333→        <div className="flex items-center justify-between mb-4">
+   334→          <div className="flex items-center gap-2">
+   335→            <FolderOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   336→            <h2 className="text-lg font-semibold">My Projects</h2>
+   337→            <Badge variant="secondary" className="text-xs ml-1">
+   338→              {loadingProjects ? '...' : projects.length}
+   339→            </Badge>
+   340→          </div>
+   341→        </div>
+   342→
+   343→        {/* Project Cards Grid */}
+   344→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   345→          {loadingProjects
+   346→            ? Array.from({ length: 6 }).map((_, i) => <ProjectCardSkeleton key={i} />)
+   347→            : projects.map((project, idx) => {
+   348→                const progress = getProjectProgress(project)
+   349→                const priority = priorityConfig[project.priority] || priorityConfig.medium
+   350→                const dueInfo = formatDueDate(project.dueDate)
+   351→                const isExpanded = expandedProjectId === project.id
+   352→
+   353→                return (
+   354→                  <motion.div
+   355→                    key={project.id}
+   356→                    initial={{ opacity: 0, y: 20 }}
+   357→                    animate={{ opacity: 1, y: 0 }}
+   358→                    transition={{ duration: 0.3, delay: idx * 0.05, ease: 'easeOut' }}
+   359→                  >
+   360→                    <Card
+   361→                      className={`py-4 cursor-pointer hover:shadow-md transition-all duration-200 group border-l-4 ${
+   362→                        isExpanded
+   363→                          ? 'ring-2 ring-primary/20 shadow-lg'
+   364→                          : 'hover:ring-1 hover:ring-primary/10'
+   365→                      }`}
+   366→                      style={{ borderLeftColor: project.color || '#f59e0b' }}
+   367→                      onClick={() => handleProjectClick(project.id)}
+   368→                      role="button"
+   369→                      tabIndex={0}
+   370→                      onKeyDown={(e) => {
+   371→                        if (e.key === 'Enter' || e.key === ' ') {
+   372→                          e.preventDefault()
+   373→                          handleProjectClick(project.id)
+   374→                        }
+   375→                      }}
+   376→                      aria-expanded={isExpanded}
+   377→                    >
+   378→                      <CardContent className="space-y-3">
+   379→                        {/* Project name + description */}
+   380→                        <div className="flex items-start gap-3">
+   381→                          <div
+   382→                            className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+   383→                            style={{ backgroundColor: `${project.color || '#f59e0b'}18` }}
+   384→                          >
+   385→                            <FolderOpen
+   386→                              className="h-4 w-4"
+   387→                              style={{ color: project.color || '#f59e0b' }}
+   388→                            />
+   389→                          </div>
+   390→                          <div className="flex-1 min-w-0">
+   391→                            <h3 className="font-semibold text-sm leading-tight truncate group-hover:text-primary transition-colors">
+   392→                              {project.name}
+   393→                            </h3>
+   394→                            {project.description && (
+   395→                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+   396→                                {project.description}
+   397→                              </p>
+   398→                            )}
+   399→                          </div>
+   400→                          <ChevronRight
+   401→                            className={`h-4 w-4 text-muted-foreground shrink-0 mt-1 transition-transform duration-200 ${
+   402→                              isExpanded ? 'rotate-90' : ''
+   403→                            }`}
+   404→                          />
+   405→                        </div>
+   406→
+   407→                        {/* Progress bar */}
+   408→                        <div className="space-y-1.5 pl-12">
+   409→                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+   410→                            <span>Progress</span>
+   411→                            <span className="font-medium">
+   412→                              {project._count?.tasks
+   413→                                ? `${progress.completed}/${project._count.tasks}`
+   414→                                : 'No tasks'}
+   415→                            </span>
+   416→                          </div>
+   417→                          <Progress
+   418→                            value={progress.pct}
+   419→                            className="h-1.5"
+   420→                          />
+   421→                        </div>
+   422→
+   423→                        {/* Priority badge + Due date */}
+   424→                        <div className="flex items-center justify-between pl-12">
+   425→                          <Badge className={`text-[10px] px-2 py-0 border-0 ${priority.color}`}>
+   426→                            {priority.label} priority
+   427→                          </Badge>
+   428→                          {dueInfo && (
+   429→                            <div className={`flex items-center gap-1 text-xs ${dueInfo.className}`}>
+   430→                              <Calendar className="h-3 w-3" />
+   431→                              <span>{dueInfo.text}</span>
+   432→                            </div>
+   433→                          )}
+   434→                        </div>
+   435→                      </CardContent>
+   436→                    </Card>
+   437→                  </motion.div>
+   438→                )
+   439→              })}
+   440→        </div>
+   441→
+   442→        {/* ─── Expanded Project Tasks ──────────────────────────────────── */}
+   443→        <AnimatePresence>
+   444→          {expandedProject && (
+   445→            <motion.div
+   446→              id={`project-tasks-${expandedProject.id}`}
+   447→              initial={{ opacity: 0, height: 0 }}
+   448→              animate={{ opacity: 1, height: 'auto' }}
+   449→              exit={{ opacity: 0, height: 0 }}
+   450→              transition={{ duration: 0.3, ease: 'easeInOut' }}
+   451→              className="overflow-hidden"
+   452→            >
+   453→              <Card className="mt-6 overflow-hidden">
+   454→                <CardHeader className="pb-0">
+   455→                  <div className="flex items-center justify-between">
+   456→                    <div className="flex items-center gap-3">
+   457→                      <Button
+   458→                        variant="ghost"
+   459→                        size="sm"
+   460→                        className="h-8 w-8 p-0"
+   461→                        onClick={(e) => {
+   462→                          e.stopPropagation()
+   463→                          setExpandedProjectId(null)
+   464→                        }}
+   465→                        aria-label="Close task list"
+   466→                      >
+   467→                        <ArrowLeft className="h-4 w-4" />
+   468→                      </Button>
+   469→                      <div>
+   470→                        <CardTitle className="text-base flex items-center gap-2">
+   471→                          <ListChecks className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   472→                          {expandedProject.name}
+   473→                        </CardTitle>
+   474→                        <p className="text-xs text-muted-foreground mt-0.5">
+   475→                          {totalTasks} task{totalTasks !== 1 ? 's' : ''} &middot;{' '}
+   476→                          {taskCompletionPct}% complete
+   477→                        </p>
+   478→                      </div>
+   479→                    </div>
+   480→                    <div className="flex items-center gap-3">
+   481→                      <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+   482→                        <div className="w-24">
+   483→                          <div className="flex items-center justify-between mb-1">
+   484→                            <span>Completion</span>
+   485→                            <span className="font-medium">{taskCompletionPct}%</span>
+   486→                          </div>
+   487→                          <Progress value={taskCompletionPct} className="h-1.5" />
+   488→                        </div>
+   489→                      </div>
+   490→                      <Button
+   491→                        variant="outline"
+   492→                        size="icon"
+   493→                        className="h-8 w-8"
+   494→                        onClick={(e) => {
+   495→                          e.stopPropagation()
+   496→                          setExpandedProjectId(null)
+   497→                        }}
+   498→                        aria-label="Close task list"
+   499→                      >
+   500→                        <X className="h-4 w-4" />
+   501→                      </Button>
+   502→                    </div>
+   503→                  </div>
+   504→                </CardHeader>
+   505→
+   506→                <Separator />
+   507→
+   508→                <CardContent className="p-0">
+   509→                  {loadingTasks[expandedProject.id] ? (
+   510→                    <div className="p-6 space-y-3">
+   511→                      {Array.from({ length: 4 }).map((_, i) => (
+   512→                        <div key={i} className="flex items-center gap-4">
+   513→                          <Skeleton className="h-4 w-48" />
+   514→                          <Skeleton className="h-5 w-20 rounded-full" />
+   515→                          <Skeleton className="h-5 w-16 rounded-full" />
+   516→                          <Skeleton className="h-4 w-24 ml-auto" />
+   517→                        </div>
+   518→                      ))}
+   519→                    </div>
+   520→                  ) : tasks.length === 0 ? (
+   521→                    <div className="flex flex-col items-center justify-center py-12 text-center">
+   522→                      <FolderOpen className="h-10 w-10 text-muted-foreground/40 mb-3" />
+   523→                      <p className="text-sm text-muted-foreground">No tasks in this project yet.</p>
+   524→                      <p className="text-xs text-muted-foreground/70 mt-1">
+   525→                        Tasks will appear here once they are created.
+   526→                      </p>
+   527→                    </div>
+   528→                  ) : (
+   529→                    <>
+   530→                      {/* Desktop Table View */}
+   531→                      <div className="hidden md:block">
+   532→                        <ScrollArea className="max-h-96">
+   533→                          <Table>
+   534→                            <TableHeader>
+   535→                              <TableRow>
+   536→                                <TableHead className="pl-6 w-[40%]">Title</TableHead>
+   537→                                <TableHead>Status</TableHead>
+   538→                                <TableHead>Priority</TableHead>
+   539→                                <TableHead>Due Date</TableHead>
+   540→                                <TableHead className="pr-6 text-right">Assignees</TableHead>
+   541→                              </TableRow>
+   542→                            </TableHeader>
+   543→                            <TableBody>
+   544→                              {tasks.map((task) => {
+   545→                                const status = statusConfig[task.status] || statusConfig.todo
+   546→                                const priority = priorityConfig[task.priority] || priorityConfig.medium
+   547→                                const dueInfo = formatDueDate(task.dueDate)
+   548→
+   549→                                return (
+   550→                                  <TableRow
+   551→                                    key={task.id}
+   552→                                    className="cursor-pointer"
+   553→                                    onClick={() => handleTaskClick(task)}
+   554→                                  >
+   555→                                    <TableCell className="pl-6 font-medium text-sm">
+   556→                                      <span className={task.status === 'done' ? 'line-through text-muted-foreground' : ''}>
+   557→                                        {task.title}
+   558→                                      </span>
+   559→                                    </TableCell>
+   560→                                    <TableCell>
+   561→                                      <Badge variant="outline" className={`text-[11px] border-0 ${status.color}`}>
+   562→                                        {status.label}
+   563→                                      </Badge>
+   564→                                    </TableCell>
+   565→                                    <TableCell>
+   566→                                      <Badge className={`text-[10px] px-2 py-0 border-0 ${priority.color}`}>
+   567→                                        {priority.label}
+   568→                                      </Badge>
+   569→                                    </TableCell>
+   570→                                    <TableCell>
+   571→                                      {dueInfo ? (
+   572→                                        <div className={`flex items-center gap-1.5 text-xs ${dueInfo.className}`}>
+   573→                                          <Calendar className="h-3 w-3" />
+   574→                                          {dueInfo.text}
+   575→                                        </div>
+   576→                                      ) : (
+   577→                                        <span className="text-xs text-muted-foreground">—</span>
+   578→                                      )}
+   579→                                    </TableCell>
+   580→                                    <TableCell className="pr-6 text-right">
+   581→                                      {task.assignees && task.assignees.length > 0 ? (
+   582→                                        <div className="flex items-center justify-end -space-x-1.5">
+   583→                                          {task.assignees.slice(0, 3).map((a) => (
+   584→                                            <Avatar
+   585→                                              key={a.userId}
+   586→                                              className="h-7 w-7 border-2 border-background"
+   587→                                            >
+   588→                                              <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   589→                                                {a.user ? getInitials(a.user.name) : '?'}
+   590→                                              </AvatarFallback>
+   591→                                            </Avatar>
+   592→                                          ))}
+   593→                                          {task.assignees.length > 3 && (
+   594→                                            <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium border-2 border-background">
+   595→                                              +{task.assignees.length - 3}
+   596→                                            </div>
+   597→                                          )}
+   598→                                        </div>
+   599→                                      ) : (
+   600→                                        <span className="text-xs text-muted-foreground">Unassigned</span>
+   601→                                      )}
+   602→                                    </TableCell>
+   603→                                  </TableRow>
+   604→                                )
+   605→                              })}
+   606→                            </TableBody>
+   607→                          </Table>
+   608→                        </ScrollArea>
+   609→                      </div>
+   610→
+   611→                      {/* Mobile Card View */}
+   612→                      <div className="md:hidden p-4 space-y-3">
+   613→                        {tasks.map((task) => (
+   614→                          <div key={task.id} onClick={() => handleTaskClick(task)}>
+   615→                            <TaskCard task={task} onClick={handleTaskClick} compact />
+   616→                          </div>
+   617→                        ))}
+   618→                      </div>
+   619→
+   620→                      {/* Footer summary */}
+   621→                      <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/30">
+   622→                        <p className="text-xs text-muted-foreground">
+   623→                          {completedTasks} of {totalTasks} tasks completed
+   624→                        </p>
+   625→                        <div className="flex items-center gap-2">
+   626→                          <div className="w-20">
+   627→                            <Progress value={taskCompletionPct} className="h-1.5" />
+   628→                          </div>
+   629→                          <span className="text-xs font-medium text-muted-foreground">
+   630→                            {taskCompletionPct}%
+   631→                          </span>
+   632→                        </div>
+   633→                      </div>
+   634→                    </>
+   635→                  )}
+   636→                </CardContent>
+   637→              </Card>
+   638→            </motion.div>
+   639→          )}
+   640→        </AnimatePresence>
+   641→      </section>
+   642→
+   643→      {/* ─── Task Detail Modal ─────────────────────────────────────────── */}
+   644→      <TaskDetail
+   645→        task={selectedTask}
+   646→        open={taskDetailOpen}
+   647→        onClose={handleTaskDetailClose}
+   648→        onUpdate={handleTaskUpdate}
+   649→      />
+   650→    </div>
+   651→  )
+   652→}

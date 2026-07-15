@@ -13,16 +13,13 @@ async function main() {
 
   // ─── Users ────────────────────────────────────────────
   const admin = await db.user.create({
-    data: { email: 'admin@taskflow.com', password: await hashPassword('admin123'), name: 'Alex Morgan', role: 'admin', phone: '+1 (555) 100-0001', company: 'TaskFlow Inc.' }
+    data: { email: 'admin@yberdigitals.com', password: await hashPassword('admin123'), name: 'Alex Morgan', role: 'admin', phone: '+1 (555) 100-0001', company: 'Yber Digitals' }
   })
   const team1 = await db.user.create({
-    data: { email: 'sarah@taskflow.com', password: await hashPassword('team123'), name: 'Sarah Chen', role: 'team', phone: '+1 (555) 200-0001' }
+    data: { email: 'sarah@yberdigitals.com', password: await hashPassword('team123'), name: 'Sarah Chen', role: 'team', phone: '+1 (555) 200-0001' }
   })
   const team2 = await db.user.create({
-    data: { email: 'mike@taskflow.com', password: await hashPassword('team123'), name: 'Mike Johnson', role: 'team', phone: '+1 (555) 200-0002' }
-  })
-  const team3 = await db.user.create({
-    data: { email: 'emma@taskflow.com', password: await hashPassword('team123'), name: 'Emma Wilson', role: 'team', phone: '+1 (555) 200-0003' }
+    data: { email: 'mike@yberdigitals.com', password: await hashPassword('team123'), name: 'Mike Johnson', role: 'team', phone: '+1 (555) 200-0002' }
   })
   const client1 = await db.user.create({
     data: { email: 'john@client.com', password: await hashPassword('client123'), name: 'John Smith', role: 'client', phone: '+1 (555) 300-0001', company: 'Acme Corp' }
@@ -43,14 +40,14 @@ async function main() {
     data: {
       name: 'Mobile App Development', description: 'Native mobile application for iOS and Android platforms with real-time features.',
       color: '#10b981', priority: 'high', dueDate: new Date('2025-05-30'), createdBy: admin.id,
-      members: { create: [{ userId: admin.id, role: 'owner' }, { userId: team2.id, role: 'member' }, { userId: team3.id, role: 'member' }] }
+      members: { create: [{ userId: admin.id, role: 'owner' }, { userId: team2.id, role: 'member' }] }
     }
   })
   const project3 = await db.project.create({
     data: {
       name: 'API Integration', description: 'Third-party API integration and microservices architecture setup.',
       color: '#ef4444', priority: 'medium', dueDate: new Date('2025-03-30'), createdBy: team1.id,
-      members: { create: [{ userId: team1.id, role: 'owner' }, { userId: team3.id, role: 'member' }] }
+      members: { create: [{ userId: team1.id, role: 'owner' }, { userId: admin.id, role: 'member' }] }
     }
   })
   const project4 = await db.project.create({
@@ -79,7 +76,7 @@ async function main() {
       { name: 'website', label: 'Company Website', type: 'url', required: false },
     ]},
     { title: 'Brand Guidelines', description: 'Share your brand identity', fields: [
-      { name: 'brandColors', label: 'Brand Colors', type: 'text', required: true, placeholder: 'e.g., #FF5733, #333333' },
+      { name: 'brandColors', label: 'Brand Colors', type: 'text', required: true },
       { name: 'logoDescription', label: 'Logo Description', type: 'textarea', required: false },
       { name: 'brandVoice', label: 'Brand Voice', type: 'select', required: true, options: ['Professional', 'Casual', 'Playful', 'Authoritative', 'Friendly'] },
     ]},
@@ -91,7 +88,7 @@ async function main() {
     ]},
   ])
 
-  await db.onboardingForm.create({
+  const form1 = await db.onboardingForm.create({
     data: { title: 'New Client Onboarding', description: 'Complete onboarding for new client projects', status: 'published', stepsJson: form1Steps, projectId: project1.id }
   })
 
@@ -121,7 +118,6 @@ async function main() {
       { title: 'Create contact form', status: 'todo', priority: 'medium', dueDate: '2025-03-15', tags: 'frontend,forms' },
       { title: 'Blog page layout', status: 'todo', priority: 'low', dueDate: '2025-03-20', tags: 'content' },
       { title: 'SEO optimization', status: 'in_review', priority: 'high', dueDate: '2025-03-25', tags: 'seo,backend' },
-      { title: 'Performance testing', status: 'todo', priority: 'medium', dueDate: '2025-04-01', tags: 'testing' },
     ],
     [project2.id]: [
       { title: 'UI/UX research and planning', status: 'done', priority: 'high', dueDate: '2025-03-01', tags: 'critical,design' },
@@ -147,7 +143,7 @@ async function main() {
     ],
   }
 
-  const teamMembers = [team1, team2, team3]
+  const teamMembers = [team1, team2]
   const allTasks: { id: string; title: string; projectId: string }[] = []
 
   for (const [projectId, tasks] of Object.entries(taskData)) {
@@ -156,7 +152,7 @@ async function main() {
         data: {
           title: t.title, status: t.status, priority: t.priority,
           dueDate: new Date(t.dueDate), projectId, createdById: admin.id, tags: t.tags,
-          assignments: { create: [{ userId: teamMembers[Math.floor(Math.random() * 3)].id }] }
+          assignments: { create: [{ userId: teamMembers[Math.floor(Math.random() * teamMembers.length)].id }] }
         }
       })
       allTasks.push({ id: task.id, title: task.title, projectId })
@@ -221,34 +217,30 @@ async function main() {
       { action: 'task_moved', details: 'Moved "Build responsive navigation" to In Progress', userId: team1.id, projectId: project1.id },
       { action: 'comment_added', details: 'Commented on "Build responsive navigation"', userId: admin.id, projectId: project1.id },
       { action: 'task_completed', details: 'Completed "Create wireframes for homepage"', userId: team1.id, projectId: project1.id },
-      { action: 'member_added', details: 'Added Emma Wilson to "Mobile App Development"', userId: admin.id, projectId: project2.id },
+      { action: 'member_added', details: 'Added Sarah Chen to "Mobile App Development"', userId: admin.id, projectId: project2.id },
     ]
   })
 
   // ─── Client Onboarding Submission ─────────────────────
-  const form = await db.onboardingForm.findFirst({ where: { projectId: project1.id } })
-  if (form) {
-    await db.onboarding.create({
-      data: {
-        formId: form.id, clientId: client1.id, status: 'submitted',
-        responsesJson: JSON.stringify({
-          companyName: 'Acme Corp', industry: 'Technology', companySize: '51-200', website: 'https://acme.com',
-          brandColors: '#FF5733, #333333', logoDescription: 'Modern geometric logo with bold typography',
-          brandVoice: 'Professional', projectGoals: 'Redesign our corporate website to improve user experience and increase conversions.',
-          targetAudience: 'B2B decision makers, CTOs, and engineering managers',
-          competitors: 'CompetitorA.com, CompetitorB.io', budget: '$50K-$100K'
-        }),
-        submittedAt: new Date(Date.now() - 86400000),
-      }
-    })
-  }
+  await db.onboarding.create({
+    data: {
+      formId: form1.id, clientId: client1.id, status: 'submitted',
+      responsesJson: JSON.stringify({
+        companyName: 'Acme Corp', industry: 'Technology', companySize: '51-200', website: 'https://acme.com',
+        brandColors: '#FF5733, #333333', logoDescription: 'Modern geometric logo with bold typography',
+        brandVoice: 'Professional', projectGoals: 'Redesign our corporate website to improve user experience and increase conversions.',
+        targetAudience: 'B2B decision makers, CTOs, and engineering managers',
+        competitors: 'CompetitorA.com, CompetitorB.io', budget: '$50K-$100K'
+      }),
+      submittedAt: new Date(Date.now() - 86400000),
+    }
+  })
 
   console.log('✅ Seed data created successfully!')
-  console.log('\n🔑 Demo Accounts:')
-  console.log('  Admin:  admin@taskflow.com / admin123')
-  console.log('  Team:   sarah@taskflow.com / team123')
-  console.log('          mike@taskflow.com / team123')
-  console.log('          emma@taskflow.com / team123')
+  console.log('\n🔑 Accounts:')
+  console.log('  Admin:  admin@yberdigitals.com / admin123')
+  console.log('  Team:   sarah@yberdigitals.com / team123')
+  console.log('          mike@yberdigitals.com / team123')
   console.log('  Client: john@client.com / client123')
   console.log('          lisa@client.com / client123')
 }

@@ -1,0 +1,502 @@
+   501→
+   502→  const toggleStep = (stepId: string) => {
+   503→    setCreateForm(prev => ({
+   504→      ...prev,
+   505→      selectedSteps: prev.selectedSteps.includes(stepId)
+   506→        ? prev.selectedSteps.filter(s => s !== stepId)
+   507→        : [...prev.selectedSteps, stepId],
+   508→    }))
+   509→  }
+   510→
+   511→  const filteredSteps = ONBOARDING_STEPS_CONFIG.filter(s =>
+   512→    !stepSearch || s.label.toLowerCase().includes(stepSearch.toLowerCase()) || s.description.toLowerCase().includes(stepSearch.toLowerCase())
+   513→  )
+   514→
+   515→  if (loading) {
+   516→    return (
+   517→      <div className="space-y-4">
+   518→        <Skeleton className="h-10 w-48" />
+   519→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   520→      </div>
+   521→    )
+   522→  }
+   523→
+   524→  return (
+   525→    <motion.div {...fadeIn} className="space-y-6">
+   526→      <div className="flex items-center justify-between">
+   527→        <div>
+   528→          <h2 className="text-xl font-semibold">Onboarding Management</h2>
+   529→          <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
+   530→        </div>
+   531→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+   532→          <Plus className="h-4 w-4 mr-2" /> Create Onboarding
+   533→        </Button>
+   534→      </div>
+   535→
+   536→      {/* Summary cards */}
+   537→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+   538→        {[
+   539→          { label: 'Total Forms', value: forms.length, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+   540→          { label: 'Published', value: forms.filter(f => f.status === 'published').length, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   541→          { label: 'Drafts', value: forms.filter(f => f.status === 'draft').length, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   542→          { label: 'Pending Review', value: forms.reduce((acc, f) => acc + (f._count?.submissions ?? 0), 0), color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+   543→        ].map((c) => (
+   544→          <Card key={c.label}>
+   545→            <CardContent className="p-4">
+   546→              <div className="flex items-center gap-3">
+   547→                <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   548→                  <FileCheck className={`h-4 w-4 ${c.color}`} />
+   549→                </div>
+   550→                <div>
+   551→                  <p className="text-lg font-semibold">{c.value}</p>
+   552→                  <p className="text-xs text-muted-foreground">{c.label}</p>
+   553→                </div>
+   554→              </div>
+   555→            </CardContent>
+   556→          </Card>
+   557→        ))}
+   558→      </div>
+   559→
+   560→      {/* Onboarding Forms Table */}
+   561→      <Card>
+   562→        <CardContent className="p-0">
+   563→          <Table>
+   564→            <TableHeader>
+   565→              <TableRow>
+   566→                <TableHead>Form Title</TableHead>
+   567→                <TableHead>Project</TableHead>
+   568→                <TableHead className="hidden md:table-cell">Client Owner</TableHead>
+   569→                <TableHead className="text-center">Submissions</TableHead>
+   570→                <TableHead>Status</TableHead>
+   571→                <TableHead className="w-28"></TableHead>
+   572→              </TableRow>
+   573→            </TableHeader>
+   574→            <TableBody>
+   575→              {forms.length === 0 && (
+   576→                <TableRow>
+   577→                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+   578→                    <div className="flex flex-col items-center gap-2">
+   579→                      <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
+   580→                      <p>No onboarding forms yet</p>
+   581→                      <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+   582→                        <Plus className="h-4 w-4 mr-1" /> Create your first form
+   583→                      </Button>
+   584→                    </div>
+   585→                  </TableCell>
+   586→                </TableRow>
+   587→              )}
+   588→              {forms.map((form) => {
+   589→                const project = form.project as { color?: string; name?: string } | undefined
+   590→                return (
+   591→                  <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+   592→                    <TableCell>
+   593→                      <div className="flex items-center gap-2">
+   594→                        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+   595→                          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   596→                        </div>
+   597→                        <div>
+   598→                          <p className="font-medium text-sm">{form.title}</p>
+   599→                          {form.description && <p className="text-xs text-muted-foreground truncate max-w-48">{form.description}</p>}
+   600→                        </div>
+   601→                      </div>
+   602→                    </TableCell>
+   603→                    <TableCell>
+   604→                      <div className="flex items-center gap-2">
+   605→                        {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
+   606→                        <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
+   607→                      </div>
+   608→                    </TableCell>
+   609→                    <TableCell className="hidden md:table-cell">
+   610→                      {form.client ? (
+   611→                        <div className="flex items-center gap-2">
+   612→                          <Avatar className="h-6 w-6">
+   613→                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   614→                              {getInitials(form.client.name)}
+   615→                            </AvatarFallback>
+   616→                          </Avatar>
+   617→                          <div className="min-w-0">
+   618→                            <p className="text-sm font-medium truncate">{form.client.name}</p>
+   619→                            {form.client.company && <p className="text-xs text-muted-foreground truncate">{form.client.company}</p>}
+   620→                          </div>
+   621→                        </div>
+   622→                      ) : (
+   623→                        <span className="text-sm text-muted-foreground">—</span>
+   624→                      )}
+   625→                    </TableCell>
+   626→                    <TableCell className="text-center">
+   627→                      {(form._count?.submissions ?? 0) > 0 && (
+   628→                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+   629→                          {form._count?.submissions}
+   630→                        </Badge>
+   631→                      )}
+   632→                      {(form._count?.submissions ?? 0) === 0 && <span className="text-muted-foreground text-sm">0</span>}
+   633→                    </TableCell>
+   634→                    <TableCell>
+   635→                      <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+   636→                        {getOnboardingStatusLabel(form.status)}
+   637→                      </Badge>
+   638→                    </TableCell>
+   639→                    <TableCell>
+   640→                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+   641→                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
+   642→                          <Eye className="h-4 w-4" />
+   643→                        </Button>
+   644→                        <TooltipProvider>
+   645→                          <Tooltip>
+   646→                            <TooltipTrigger asChild>
+   647→                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(form)}>
+   648→                                <Pencil className="h-4 w-4" />
+   649→                              </Button>
+   650→                            </TooltipTrigger>
+   651→                            <TooltipContent>Edit Form</TooltipContent>
+   652→                          </Tooltip>
+   653→                        </TooltipProvider>
+   654→                        <AlertDialog>
+   655→                          <AlertDialogTrigger asChild>
+   656→                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+   657→                              <Trash2 className="h-4 w-4" />
+   658→                            </Button>
+   659→                          </AlertDialogTrigger>
+   660→                          <AlertDialogContent>
+   661→                            <AlertDialogHeader>
+   662→                              <AlertDialogTitle>Delete Onboarding Form</AlertDialogTitle>
+   663→                              <AlertDialogDescription>
+   664→                                Are you sure you want to delete &quot;{form.title}&quot;? This will also delete all associated submissions. This action cannot be undone.
+   665→                              </AlertDialogDescription>
+   666→                            </AlertDialogHeader>
+   667→                            <AlertDialogFooter>
+   668→                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   669→                              <AlertDialogAction onClick={() => handleDeleteForm(form.id, form.title)} className="bg-rose-600 hover:bg-rose-700">
+   670→                                Delete
+   671→                              </AlertDialogAction>
+   672→                            </AlertDialogFooter>
+   673→                          </AlertDialogContent>
+   674→                        </AlertDialog>
+   675→                      </div>
+   676→                    </TableCell>
+   677→                  </TableRow>
+   678→                )
+   679→              })}
+   680→            </TableBody>
+   681→          </Table>
+   682→        </CardContent>
+   683→      </Card>
+   684→
+   685→      {/* Submissions Review Dialog */}
+   686→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   687→        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+   688→          <DialogHeader>
+   689→            <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
+   690→            <DialogDescription>
+   691→              {selectedForm?.project ? (
+   692→                <span className="flex items-center gap-2">
+   693→                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+   694→                  {(selectedForm.project as { name?: string }).name}
+   695→                </span>
+   696→              ) : 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
+   697→            </DialogDescription>
+   698→          </DialogHeader>
+   699→          <ScrollArea className="flex-1 -mx-6 px-6">
+   700→            <div className="space-y-4 py-2">
+   701→              {selectedForm?.submissions?.length === 0 && (
+   702→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   703→                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+   704→                    <FileCheck className="h-6 w-6 text-muted-foreground" />
+   705→                  </div>
+   706→                  <p className="text-sm font-medium">No submissions yet</p>
+   707→                  <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
+   708→                </div>
+   709→              )}
+   710→              {selectedForm?.submissions?.map((sub) => {
+   711→                let parsedResponses: Record<string, string> = {}
+   712→                let parsedFiles: Record<string, { url: string; originalName: string } | null> = {}
+   713→                try {
+   714→                  const raw = JSON.parse(sub.responsesJson)
+   715→                  parsedResponses = raw.responses || {}
+   716→                  parsedFiles = raw.files || {}
+   717→                } catch { /* old format fallback */ }
+   718→
+   719→                return (
+   720→                  <Card key={sub.id} className="border">
+   721→                    <CardContent className="p-4 space-y-4">
+   722→                      <div className="flex items-start justify-between">
+   723→                        <div className="flex items-center gap-3">
+   724→                          <Avatar className="h-9 w-9">
+   725→                            {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+   726→                            <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+   727→                          </Avatar>
+   728→                          <div>
+   729→                            <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
+   730→                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
+   731→                          </div>
+   732→                        </div>
+   733→                        <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
+   734→                          {getOnboardingStatusLabel(sub.status)}
+   735→                        </Badge>
+   736→                      </div>
+   737→
+   738→                      {sub.submittedAt && (
+   739→                        <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
+   740→                      )}
+   741→
+   742→                      {/* Download buttons */}
+   743→                      <div className="flex items-center gap-2 flex-wrap">
+   744→                        <Button
+   745→                          variant="outline"
+   746→                          size="sm"
+   747→                          className="gap-1.5 h-8 text-xs"
+   748→                          onClick={(e) => {
+   749→                            e.stopPropagation()
+   750→                            window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
+   751→                          }}
+   752→                        >
+   753→                          <Download className="h-3.5 w-3.5" />
+   754→                          Download Report
+   755→                        </Button>
+   756→                        {Object.keys(parsedFiles).filter(([_, f]) => f).length > 0 && (
+   757→                          <Button
+   758→                            variant="outline"
+   759→                            size="sm"
+   760→                            className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5"
+   761→                            onClick={(e) => {
+   762→                              e.stopPropagation()
+   763→                              window.open(`/api/onboarding/download-documents?submissionId=${sub.id}`, '_blank')
+   764→                            }}
+   765→                          >
+   766→                            <FileArchive className="h-3.5 w-3.5" />
+   767→                            Download Documents
+   768→                          </Button>
+   769→                        )}
+   770→                      </div>
+   771→
+   772→                      {Object.keys(parsedResponses).length > 0 && (
+   773→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   774→                          {Object.entries(parsedResponses).filter(([_, v]) => v?.trim()).map(([key, value]) => (
+   775→                            <div key={key} className="p-2.5 rounded-lg bg-muted/50 border">
+   776→                              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+   777→                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase())}
+   778→                              </p>
+   779→                              <p className="text-sm whitespace-pre-wrap line-clamp-3">{value}</p>
+   780→                            </div>
+   781→                          ))}
+   782→                        </div>
+   783→                      )}
+   784→
+   785→                      {Object.keys(parsedFiles).length > 0 && (
+   786→                        <div className="space-y-2">
+   787→                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Documents</p>
+   788→                          <div className="flex flex-wrap gap-2">
+   789→                            {Object.entries(parsedFiles).filter(([_, f]) => f).map(([key, f]) => (
+   790→                              <a key={key} href={f!.url} download={f!.originalName} target="_blank" rel="noopener noreferrer"
+   791→                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm group">
+   792→                                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+   793→                                <span className="max-w-[180px] truncate">{f!.originalName}</span>
+   794→                                <FileDown className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+   795→                              </a>
+   796→                            ))}
+   797→                          </div>
+   798→                        </div>
+   799→                      )}
+   800→
+   801→                      {sub.reviewNotes && (
+   802→                        <div className="bg-muted/50 rounded-md p-2 text-xs">
+   803→                          <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+   804→                          {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+   805→                        </div>
+   806→                      )}
+   807→
+   808→                      {sub.status === 'submitted' && (
+   809→                        <div className="space-y-2">
+   810→                          <Textarea
+   811→                            placeholder="Add review notes..."
+   812→                            value={reviewNotes[sub.id] ?? ''}
+   813→                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
+   814→                            className="text-sm"
+   815→                            rows={2}
+   816→                          />
+   817→                          <div className="flex gap-2">
+   818→                            <Button
+   819→                              size="sm"
+   820→                              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+   821→                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
+   822→                              disabled={reviewing === sub.id}
+   823→                            >
+   824→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />}
+   825→                              Approve
+   826→                            </Button>
+   827→                            <Button
+   828→                              size="sm"
+   829→                              variant="destructive"
+   830→                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
+   831→                              disabled={reviewing === sub.id}
+   832→                            >
+   833→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />}
+   834→                              Reject
+   835→                            </Button>
+   836→                          </div>
+   837→                        </div>
+   838→                      )}
+   839→                    </CardContent>
+   840→                  </Card>
+   841→                )
+   842→              })}
+   843→            </div>
+   844→          </ScrollArea>
+   845→        </DialogContent>
+   846→      </Dialog>
+   847→
+   848→      {/* Create Onboarding Form Dialog */}
+   849→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   850→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   851→          <DialogHeader>
+   852→            <DialogTitle className="flex items-center gap-2">
+   853→              <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
+   854→            </DialogTitle>
+   855→            <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
+   856→          </DialogHeader>
+   857→
+   858→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+   859→            {/* Title */}
+   860→            <div className="space-y-1.5">
+   861→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+   862→              <Input
+   863→                placeholder="e.g., Client Onboarding Package"
+   864→                value={createForm.title}
+   865→                onChange={(e) => setCreateForm(p => ({ ...p, title: e.target.value }))}
+   866→                autoFocus
+   867→              />
+   868→            </div>
+   869→
+   870→            {/* Description */}
+   871→            <div className="space-y-1.5">
+   872→              <Label className="text-sm">Description</Label>
+   873→              <Textarea
+   874→                placeholder="Brief description of this onboarding form (optional)"
+   875→                value={createForm.description}
+   876→                onChange={(e) => setCreateForm(p => ({ ...p, description: e.target.value }))}
+   877→                rows={2}
+   878→              />
+   879→            </div>
+   880→
+   881→            {/* Project Selection */}
+   882→            <div className="space-y-1.5">
+   883→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+   884→              <Select value={createForm.projectId} onValueChange={(v) => setCreateForm(p => ({ ...p, projectId: v }))}>
+   885→                <SelectTrigger className="w-full">
+   886→                  <SelectValue placeholder="Select a project" />
+   887→                </SelectTrigger>
+   888→                <SelectContent>
+   889→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+   890→                  {projects.map((p) => (
+   891→                    <SelectItem key={p.id} value={p.id}>
+   892→                      <span className="flex items-center gap-2">
+   893→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+   894→                        {p.name}
+   895→                      </span>
+   896→                    </SelectItem>
+   897→                  ))}
+   898→                </SelectContent>
+   899→              </Select>
+   900→              <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
+   901→            </div>
+   902→
+   903→            {/* Client Owner Selection */}
+   904→            <div className="space-y-1.5">
+   905→              <Label className="text-sm">Client Owner <span className="text-red-500">*</span></Label>
+   906→              <Select value={createForm.clientId} onValueChange={(v) => setCreateForm(p => ({ ...p, clientId: v }))}>
+   907→                <SelectTrigger className="w-full">
+   908→                  <SelectValue placeholder="Select a client" />
+   909→                </SelectTrigger>
+   910→                <SelectContent>
+   911→                  {clients.length === 0 && <SelectItem value="_none" disabled>No active clients available</SelectItem>}
+   912→                  {clients.map((c) => (
+   913→                    <SelectItem key={c.id} value={c.id}>
+   914→                      <span className="flex items-center gap-2">
+   915→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   916→                          {getInitials(c.name)}
+   917→                        </span>
+   918→                        <span>{c.name}</span>
+   919→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+   920→                      </span>
+   921→                    </SelectItem>
+   922→                  ))}
+   923→                </SelectContent>
+   924→              </Select>
+   925→              <p className="text-xs text-muted-foreground">Only this client will see and fill out this onboarding form</p>
+   926→            </div>
+   927→
+   928→            <Separator />
+   929→
+   930→            {/* Step Selection */}
+   931→            <div className="space-y-3">
+   932→              <div className="flex items-center justify-between">
+   933→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+   934→                <Badge variant="secondary" className="text-xs">
+   935→                  {createForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+   936→                </Badge>
+   937→              </div>
+   938→
+   939→              <p className="text-xs text-muted-foreground">Choose which steps to include in the onboarding form</p>
+   940→
+   941→              <div className="space-y-2">
+   942→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+   943→                  const isSelected = createForm.selectedSteps.includes(step.id)
+   944→                  return (
+   945→                    <button
+   946→                      key={step.id}
+   947→                      type="button"
+   948→                      onClick={() => toggleStep(step.id)}
+   949→                      className={cn(
+   950→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+   951→                        isSelected
+   952→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+   953→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+   954→                      )}
+   955→                    >
+   956→                      <div className="flex items-start gap-3">
+   957→                        <div className={cn(
+   958→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+   959→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+   960→                        )}>
+   961→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+   962→                        </div>
+   963→                        <div className="flex-1 min-w-0">
+   964→                          <div className="flex items-center gap-2">
+   965→                            <p className="text-sm font-medium">{step.label}</p>
+   966→                            {step.required && (
+   967→                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+   968→                            )}
+   969→                          </div>
+   970→                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+   971→                        </div>
+   972→                      </div>
+   973→                    </button>
+   974→                  )
+   975→                })}
+   976→              </div>
+   977→            </div>
+   978→          </div>
+   979→
+   980→          <DialogFooter className="pt-2">
+   981→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+   982→            <Button
+   983→              onClick={handleCreateOnboarding}
+   984→              disabled={!createForm.title.trim() || !createForm.projectId || !createForm.clientId || createForm.selectedSteps.length === 0 || creating}
+   985→              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+   986→            >
+   987→              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+   988→              <ClipboardList className="h-4 w-4 mr-2" />
+   989→              Create Form
+   990→            </Button>
+   991→          </DialogFooter>
+   992→        </DialogContent>
+   993→      </Dialog>
+   994→
+   995→      {/* Edit Onboarding Form Dialog */}
+   996→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+   997→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   998→          <DialogHeader>
+   999→            <DialogTitle className="flex items-center gap-2">
+  1000→              <Pencil className="h-5 w-5 text-primary" /> Edit Onboarding Form
+
+[showing lines 501-1000 of 3942; use offset=1001 with limit to continue reading]

@@ -1,0 +1,648 @@
+  1822→// ─── AdminUsers ────────────────────────────────────────────────────────────────
+  1823→
+  1824→export function AdminUsers() {
+  1825→  const { user: adminUser } = useAuthStore()
+  1826→  const [loading, setLoading] = useState(true)
+  1827→  const [users, setUsers] = useState<User[]>([])
+  1828→  const [search, setSearch] = useState('')
+  1829→  const [roleFilter, setRoleFilter] = useState<string>('all')
+  1830→  const [showAddDialog, setShowAddDialog] = useState(false)
+  1831→  const [adding, setAdding] = useState(false)
+  1832→  const [deletingId, setDeletingId] = useState<string | null>(null)
+  1833→  const [newUser, setNewUser] = useState({
+  1834→    name: '', email: '', password: '', confirmPassword: '',
+  1835→    role: 'team' as 'admin' | 'team' | 'client',
+  1836→    phone: '', company: ''
+  1837→  })
+  1838→
+  1839→  const fetchUsers = useCallback(async () => {
+  1840→    try {
+  1841→      const res = await fetch('/api/users')
+  1842→      if (!res.ok) throw new Error()
+  1843→      const data = await res.json()
+  1844→      setUsers(data.users ?? [])
+  1845→    } catch {
+  1846→      toast.error('Failed to load users')
+  1847→    } finally {
+  1848→      setLoading(false)
+  1849→    }
+  1850→  }, [])
+  1851→
+  1852→  useEffect(() => { fetchUsers() }, [fetchUsers])
+  1853→
+  1854→  const filteredUsers = users.filter((u) => {
+  1855→    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+  1856→    if (search) {
+  1857→      const q = search.toLowerCase()
+  1858→      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.company ?? '').toLowerCase().includes(q)
+  1859→    }
+  1860→    return true
+  1861→  })
+  1862→
+  1863→  const adminCount = users.filter(u => u.role === 'admin').length
+  1864→  const teamCount = users.filter(u => u.role === 'team').length
+  1865→  const clientCount = users.filter(u => u.role === 'client').length
+  1866→
+  1867→  async function handleAddUser(e: React.FormEvent) {
+  1868→    e.preventDefault()
+  1869→    if (!newUser.name || !newUser.email || !newUser.password) {
+  1870→      toast.error('Name, email, and password are required')
+  1871→      return
+  1872→    }
+  1873→    if (newUser.password.length < 6) {
+  1874→      toast.error('Password must be at least 6 characters')
+  1875→      return
+  1876→    }
+  1877→    if (newUser.password !== newUser.confirmPassword) {
+  1878→      toast.error('Passwords do not match')
+  1879→      return
+  1880→    }
+  1881→    setAdding(true)
+  1882→    try {
+  1883→      const res = await fetch('/api/register', {
+  1884→        method: 'POST',
+  1885→        headers: { 'Content-Type': 'application/json' },
+  1886→        body: JSON.stringify({
+  1887→          name: newUser.name,
+  1888→          email: newUser.email,
+  1889→          password: newUser.password,
+  1890→          role: newUser.role,
+  1891→          phone: newUser.phone || undefined,
+  1892→          company: newUser.company || undefined,
+  1893→          adminUserId: adminUser?.id,
+  1894→        })
+  1895→      })
+  1896→      const data = await res.json()
+  1897→      if (!res.ok) throw new Error(data.error)
+  1898→      toast.success(`User "${newUser.name}" created successfully`)
+  1899→      setShowAddDialog(false)
+  1900→      setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'team', phone: '', company: '' })
+  1901→      fetchUsers()
+  1902→    } catch (err: unknown) {
+  1903→      toast.error(err instanceof Error ? err.message : 'Failed to create user')
+  1904→    } finally {
+  1905→      setAdding(false)
+  1906→    }
+  1907→  }
+  1908→
+  1909→  async function handleToggleStatus(u: User) {
+  1910→    const newStatus = u.status === 'active' ? 'inactive' : 'active'
+  1911→    try {
+  1912→      const res = await fetch('/api/users', {
+  1913→        method: 'PATCH',
+  1914→        headers: { 'Content-Type': 'application/json' },
+  1915→        body: JSON.stringify({ id: u.id, status: newStatus })
+  1916→      })
+  1917→      if (!res.ok) throw new Error()
+  1918→      toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`)
+  1919→      fetchUsers()
+  1920→    } catch {
+  1921→      toast.error('Failed to update user status')
+  1922→    }
+  1923→  }
+  1924→
+  1925→  async function handleChangeRole(u: User, newRole: string) {
+  1926→    if (newRole === u.role) return
+  1927→    try {
+  1928→      const res = await fetch('/api/users', {
+  1929→        method: 'PATCH',
+  1930→        headers: { 'Content-Type': 'application/json' },
+  1931→        body: JSON.stringify({ id: u.id, role: newRole })
+  1932→      })
+  1933→      if (!res.ok) throw new Error()
+  1934→      toast.success(`Role updated to ${newRole}`)
+  1935→      fetchUsers()
+  1936→    } catch {
+  1937→      toast.error('Failed to update user role')
+  1938→    }
+  1939→  }
+  1940→
+  1941→  async function handleDeleteUser(u: User) {
+  1942→    setDeletingId(u.id)
+  1943→    try {
+  1944→      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' })
+  1945→      if (!res.ok) {
+  1946→        const d = await res.json()
+  1947→        throw new Error(d.error || 'Failed')
+  1948→      }
+  1949→      toast.success(`User "${u.name}" deleted`)
+  1950→      fetchUsers()
+  1951→    } catch (e: unknown) {
+  1952→      toast.error(e instanceof Error ? e.message : 'Failed to delete user')
+  1953→    } finally {
+  1954→      setDeletingId(null)
+  1955→    }
+  1956→  }
+  1957→
+  1958→  if (loading) {
+  1959→    return (
+  1960→      <div className="space-y-6">
+  1961→        <Skeleton className="h-10 w-48" />
+  1962→        <div className="grid grid-cols-3 gap-4">
+  1963→          <Skeleton className="h-24 w-full" />
+  1964→          <Skeleton className="h-24 w-full" />
+  1965→          <Skeleton className="h-24 w-full" />
+  1966→        </div>
+  1967→        <Skeleton className="h-96 w-full" />
+  1968→      </div>
+  1969→    )
+  1970→  }
+  1971→
+  1972→  return (
+  1973→    <motion.div {...fadeIn} className="space-y-6">
+  1974→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  1975→        <div>
+  1976→          <h2 className="text-xl font-semibold">User Management</h2>
+  1977→          <p className="text-sm text-muted-foreground">Create and manage all user accounts</p>
+  1978→        </div>
+  1979→        <Button onClick={() => setShowAddDialog(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  1980→          <UserPlus className="w-4 h-4 mr-2" />
+  1981→          Add User
+  1982→        </Button>
+  1983→      </div>
+  1984→
+  1985→      {/* Summary cards */}
+  1986→      <div className="grid grid-cols-3 gap-4">
+  1987→        {[
+  1988→          { label: 'Admins', count: adminCount, icon: Shield, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  1989→          { label: 'Team Members', count: teamCount, icon: UserCog, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+  1990→          { label: 'Clients', count: clientCount, icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+  1991→        ].map((c) => (
+  1992→          <Card key={c.label}>
+  1993→            <CardContent className="p-4 flex items-center gap-3">
+  1994→              <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+  1995→                <c.icon className={`h-5 w-5 ${c.color}`} />
+  1996→              </div>
+  1997→              <div>
+  1998→                <p className="text-2xl font-bold">{c.count}</p>
+  1999→                <p className="text-xs text-muted-foreground">{c.label}</p>
+  2000→              </div>
+  2001→            </CardContent>
+  2002→          </Card>
+  2003→        ))}
+  2004→      </div>
+  2005→
+  2006→      {/* Filters */}
+  2007→      <Card>
+  2008→        <CardContent className="p-4">
+  2009→          <div className="flex flex-col sm:flex-row gap-3">
+  2010→            <div className="relative flex-1">
+  2011→              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+  2012→              <Input
+  2013→                placeholder="Search by name, email, or company..."
+  2014→                value={search}
+  2015→                onChange={(e) => setSearch(e.target.value)}
+  2016→                className="pl-9"
+  2017→              />
+  2018→            </div>
+  2019→            <Select value={roleFilter} onValueChange={setRoleFilter}>
+  2020→              <SelectTrigger className="w-full sm:w-40">
+  2021→                <SelectValue placeholder="Filter by role" />
+  2022→              </SelectTrigger>
+  2023→              <SelectContent>
+  2024→                <SelectItem value="all">All Roles</SelectItem>
+  2025→                <SelectItem value="admin">Admin</SelectItem>
+  2026→                <SelectItem value="team">Team</SelectItem>
+  2027→                <SelectItem value="client">Client</SelectItem>
+  2028→              </SelectContent>
+  2029→            </Select>
+  2030→          </div>
+  2031→        </CardContent>
+  2032→      </Card>
+  2033→
+  2034→      {/* Users Table */}
+  2035→      <Card>
+  2036→        <CardContent className="p-0">
+  2037→          <div className="overflow-x-auto">
+  2038→            <Table>
+  2039→              <TableHeader>
+  2040→                <TableRow>
+  2041→                  <TableHead className="w-[250px]">User</TableHead>
+  2042→                  <TableHead className="hidden sm:table-cell">Role</TableHead>
+  2043→                  <TableHead className="hidden md:table-cell">Status</TableHead>
+  2044→                  <TableHead className="hidden lg:table-cell">Company</TableHead>
+  2045→                  <TableHead className="hidden lg:table-cell">Tasks</TableHead>
+  2046→                  <TableHead className="hidden xl:table-cell">Joined</TableHead>
+  2047→                  <TableHead className="text-right">Actions</TableHead>
+  2048→                </TableRow>
+  2049→              </TableHeader>
+  2050→              <TableBody>
+  2051→                {filteredUsers.length === 0 ? (
+  2052→                  <TableRow>
+  2053→                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+  2054→                      {search || roleFilter !== 'all' ? 'No users match your filters' : 'No users found'}
+  2055→                    </TableCell>
+  2056→                  </TableRow>
+  2057→                ) : (
+  2058→                  filteredUsers.map((u) => (
+  2059→                    <TableRow key={u.id}>
+  2060→                      <TableCell>
+  2061→                        <div className="flex items-center gap-3">
+  2062→                          <Avatar className="h-8 w-8">
+  2063→                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+  2064→                              {getInitials(u.name)}
+  2065→                            </AvatarFallback>
+  2066→                          </Avatar>
+  2067→                          <div className="min-w-0">
+  2068→                            <p className="font-medium text-sm truncate">{u.name}</p>
+  2069→                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+  2070→                          </div>
+  2071→                        </div>
+  2072→                      </TableCell>
+  2073→                      <TableCell className="hidden sm:table-cell">
+  2074→                        <Select
+  2075→                          value={u.role}
+  2076→                          onValueChange={(val) => handleChangeRole(u, val)}
+  2077→                          disabled={u.id === adminUser?.id}
+  2078→                        >
+  2079→                          <SelectTrigger className="w-28 h-8 text-xs">
+  2080→                            <SelectValue />
+  2081→                          </SelectTrigger>
+  2082→                          <SelectContent>
+  2083→                            <SelectItem value="admin">Admin</SelectItem>
+  2084→                            <SelectItem value="team">Team</SelectItem>
+  2085→                            <SelectItem value="client">Client</SelectItem>
+  2086→                          </SelectContent>
+  2087→                        </Select>
+  2088→                      </TableCell>
+  2089→                      <TableCell className="hidden md:table-cell">
+  2090→                        <Badge
+  2091→                          variant="secondary"
+  2092→                          className={u.status === 'active'
+  2093→                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  2094→                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+  2095→                          }
+  2096→                        >
+  2097→                          {u.status}
+  2098→                        </Badge>
+  2099→                      </TableCell>
+  2100→                      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+  2101→                        {u.company || '—'}
+  2102→                      </TableCell>
+  2103→                      <TableCell className="hidden lg:table-cell text-sm">
+  2104→                        {u._count ? (u._count.assignedTasks + u._count.createdTasks) : 0}
+  2105→                      </TableCell>
+  2106→                      <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
+  2107→                        {formatDate(u.createdAt)}
+  2108→                      </TableCell>
+  2109→                      <TableCell className="text-right">
+  2110→                        <DropdownMenu>
+  2111→                          <DropdownMenuTrigger asChild>
+  2112→                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={u.id === adminUser?.id}>
+  2113→                              <MoreHorizontal className="h-4 w-4" />
+  2114→                            </Button>
+  2115→                          </DropdownMenuTrigger>
+  2116→                          <DropdownMenuContent align="end">
+  2117→                            <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
+  2118→                              {u.status === 'active' ? (
+  2119→                                <>
+  2120→                                  <X className="h-4 w-4 mr-2" />
+  2121→                                  Deactivate
+  2122→                                </>
+  2123→                              ) : (
+  2124→                                <>
+  2125→                                  <CheckCircle2 className="h-4 w-4 mr-2" />
+  2126→                                  Activate
+  2127→                                </>
+  2128→                              )}
+  2129→                            </DropdownMenuItem>
+  2130→                            <DropdownMenuItem
+  2131→                              onClick={() => handleDeleteUser(u)}
+  2132→                              disabled={u.id === adminUser?.id || deletingId === u.id}
+  2133→                              className="text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-900/20"
+  2134→                            >
+  2135→                              {deletingId === u.id ? (
+  2136→                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+  2137→                              ) : (
+  2138→                                <Trash2 className="h-4 w-4 mr-2" />
+  2139→                              )}
+  2140→                              Delete User
+  2141→                            </DropdownMenuItem>
+  2142→                          </DropdownMenuContent>
+  2143→                        </DropdownMenu>
+  2144→                      </TableCell>
+  2145→                    </TableRow>
+  2146→                  ))
+  2147→                )}
+  2148→              </TableBody>
+  2149→            </Table>
+  2150→          </div>
+  2151→        </CardContent>
+  2152→      </Card>
+  2153→
+  2154→      {/* Add User Dialog */}
+  2155→      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+  2156→        <DialogContent className="sm:max-w-md">
+  2157→          <DialogHeader>
+  2158→            <DialogTitle>Create New User</DialogTitle>
+  2159→            <DialogDescription>Add a new member to the platform. They will receive their credentials from you.</DialogDescription>
+  2160→          </DialogHeader>
+  2161→          <form onSubmit={handleAddUser} className="space-y-4">
+  2162→            <div className="space-y-2">
+  2163→              <Label htmlFor="add-name">Full Name *</Label>
+  2164→              <Input
+  2165→                id="add-name"
+  2166→                placeholder="John Doe"
+  2167→                value={newUser.name}
+  2168→                onChange={(e) => setNewUser(p => ({ ...p, name: e.target.value }))}
+  2169→              />
+  2170→            </div>
+  2171→            <div className="space-y-2">
+  2172→              <Label htmlFor="add-email">Email *</Label>
+  2173→              <Input
+  2174→                id="add-email"
+  2175→                type="email"
+  2176→                placeholder="name@company.com"
+  2177→                value={newUser.email}
+  2178→                onChange={(e) => setNewUser(p => ({ ...p, email: e.target.value }))}
+  2179→              />
+  2180→            </div>
+  2181→            <div className="grid grid-cols-2 gap-3">
+  2182→              <div className="space-y-2">
+  2183→                <Label htmlFor="add-role">Role *</Label>
+  2184→                <Select value={newUser.role} onValueChange={(val: 'admin' | 'team' | 'client') => setNewUser(p => ({ ...p, role: val }))}>
+  2185→                  <SelectTrigger id="add-role">
+  2186→                    <SelectValue />
+  2187→                  </SelectTrigger>
+  2188→                  <SelectContent>
+  2189→                    <SelectItem value="admin">Admin</SelectItem>
+  2190→                    <SelectItem value="team">Team</SelectItem>
+  2191→                    <SelectItem value="client">Client</SelectItem>
+  2192→                  </SelectContent>
+  2193→                </Select>
+  2194→              </div>
+  2195→              <div className="space-y-2">
+  2196→                <Label htmlFor="add-phone">Phone</Label>
+  2197→                <Input
+  2198→                  id="add-phone"
+  2199→                  placeholder="+1 (555) 000"
+  2200→                  value={newUser.phone}
+  2201→                  onChange={(e) => setNewUser(p => ({ ...p, phone: e.target.value }))}
+  2202→                />
+  2203→              </div>
+  2204→            </div>
+  2205→            <div className="space-y-2">
+  2206→              <Label htmlFor="add-company">Company</Label>
+  2207→              <Input
+  2208→                id="add-company"
+  2209→                placeholder="Acme Inc."
+  2210→                value={newUser.company}
+  2211→                onChange={(e) => setNewUser(p => ({ ...p, company: e.target.value }))}
+  2212→              />
+  2213→            </div>
+  2214→            <Separator />
+  2215→            <div className="space-y-3">
+  2216→              <p className="text-sm font-medium">Set Password</p>
+  2217→              <div className="grid grid-cols-2 gap-3">
+  2218→                <div className="space-y-2">
+  2219→                  <Label htmlFor="add-password">Password *</Label>
+  2220→                  <Input
+  2221→                    id="add-password"
+  2222→                    type="password"
+  2223→                    placeholder="Min. 6 characters"
+  2224→                    value={newUser.password}
+  2225→                    onChange={(e) => setNewUser(p => ({ ...p, password: e.target.value }))}
+  2226→                  />
+  2227→                </div>
+  2228→                <div className="space-y-2">
+  2229→                  <Label htmlFor="add-confirm">Confirm *</Label>
+  2230→                  <Input
+  2231→                    id="add-confirm"
+  2232→                    type="password"
+  2233→                    placeholder="Re-enter"
+  2234→                    value={newUser.confirmPassword}
+  2235→                    onChange={(e) => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))}
+  2236→                  />
+  2237→                </div>
+  2238→              </div>
+  2239→              <p className="text-xs text-muted-foreground">Share the credentials with the new user after creation.</p>
+  2240→            </div>
+  2241→            <DialogFooter>
+  2242→              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+  2243→                Cancel
+  2244→              </Button>
+  2245→              <Button type="submit" disabled={adding} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2246→                {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  2247→                Create User
+  2248→              </Button>
+  2249→            </DialogFooter>
+  2250→          </form>
+  2251→        </DialogContent>
+  2252→      </Dialog>
+  2253→    </motion.div>
+  2254→  )
+  2255→}
+  2256→
+  2257→// ─── AdminProfile ──────────────────────────────────────────────────────────────
+  2258→
+  2259→export function AdminProfile() {
+  2260→  const { user, login } = useAuthStore()
+  2261→  const [loading, setLoading] = useState(true)
+  2262→  const [saving, setSaving] = useState(false)
+  2263→  const [profile, setProfile] = useState({
+  2264→    name: '', email: '', phone: '', company: ''
+  2265→  })
+  2266→  const [passwords, setPasswords] = useState({
+  2267→    currentPassword: '', newPassword: '', confirmPassword: ''
+  2268→  })
+  2269→
+  2270→  useEffect(() => {
+  2271→    const currentUserId = user?.id
+  2272→    if (!currentUserId) return
+  2273→    async function fetchData() {
+  2274→      try {
+  2275→        const res = await fetch(`/api/user/profile?userId=${currentUserId}`)
+  2276→        if (!res.ok) throw new Error('Failed')
+  2277→        const data = await res.json()
+  2278→        setProfile({
+  2279→          name: data.user.name ?? '',
+  2280→          email: data.user.email ?? '',
+  2281→          phone: data.user.phone ?? '',
+  2282→          company: data.user.company ?? '',
+  2283→        })
+  2284→      } catch {
+  2285→        toast.error('Failed to load profile')
+  2286→      } finally {
+  2287→        setLoading(false)
+  2288→      }
+  2289→    }
+  2290→    fetchData()
+  2291→  }, [user])
+  2292→
+  2293→  async function handleSave() {
+  2294→    if (!user) return
+  2295→    setSaving(true)
+  2296→    try {
+  2297→      const body: Record<string, string> = {
+  2298→        userId: user.id,
+  2299→        name: profile.name,
+  2300→        email: profile.email,
+  2301→        phone: profile.phone,
+  2302→        company: profile.company,
+  2303→      }
+  2304→      if (passwords.currentPassword && passwords.newPassword) {
+  2305→        if (passwords.newPassword !== passwords.confirmPassword) {
+  2306→          toast.error('New passwords do not match')
+  2307→          setSaving(false)
+  2308→          return
+  2309→        }
+  2310→        if (passwords.newPassword.length < 6) {
+  2311→          toast.error('Password must be at least 6 characters')
+  2312→          setSaving(false)
+  2313→          return
+  2314→        }
+  2315→        body.currentPassword = passwords.currentPassword
+  2316→        body.newPassword = passwords.newPassword
+  2317→      }
+  2318→      const patchRes = await fetch('/api/user/profile', {
+  2319→        method: 'PATCH',
+  2320→        headers: { 'Content-Type': 'application/json' },
+  2321→        body: JSON.stringify(body)
+  2322→      })
+  2323→      if (!patchRes.ok) {
+  2324→        const d = await patchRes.json()
+  2325→        throw new Error(d.error)
+  2326→      }
+  2327→      const data = await patchRes.json()
+  2328→      toast.success('Profile updated successfully')
+  2329→      // Update store user
+  2330→      if (data.user && user) {
+  2331→        login({ ...user, ...data.user, password: (user as unknown as Record<string, unknown>).password as string })
+  2332→      }
+  2333→      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  2334→    } catch (e: unknown) {
+  2335→      toast.error(e instanceof Error ? e.message : 'Failed to update profile')
+  2336→    } finally {
+  2337→      setSaving(false)
+  2338→    }
+  2339→  }
+  2340→
+  2341→  if (loading) {
+  2342→    return (
+  2343→      <div className="space-y-6">
+  2344→        <Skeleton className="h-10 w-48" />
+  2345→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  2346→          <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+  2347→          <Card><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+  2348→        </div>
+  2349→      </div>
+  2350→    )
+  2351→  }
+  2352→
+  2353→  return (
+  2354→    <motion.div {...fadeIn} className="space-y-6">
+  2355→      <div>
+  2356→        <h2 className="text-xl font-semibold">Profile Settings</h2>
+  2357→        <p className="text-sm text-muted-foreground">Manage your account information and preferences</p>
+  2358→      </div>
+  2359→
+  2360→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  2361→        {/* Profile Form */}
+  2362→        <Card className="lg:col-span-2">
+  2363→          <CardHeader>
+  2364→            <CardTitle className="text-base">Personal Information</CardTitle>
+  2365→            <CardDescription>Update your account details</CardDescription>
+  2366→          </CardHeader>
+  2367→          <CardContent className="space-y-4">
+  2368→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  2369→              <div className="space-y-2">
+  2370→                <Label htmlFor="name">Full Name</Label>
+  2371→                <Input id="name" value={profile.name} onChange={(e) => setProfile(p => ({ ...p, name: e.target.value }))} />
+  2372→              </div>
+  2373→              <div className="space-y-2">
+  2374→                <Label htmlFor="email">Email</Label>
+  2375→                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile(p => ({ ...p, email: e.target.value }))} />
+  2376→              </div>
+  2377→              <div className="space-y-2">
+  2378→                <Label htmlFor="phone">Phone</Label>
+  2379→                <Input id="phone" value={profile.phone} onChange={(e) => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="Optional" />
+  2380→              </div>
+  2381→              <div className="space-y-2">
+  2382→                <Label htmlFor="company">Company</Label>
+  2383→                <Input id="company" value={profile.company} onChange={(e) => setProfile(p => ({ ...p, company: e.target.value }))} placeholder="Optional" />
+  2384→              </div>
+  2385→            </div>
+  2386→
+  2387→            <Separator />
+  2388→
+  2389→            {/* Change Password */}
+  2390→            <div className="space-y-3">
+  2391→              <h3 className="text-sm font-medium">Change Password</h3>
+  2392→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  2393→                <div className="space-y-2">
+  2394→                  <Label htmlFor="currentPass">Current Password</Label>
+  2395→                  <Input id="currentPass" type="password" value={passwords.currentPassword} onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} placeholder="Enter current" />
+  2396→                </div>
+  2397→                <div className="space-y-2">
+  2398→                  <Label htmlFor="newPass">New Password</Label>
+  2399→                  <Input id="newPass" type="password" value={passwords.newPassword} onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} placeholder="Enter new" />
+  2400→                </div>
+  2401→                <div className="space-y-2">
+  2402→                  <Label htmlFor="confirmPass">Confirm Password</Label>
+  2403→                  <Input id="confirmPass" type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
+  2404→                </div>
+  2405→              </div>
+  2406→              <p className="text-xs text-muted-foreground">Leave password fields empty to keep your current password.</p>
+  2407→            </div>
+  2408→
+  2409→            <div className="flex justify-end pt-2">
+  2410→              <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2411→                {saving ? 'Saving...' : 'Save Changes'}
+  2412→              </Button>
+  2413→            </div>
+  2414→          </CardContent>
+  2415→        </Card>
+  2416→
+  2417→        {/* Account Info Card */}
+  2418→        <Card>
+  2419→          <CardHeader>
+  2420→            <CardTitle className="text-base">Account Info</CardTitle>
+  2421→          </CardHeader>
+  2422→          <CardContent className="space-y-6">
+  2423→            <div className="flex flex-col items-center text-center">
+  2424→              <Avatar className="h-20 w-20 mb-3">
+  2425→                {user?.avatar ? <AvatarImage src={user.avatar} /> : null}
+  2426→                <AvatarFallback className="text-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+  2427→                  {user ? getInitials(user.name) : '?'}
+  2428→                </AvatarFallback>
+  2429→              </Avatar>
+  2430→              <h3 className="font-semibold">{user?.name}</h3>
+  2431→              <p className="text-sm text-muted-foreground">{user?.email}</p>
+  2432→            </div>
+  2433→
+  2434→            <Separator />
+  2435→
+  2436→            <div className="space-y-3">
+  2437→              <div className="flex items-center justify-between">
+  2438→                <span className="text-sm text-muted-foreground">Role</span>
+  2439→                <Badge variant="secondary" className={getRoleBadgeClasses(user?.role ?? '')}>
+  2440→                  {user?.role ?? '—'}
+  2441→                </Badge>
+  2442→              </div>
+  2443→              <div className="flex items-center justify-between">
+  2444→                <span className="text-sm text-muted-foreground">Status</span>
+  2445→                <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+  2446→                  {user?.status ?? 'active'}
+  2447→                </Badge>
+  2448→              </div>
+  2449→              <div className="flex items-center justify-between">
+  2450→                <span className="text-sm text-muted-foreground">Member since</span>
+  2451→                <span className="text-sm font-medium">{user?.createdAt ? formatDate(user.createdAt) : '—'}</span>
+  2452→              </div>
+  2453→            </div>
+  2454→
+  2455→            <Separator />
+  2456→
+  2457→            <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+  2458→              <Shield className="h-5 w-5 text-emerald-600" />
+  2459→              <div>
+  2460→                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Admin Access</p>
+  2461→                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">Full platform management</p>
+  2462→              </div>
+  2463→            </div>
+  2464→          </CardContent>
+  2465→        </Card>
+  2466→      </div>
+  2467→    </motion.div>
+  2468→  )
+  2469→}

@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→import { useAuthStore } from '@/stores/auth'
+     5→import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, Message, User, Comment } from '@/types'
+     6→import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
+     7→import { cn } from '@/lib/utils'
+     8→
+     9→// shadcn/ui
+    10→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Textarea } from '@/components/ui/textarea'
+    16→import { Skeleton } from '@/components/ui/skeleton'
+    17→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    18→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    19→import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+    20→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    21→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    22→import { ScrollArea } from '@/components/ui/scroll-area'
+    23→import { Separator } from '@/components/ui/separator'
+    24→import { Calendar } from '@/components/ui/calendar'
+    25→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    26→import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+    27→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    28→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+    29→
+    30→// recharts
+    31→import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+    32→
+    33→// date-fns
+    34→import { format } from 'date-fns'
+    35→
+    36→// icons
+    37→import {
+    38→  FileCheck, FileText, FolderKanban, ListTodo, MessageSquare,
+    39→  CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
+    40→  Plus, Trash2, Eye, Send, ChevronDown, Check,
+    41→  Search, ArrowUpRight, CircleDot,
+    42→  MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
+    43→  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
+    44→  KeyRound, Download, Save, FileArchive, FileDown
+    45→} from 'lucide-react'
+    46→
+    47→import { toast } from 'sonner'
+    48→import { motion } from 'framer-motion'
+    49→
+    50→// ─── Animation Variants ───────────────────────────────────────────────────────
+    51→
+    52→const fadeIn = {
+    53→  initial: { opacity: 0, y: 12 },
+    54→  animate: { opacity: 1, y: 0 },
+    55→  transition: { duration: 0.2 }
+    56→}
+    57→
+    58→const staggerContainer = {
+    59→  animate: { transition: { staggerChildren: 0.05 } }
+    60→}
+    61→
+    62→// ─── Shared: Action Icon Helper ────────────────────────────────────────────────
+    63→
+    64→function ActivityIcon({ action }: { action: string }) {
+    65→  if (action.includes('created')) return <Plus className="h-4 w-4 text-emerald-500" />
+    66→  if (action.includes('completed') || action.includes('done')) return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+    67→  if (action.includes('moved') || action.includes('updated')) return <ArrowUpRight className="h-4 w-4 text-amber-500" />
+    68→  if (action.includes('deleted') || action.includes('removed')) return <Trash2 className="h-4 w-4 text-rose-500" />
+    69→  if (action.includes('comment')) return <MessageCircle className="h-4 w-4 text-slate-500" />
+    70→  if (action.includes('onboarding')) return <FileCheck className="h-4 w-4 text-purple-500" />
+    71→  return <CircleDot className="h-4 w-4 text-slate-400" />
+    72→}
+    73→
+    74→// ─── AdminOverview ─────────────────────────────────────────────────────────────
+    75→
+    76→export function AdminOverview() {
+    77→  const [loading, setLoading] = useState(true)
+    78→  const [stats, setStats] = useState<DashboardStats | null>(null)
+    79→  const [activities, setActivities] = useState<ActivityLog[]>([])
+    80→  const [pendingOnboarding, setPendingOnboarding] = useState(0)
+    81→
+    82→  useEffect(() => {
+    83→    async function fetchData() {
+    84→      try {
+    85→        const [statsRes, actRes] = await Promise.all([
+    86→          fetch('/api/admin'),
+    87→          fetch('/api/admin/activity')
+    88→        ])
+    89→        if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
+    90→        const statsData = await statsRes.json()
+    91→        const actData = await actRes.json()
+    92→        setStats(statsData.stats)
+    93→        setActivities(actData.activities?.slice(0, 8) ?? [])
+    94→        setPendingOnboarding(actData.pendingOnboarding ?? 0)
+    95→      } catch {
+    96→        toast.error('Failed to load dashboard data')
+    97→      } finally {
+    98→        setLoading(false)
+    99→      }
+   100→    }
+   101→    fetchData()
+   102→  }, [])
+   103→
+   104→  const chartData = stats ? [
+   105→    { name: 'To Do', count: stats.todoTasks, fill: '#94a3b8' },
+   106→    { name: 'In Progress', count: stats.inProgressTasks, fill: '#3b82f6' },
+   107→    { name: 'In Review', count: stats.inReviewTasks, fill: '#a855f7' },
+   108→    { name: 'Done', count: stats.completedTasks, fill: '#10b981' },
+   109→  ] : []
+   110→
+   111→  if (loading) return <OverviewSkeleton />
+   112→
+   113→  if (!stats) return <p className="text-muted-foreground">No data available.</p>
+   114→
+   115→  const mainCards = [
+   116→    { label: 'Total Tasks', value: stats.totalTasks, sub: `${stats.completedTasks} completed`, icon: ListTodo, color: 'text-primary', bg: 'bg-primary/10' },
+   117→    { label: 'Active Projects', value: stats.activeProjects, sub: `${stats.totalProjects} total`, icon: FolderKanban, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   118→    { label: 'Team Members', value: stats.totalMembers, sub: 'Internal team', icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   119→    { label: 'Total Clients', value: stats.totalClients, sub: 'External users', icon: Briefcase, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+   120→  ]
+   121→
+   122→  const smallCards = [
+   123→    { label: 'In Progress', value: stats.inProgressTasks, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+   124→    { label: 'Overdue', value: stats.overdueTasks, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+   125→    { label: 'This Week', value: stats.thisWeekCompleted, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+   126→    { label: 'Pending Onboarding', value: pendingOnboarding, icon: FileCheck, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+   127→  ]
+   128→
+   129→  return (
+   130→    <motion.div {...staggerContainer} initial="initial" animate="animate" className="space-y-6">
+   131→      {/* Main stat cards */}
+   132→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   133→        {mainCards.map((c) => (
+   134→          <motion.div key={c.label} {...fadeIn}>
+   135→            <Card className="relative overflow-hidden">
+   136→              <CardContent className="p-4">
+   137→                <div className="flex items-center justify-between">
+   138→                  <div className="space-y-1">
+   139→                    <p className="text-sm text-muted-foreground">{c.label}</p>
+   140→                    <p className="text-2xl font-bold">{c.value}</p>
+   141→                    <p className="text-xs text-muted-foreground">{c.sub}</p>
+   142→                  </div>
+   143→                  <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+   144→                    <c.icon className={`h-5 w-5 ${c.color}`} />
+   145→                  </div>
+   146→                </div>
+   147→              </CardContent>
+   148→            </Card>
+   149→          </motion.div>
+   150→        ))}
+   151→      </div>
+   152→
+   153→      {/* Smaller stat cards */}
+   154→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   155→        {smallCards.map((c) => (
+   156→          <motion.div key={c.label} {...fadeIn}>
+   157→            <Card>
+   158→              <CardContent className="p-4">
+   159→                <div className="flex items-center gap-3">
+   160→                  <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   161→                    <c.icon className={`h-4 w-4 ${c.color}`} />
+   162→                  </div>
+   163→                  <div>
+   164→                    <p className="text-lg font-semibold">{c.value}</p>
+   165→                    <p className="text-xs text-muted-foreground">{c.label}</p>
+   166→                  </div>
+   167→                </div>
+   168→              </CardContent>
+   169→            </Card>
+   170→          </motion.div>
+   171→        ))}
+   172→      </div>
+   173→
+   174→      {/* Chart + Activity */}
+   175→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+   176→        {/* Bar Chart */}
+   177→        <motion.div {...fadeIn} className="lg:col-span-3">
+   178→          <Card>
+   179→            <CardHeader className="pb-2">
+   180→              <CardTitle className="text-base">Task Distribution</CardTitle>
+   181→              <CardDescription>Breakdown by current status</CardDescription>
+   182→            </CardHeader>
+   183→            <CardContent>
+   184→              <div className="h-64">
+   185→                <ResponsiveContainer width="100%" height="100%">
+   186→                  <BarChart data={chartData} barCategoryGap="20%">
+   187→                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+   188→                    <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+   189→                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
+   190→                    <RechartsTooltip
+   191→                      contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
+   192→                    />
+   193→                    <Bar dataKey="count" radius={[6, 6, 0, 0]} />
+   194→                  </BarChart>
+   195→                </ResponsiveContainer>
+   196→              </div>
+   197→            </CardContent>
+   198→          </Card>
+   199→        </motion.div>
+   200→
+   201→        {/* Recent Activity */}
+   202→        <motion.div {...fadeIn} className="lg:col-span-2">
+   203→          <Card>
+   204→            <CardHeader className="pb-2">
+   205→              <CardTitle className="text-base">Recent Activity</CardTitle>
+   206→              <CardDescription>Latest actions across the platform</CardDescription>
+   207→            </CardHeader>
+   208→            <CardContent className="p-0">
+   209→              <ScrollArea className="h-64 px-4">
+   210→                <div className="space-y-4 py-2">
+   211→                  {activities.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No recent activity</p>}
+   212→                  {activities.map((act) => (
+   213→                    <div key={act.id} className="flex items-start gap-3">
+   214→                      <Avatar className="h-8 w-8 mt-0.5">
+   215→                        {act.user?.avatar ? <AvatarImage src={act.user.avatar} alt={act.user.name} /> : null}
+   216→                        <AvatarFallback className="text-xs bg-slate-100 dark:bg-slate-800">
+   217→                          {act.user ? getInitials(act.user.name) : '?'}
+   218→                        </AvatarFallback>
+   219→                      </Avatar>
+   220→                      <div className="flex-1 min-w-0">
+   221→                        <div className="flex items-center gap-2">
+   222→                          <span className="text-sm font-medium truncate">{act.user?.name ?? 'System'}</span>
+   223→                          <ActivityIcon action={act.action} />
+   224→                        </div>
+   225→                        <p className="text-xs text-muted-foreground truncate">{act.details ?? act.action}</p>
+   226→                        <p className="text-xs text-muted-foreground/60 mt-0.5">{formatRelativeTime(act.createdAt)}</p>
+   227→                      </div>
+   228→                    </div>
+   229→                  ))}
+   230→                </div>
+   231→              </ScrollArea>
+   232→            </CardContent>
+   233→          </Card>
+   234→        </motion.div>
+   235→      </div>
+   236→    </motion.div>
+   237→  )
+   238→}
+   239→
+   240→function OverviewSkeleton() {
+   241→  return (
+   242→    <div className="space-y-6">
+   243→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   244→        {Array.from({ length: 4 }).map((_, i) => (
+   245→          <Card key={i}><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   246→        ))}
+   247→      </div>
+   248→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   249→        {Array.from({ length: 4 }).map((_, i) => (
+   250→          <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+   251→        ))}
+   252→      </div>
+   253→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+   254→        <Card className="lg:col-span-3"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   255→        <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   256→      </div>
+   257→    </div>
+   258→  )
+   259→}
+   260→
+   261→// ─── AdminOnboarding ───────────────────────────────────────────────────────────
+   262→
+   263→function getOnboardingBadge(status: string) {
+   264→  switch (status) {
+   265→    case 'in_progress': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+   266→    case 'submitted': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+   267→    case 'approved': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+   268→    case 'rejected': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+   269→    default: return 'bg-slate-100 text-slate-700'
+   270→  }
+   271→}
+   272→
+   273→function getOnboardingStatusLabel(status: string) {
+   274→  const map: Record<string, string> = { in_progress: 'In Progress', submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', draft: 'Draft', published: 'Published', archived: 'Archived' }
+   275→  return map[status] || status
+   276→}
+   277→
+   278→const ONBOARDING_STEPS_CONFIG = [
+   279→  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+   280→  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+   281→  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+   282→  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+   283→]
+   284→
+   285→export function AdminOnboarding() {
+   286→  const { user } = useAuthStore()
+   287→  const [loading, setLoading] = useState(true)
+   288→  const [forms, setForms] = useState<OnboardingForm[]>([])
+   289→  const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[] }) | null>(null)
+   290→  const [dialogOpen, setDialogOpen] = useState(false)
+   291→  const [reviewing, setReviewing] = useState<string | null>(null)
+   292→  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+   293→
+   294→  // Create onboarding form state
+   295→  const [createOpen, setCreateOpen] = useState(false)
+   296→  const [creating, setCreating] = useState(false)
+   297→  const [projects, setProjects] = useState<Project[]>([])
+   298→  const [clients, setClients] = useState<User[]>([])
+   299→  const [createForm, setCreateForm] = useState({
+   300→    title: '',
+   301→    description: '',
+   302→    projectId: '',
+   303→    clientId: '',
+   304→    selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+   305→  })
+   306→  const [stepSearch, setStepSearch] = useState('')
+   307→
+   308→  // Edit onboarding form state
+   309→  const [editOpen, setEditOpen] = useState(false)
+   310→  const [editing, setEditing] = useState(false)
+   311→  const [editFormId, setEditFormId] = useState<string | null>(null)
+   312→  const [editForm, setEditForm] = useState({
+   313→    title: '',
+   314→    description: '',
+   315→    projectId: '',
+   316→    clientId: '',
+   317→    selectedSteps: [] as string[],
+   318→  })
+   319→
+   320→  const fetchForms = useCallback(async () => {
+   321→    try {
+   322→      const res = await fetch('/api/onboarding')
+   323→      if (!res.ok) throw new Error('Failed')
+   324→      const data = await res.json()
+   325→      setForms(data.forms ?? [])
+   326→    } catch {
+   327→      toast.error('Failed to load onboarding forms')
+   328→    } finally {
+   329→      setLoading(false)
+   330→    }
+   331→  }, [])
+   332→
+   333→  const fetchProjects = useCallback(async () => {
+   334→    try {
+   335→      const res = await fetch('/api/projects')
+   336→      if (res.ok) {
+   337→        const data = await res.json()
+   338→        setProjects(data.projects ?? [])
+   339→      }
+   340→    } catch { /* ignore */ }
+   341→  }, [])
+   342→
+   343→  const fetchClients = useCallback(async () => {
+   344→    try {
+   345→      const res = await fetch('/api/users')
+   346→      if (res.ok) {
+   347→        const data = await res.json()
+   348→        setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
+   349→      }
+   350→    } catch { /* ignore */ }
+   351→  }, [])
+   352→
+   353→  useEffect(() => {
+   354→    fetchForms()
+   355→    fetchProjects()
+   356→    fetchClients()
+   357→  }, [fetchForms, fetchProjects, fetchClients])
+   358→
+   359→  async function openForm(form: OnboardingForm) {
+   360→    try {
+   361→      const res = await fetch(`/api/onboarding/${form.id}`)
+   362→      if (!res.ok) throw new Error('Failed')
+   363→      const data = await res.json()
+   364→      setSelectedForm(data.form)
+   365→      setDialogOpen(true)
+   366→    } catch {
+   367→      toast.error('Failed to load form details')
+   368→    }
+   369→  }
+   370→
+   371→  async function handleCreateOnboarding() {
+   372→    if (!user || !createForm.title.trim() || !createForm.projectId) return
+   373→    setCreating(true)
+   374→    try {
+   375→      const stepsJson = JSON.stringify(
+   376→        createForm.selectedSteps.map(stepId => {
+   377→          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+   378→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   379→        })
+   380→      )
+   381→      const res = await fetch('/api/onboarding', {
+   382→        method: 'POST',
+   383→        headers: { 'Content-Type': 'application/json' },
+   384→        body: JSON.stringify({
+   385→          title: createForm.title.trim(),
+   386→          description: createForm.description.trim() || null,
+   387→          stepsJson,
+   388→          projectId: createForm.projectId,
+   389→          clientId: createForm.clientId || null,
+   390→          status: 'published',
+   391→        }),
+   392→      })
+   393→      if (!res.ok) {
+   394→        const d = await res.json()
+   395→        throw new Error(d.error || 'Failed to create')
+   396→      }
+   397→      toast.success('Onboarding form created successfully')
+   398→      setCreateOpen(false)
+   399→      setCreateForm({ title: '', description: '', projectId: '', clientId: '', selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'] })
+   400→      fetchForms()
+   401→    } catch (e: unknown) {
+   402→      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding form')
+   403→    } finally {
+   404→      setCreating(false)
+   405→    }
+   406→  }
+   407→
+   408→  async function handleReview(submissionId: string, status: 'approved' | 'rejected') {
+   409→    if (!user) return
+   410→    setReviewing(submissionId)
+   411→    try {
+   412→      const notes = reviewNotes[submissionId] || ''
+   413→      const patchRes = await fetch(`/api/onboarding/${submissionId}`, {
+   414→        method: 'PATCH',
+   415→        headers: { 'Content-Type': 'application/json' },
+   416→        body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
+   417→      })
+   418→      if (!patchRes.ok) {
+   419→        const d = await patchRes.json()
+   420→        throw new Error(d.error)
+   421→      }
+   422→      toast.success(`Submission ${status === 'approved' ? 'approved' : 'rejected'} successfully`)
+   423→      // Refresh
+   424→      if (selectedForm) {
+   425→        const fresh = await fetch(`/api/onboarding/${selectedForm.id}`)
+   426→        if (fresh.ok) {
+   427→          const data = await fresh.json()
+   428→          setSelectedForm(data.form)
+   429→        }
+   430→      }
+   431→      fetchForms()
+   432→    } catch (e: unknown) {
+   433→      toast.error(e instanceof Error ? e.message : 'Failed to review')
+   434→    } finally {
+   435→      setReviewing(null)
+   436→    }
+   437→  }
+   438→
+   439→  async function handleDeleteForm(formId: string, formTitle: string) {
+   440→    try {
+   441→      const res = await fetch(`/api/onboarding/${formId}`, {
+   442→        method: 'DELETE',
+   443→      })
+   444→      if (!res.ok) throw new Error()
+   445→      toast.success(`"${formTitle}" deleted`)
+   446→      setForms(prev => prev.filter(f => f.id !== formId))
+   447→    } catch {
+   448→      toast.error('Failed to delete onboarding form')
+   449→    }
+   450→  }
+   451→
+   452→  function openEditDialog(form: OnboardingForm) {
+   453→    const steps = form.stepsJson ? (JSON.parse(form.stepsJson) as { id: string }[]).map(s => s.id) : []
+   454→    setEditFormId(form.id)
+   455→    setEditForm({
+   456→      title: form.title,
+   457→      description: form.description ?? '',
+   458→      projectId: form.projectId,
+   459→      clientId: form.clientId ?? '',
+   460→      selectedSteps: steps.length > 0 ? steps : ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+   461→    })
+   462→    setEditOpen(true)
+   463→  }
+   464→
+   465→  async function handleEditOnboarding() {
+   466→    if (!editFormId || !editForm.title.trim() || !editForm.projectId) return
+   467→    setEditing(true)
+   468→    try {
+   469→      const stepsJson = JSON.stringify(
+   470→        editForm.selectedSteps.map(stepId => {
+   471→          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+   472→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   473→        })
+   474→      )
+   475→      const res = await fetch(`/api/onboarding/${editFormId}`, {
+   476→        method: 'PATCH',
+   477→        headers: { 'Content-Type': 'application/json' },
+   478→        body: JSON.stringify({
+   479→          title: editForm.title.trim(),
+   480→          description: editForm.description.trim() || null,
+   481→          stepsJson,
+   482→          projectId: editForm.projectId,
+   483→          clientId: editForm.clientId && editForm.clientId !== '_none' ? editForm.clientId : null,
+   484→        }),
+   485→      })
+   486→      if (!res.ok) {
+   487→        const d = await res.json()
+   488→        throw new Error(d.error || 'Failed to update')
+   489→      }
+   490→      toast.success('Onboarding form updated successfully')
+   491→      setEditOpen(false)
+   492→      setEditFormId(null)
+   493→      fetchForms()
+   494→    } catch (e: unknown) {
+   495→      toast.error(e instanceof Error ? e.message : 'Failed to update onboarding form')
+   496→    } finally {
+   497→      setEditing(false)
+   498→    }
+   499→  }
+   500→
+   501→  const toggleStep = (stepId: string) => {
+   502→    setCreateForm(prev => ({
+   503→      ...prev,
+   504→      selectedSteps: prev.selectedSteps.includes(stepId)
+   505→        ? prev.selectedSteps.filter(s => s !== stepId)
+   506→        : [...prev.selectedSteps, stepId],
+   507→    }))
+   508→  }
+   509→
+   510→  const filteredSteps = ONBOARDING_STEPS_CONFIG.filter(s =>
+   511→    !stepSearch || s.label.toLowerCase().includes(stepSearch.toLowerCase()) || s.description.toLowerCase().includes(stepSearch.toLowerCase())
+   512→  )
+   513→
+   514→  if (loading) {
+   515→    return (
+   516→      <div className="space-y-4">
+   517→        <Skeleton className="h-10 w-48" />
+   518→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   519→      </div>
+   520→    )
+   521→  }
+   522→
+   523→  return (
+   524→    <motion.div {...fadeIn} className="space-y-6">
+   525→      <div className="flex items-center justify-between">
+   526→        <div>
+   527→          <h2 className="text-xl font-semibold">Onboarding Management</h2>
+   528→          <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
+   529→        </div>
+   530→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+   531→          <Plus className="h-4 w-4 mr-2" /> Create Onboarding
+   532→        </Button>
+   533→      </div>
+   534→
+   535→      {/* Summary cards */}
+   536→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+   537→        {[
+   538→          { label: 'Total Forms', value: forms.length, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+   539→          { label: 'Published', value: forms.filter(f => f.status === 'published').length, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   540→          { label: 'Drafts', value: forms.filter(f => f.status === 'draft').length, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   541→          { label: 'Pending Review', value: forms.reduce((acc, f) => acc + (f._count?.submissions ?? 0), 0), color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+   542→        ].map((c) => (
+   543→          <Card key={c.label}>
+   544→            <CardContent className="p-4">
+   545→              <div className="flex items-center gap-3">
+   546→                <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   547→                  <FileCheck className={`h-4 w-4 ${c.color}`} />
+   548→                </div>
+   549→                <div>
+   550→                  <p className="text-lg font-semibold">{c.value}</p>
+   551→                  <p className="text-xs text-muted-foreground">{c.label}</p>
+   552→                </div>
+   553→              </div>
+   554→            </CardContent>
+   555→          </Card>
+   556→        ))}
+   557→      </div>
+   558→
+   559→      {/* Onboarding Forms Table */}
+   560→      <Card>
+   561→        <CardContent className="p-0">
+   562→          <Table>
+   563→            <TableHeader>
+   564→              <TableRow>
+   565→                <TableHead>Form Title</TableHead>
+   566→                <TableHead>Project</TableHead>
+   567→                <TableHead className="hidden md:table-cell">Client Owner</TableHead>
+   568→                <TableHead className="text-center">Submissions</TableHead>
+   569→                <TableHead>Status</TableHead>
+   570→                <TableHead className="w-28"></TableHead>
+   571→              </TableRow>
+   572→            </TableHeader>
+   573→            <TableBody>
+   574→              {forms.length === 0 && (
+   575→                <TableRow>
+   576→                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+   577→                    <div className="flex flex-col items-center gap-2">
+   578→                      <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
+   579→                      <p>No onboarding forms yet</p>
+   580→                      <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+   581→                        <Plus className="h-4 w-4 mr-1" /> Create your first form
+   582→                      </Button>
+   583→                    </div>
+   584→                  </TableCell>
+   585→                </TableRow>
+   586→              )}
+   587→              {forms.map((form) => {
+   588→                const project = form.project as { color?: string; name?: string } | undefined
+   589→                return (
+   590→                  <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+   591→                    <TableCell>
+   592→                      <div className="flex items-center gap-2">
+   593→                        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+   594→                          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   595→                        </div>
+   596→                        <div>
+   597→                          <p className="font-medium text-sm">{form.title}</p>
+   598→                          {form.description && <p className="text-xs text-muted-foreground truncate max-w-48">{form.description}</p>}
+   599→                        </div>
+   600→                      </div>
+   601→                    </TableCell>
+   602→                    <TableCell>
+   603→                      <div className="flex items-center gap-2">
+   604→                        {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
+   605→                        <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
+   606→                      </div>
+   607→                    </TableCell>
+   608→                    <TableCell className="hidden md:table-cell">
+   609→                      {form.client ? (
+   610→                        <div className="flex items-center gap-2">
+   611→                          <Avatar className="h-6 w-6">
+   612→                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   613→                              {getInitials(form.client.name)}
+   614→                            </AvatarFallback>
+   615→                          </Avatar>
+   616→                          <div className="min-w-0">
+   617→                            <p className="text-sm font-medium truncate">{form.client.name}</p>
+   618→                            {form.client.company && <p className="text-xs text-muted-foreground truncate">{form.client.company}</p>}
+   619→                          </div>
+   620→                        </div>
+   621→                      ) : (
+   622→                        <span className="text-sm text-muted-foreground">—</span>
+   623→                      )}
+   624→                    </TableCell>
+   625→                    <TableCell className="text-center">
+   626→                      {(form._count?.submissions ?? 0) > 0 && (
+   627→                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+   628→                          {form._count?.submissions}
+   629→                        </Badge>
+   630→                      )}
+   631→                      {(form._count?.submissions ?? 0) === 0 && <span className="text-muted-foreground text-sm">0</span>}
+   632→                    </TableCell>
+   633→                    <TableCell>
+   634→                      <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+   635→                        {getOnboardingStatusLabel(form.status)}
+   636→                      </Badge>
+   637→                    </TableCell>
+   638→                    <TableCell>
+   639→                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+   640→                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
+   641→                          <Eye className="h-4 w-4" />
+   642→                        </Button>
+   643→                        <TooltipProvider>
+   644→                          <Tooltip>
+   645→                            <TooltipTrigger asChild>
+   646→                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(form)}>
+   647→                                <Pencil className="h-4 w-4" />
+   648→                              </Button>
+   649→                            </TooltipTrigger>
+   650→                            <TooltipContent>Edit Form</TooltipContent>
+   651→                          </Tooltip>
+   652→                        </TooltipProvider>
+   653→                        <AlertDialog>
+   654→                          <AlertDialogTrigger asChild>
+   655→                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+   656→                              <Trash2 className="h-4 w-4" />
+   657→                            </Button>
+   658→                          </AlertDialogTrigger>
+   659→                          <AlertDialogContent>
+   660→                            <AlertDialogHeader>
+   661→                              <AlertDialogTitle>Delete Onboarding Form</AlertDialogTitle>
+   662→                              <AlertDialogDescription>
+   663→                                Are you sure you want to delete &quot;{form.title}&quot;? This will also delete all associated submissions. This action cannot be undone.
+   664→                              </AlertDialogDescription>
+   665→                            </AlertDialogHeader>
+   666→                            <AlertDialogFooter>
+   667→                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   668→                              <AlertDialogAction onClick={() => handleDeleteForm(form.id, form.title)} className="bg-rose-600 hover:bg-rose-700">
+   669→                                Delete
+   670→                              </AlertDialogAction>
+   671→                            </AlertDialogFooter>
+   672→                          </AlertDialogContent>
+   673→                        </AlertDialog>
+   674→                      </div>
+   675→                    </TableCell>
+   676→                  </TableRow>
+   677→                )
+   678→              })}
+   679→            </TableBody>
+   680→          </Table>
+   681→        </CardContent>
+   682→      </Card>
+   683→
+   684→      {/* Submissions Review Dialog */}
+   685→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   686→        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+   687→          <DialogHeader>
+   688→            <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
+   689→            <DialogDescription>
+   690→              {selectedForm?.project ? (
+   691→                <span className="flex items-center gap-2">
+   692→                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+   693→                  {(selectedForm.project as { name?: string }).name}
+   694→                </span>
+   695→              ) : 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
+   696→            </DialogDescription>
+   697→          </DialogHeader>
+   698→          <ScrollArea className="flex-1 -mx-6 px-6">
+   699→            <div className="space-y-4 py-2">
+   700→              {selectedForm?.submissions?.length === 0 && (
+   701→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   702→                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+   703→                    <FileCheck className="h-6 w-6 text-muted-foreground" />
+   704→                  </div>
+   705→                  <p className="text-sm font-medium">No submissions yet</p>
+   706→                  <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
+   707→                </div>
+   708→              )}
+   709→              {selectedForm?.submissions?.map((sub) => {
+   710→                let parsedResponses: Record<string, string> = {}
+   711→                let parsedFiles: Record<string, { url: string; originalName: string } | null> = {}
+   712→                try {
+   713→                  const raw = JSON.parse(sub.responsesJson)
+   714→                  parsedResponses = raw.responses || {}
+   715→                  parsedFiles = raw.files || {}
+   716→                } catch { /* old format fallback */ }
+   717→
+   718→                return (
+   719→                  <Card key={sub.id} className="border">
+   720→                    <CardContent className="p-4 space-y-4">
+   721→                      <div className="flex items-start justify-between">
+   722→                        <div className="flex items-center gap-3">
+   723→                          <Avatar className="h-9 w-9">
+   724→                            {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+   725→                            <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+   726→                          </Avatar>
+   727→                          <div>
+   728→                            <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
+   729→                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
+   730→                          </div>
+   731→                        </div>
+   732→                        <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
+   733→                          {getOnboardingStatusLabel(sub.status)}
+   734→                        </Badge>
+   735→                      </div>
+   736→
+   737→                      {sub.submittedAt && (
+   738→                        <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
+   739→                      )}
+   740→
+   741→                      {/* Download buttons */}
+   742→                      <div className="flex items-center gap-2 flex-wrap">
+   743→                        <Button
+   744→                          variant="outline"
+   745→                          size="sm"
+   746→                          className="gap-1.5 h-8 text-xs"
+   747→                          onClick={(e) => {
+   748→                            e.stopPropagation()
+   749→                            window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
+   750→                          }}
+   751→                        >
+   752→                          <Download className="h-3.5 w-3.5" />
+   753→                          Download Report
+   754→                        </Button>
+   755→                        {Object.keys(parsedFiles).filter(([_, f]) => f).length > 0 && (
+   756→                          <Button
+   757→                            variant="outline"
+   758→                            size="sm"
+   759→                            className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5"
+   760→                            onClick={(e) => {
+   761→                              e.stopPropagation()
+   762→                              window.open(`/api/onboarding/download-documents?submissionId=${sub.id}`, '_blank')
+   763→                            }}
+   764→                          >
+   765→                            <FileArchive className="h-3.5 w-3.5" />
+   766→                            Download Documents
+   767→                          </Button>
+   768→                        )}
+   769→                      </div>
+   770→
+   771→                      {Object.keys(parsedResponses).length > 0 && (
+   772→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   773→                          {Object.entries(parsedResponses).filter(([_, v]) => v?.trim()).map(([key, value]) => (
+   774→                            <div key={key} className="p-2.5 rounded-lg bg-muted/50 border">
+   775→                              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+   776→                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase())}
+   777→                              </p>
+   778→                              <p className="text-sm whitespace-pre-wrap line-clamp-3">{value}</p>
+   779→                            </div>
+   780→                          ))}
+   781→                        </div>
+   782→                      )}
+   783→
+   784→                      {Object.keys(parsedFiles).length > 0 && (
+   785→                        <div className="space-y-2">
+   786→                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Documents</p>
+   787→                          <div className="flex flex-wrap gap-2">
+   788→                            {Object.entries(parsedFiles).filter(([_, f]) => f).map(([key, f]) => (
+   789→                              <a key={key} href={f!.url} download={f!.originalName} target="_blank" rel="noopener noreferrer"
+   790→                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm group">
+   791→                                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+   792→                                <span className="max-w-[180px] truncate">{f!.originalName}</span>
+   793→                                <FileDown className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+   794→                              </a>
+   795→                            ))}
+   796→                          </div>
+   797→                        </div>
+   798→                      )}
+   799→
+   800→                      {sub.reviewNotes && (
+   801→                        <div className="bg-muted/50 rounded-md p-2 text-xs">
+   802→                          <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+   803→                          {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+   804→                        </div>
+   805→                      )}
+   806→
+   807→                      {sub.status === 'submitted' && (
+   808→                        <div className="space-y-2">
+   809→                          <Textarea
+   810→                            placeholder="Add review notes..."
+   811→                            value={reviewNotes[sub.id] ?? ''}
+   812→                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
+   813→                            className="text-sm"
+   814→                            rows={2}
+   815→                          />
+   816→                          <div className="flex gap-2">
+   817→                            <Button
+   818→                              size="sm"
+   819→                              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+   820→                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
+   821→                              disabled={reviewing === sub.id}
+   822→                            >
+   823→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />}
+   824→                              Approve
+   825→                            </Button>
+   826→                            <Button
+   827→                              size="sm"
+   828→                              variant="destructive"
+   829→                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
+   830→                              disabled={reviewing === sub.id}
+   831→                            >
+   832→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />}
+   833→                              Reject
+   834→                            </Button>
+   835→                          </div>
+   836→                        </div>
+   837→                      )}
+   838→                    </CardContent>
+   839→                  </Card>
+   840→                )
+   841→              })}
+   842→            </div>
+   843→          </ScrollArea>
+   844→        </DialogContent>
+   845→      </Dialog>
+   846→
+   847→      {/* Create Onboarding Form Dialog */}
+   848→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   849→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   850→          <DialogHeader>
+   851→            <DialogTitle className="flex items-center gap-2">
+   852→              <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
+   853→            </DialogTitle>
+   854→            <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
+   855→          </DialogHeader>
+   856→
+   857→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+   858→            {/* Title */}
+   859→            <div className="space-y-1.5">
+   860→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+   861→              <Input
+   862→                placeholder="e.g., Client Onboarding Package"
+   863→                value={createForm.title}
+   864→                onChange={(e) => setCreateForm(p => ({ ...p, title: e.target.value }))}
+   865→                autoFocus
+   866→              />
+   867→            </div>
+   868→
+   869→            {/* Description */}
+   870→            <div className="space-y-1.5">
+   871→              <Label className="text-sm">Description</Label>
+   872→              <Textarea
+   873→                placeholder="Brief description of this onboarding form (optional)"
+   874→                value={createForm.description}
+   875→                onChange={(e) => setCreateForm(p => ({ ...p, description: e.target.value }))}
+   876→                rows={2}
+   877→              />
+   878→            </div>
+   879→
+   880→            {/* Project Selection */}
+   881→            <div className="space-y-1.5">
+   882→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+   883→              <Select value={createForm.projectId} onValueChange={(v) => setCreateForm(p => ({ ...p, projectId: v }))}>
+   884→                <SelectTrigger className="w-full">
+   885→                  <SelectValue placeholder="Select a project" />
+   886→                </SelectTrigger>
+   887→                <SelectContent>
+   888→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+   889→                  {projects.map((p) => (
+   890→                    <SelectItem key={p.id} value={p.id}>
+   891→                      <span className="flex items-center gap-2">
+   892→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+   893→                        {p.name}
+   894→                      </span>
+   895→                    </SelectItem>
+   896→                  ))}
+   897→                </SelectContent>
+   898→              </Select>
+   899→              <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
+   900→            </div>
+   901→
+   902→            {/* Client Owner Selection */}
+   903→            <div className="space-y-1.5">
+   904→              <Label className="text-sm">Client Owner <span className="text-red-500">*</span></Label>
+   905→              <Select value={createForm.clientId} onValueChange={(v) => setCreateForm(p => ({ ...p, clientId: v }))}>
+   906→                <SelectTrigger className="w-full">
+   907→                  <SelectValue placeholder="Select a client" />
+   908→                </SelectTrigger>
+   909→                <SelectContent>
+   910→                  {clients.length === 0 && <SelectItem value="_none" disabled>No active clients available</SelectItem>}
+   911→                  {clients.map((c) => (
+   912→                    <SelectItem key={c.id} value={c.id}>
+   913→                      <span className="flex items-center gap-2">
+   914→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   915→                          {getInitials(c.name)}
+   916→                        </span>
+   917→                        <span>{c.name}</span>
+   918→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+   919→                      </span>
+   920→                    </SelectItem>
+   921→                  ))}
+   922→                </SelectContent>
+   923→              </Select>
+   924→              <p className="text-xs text-muted-foreground">Only this client will see and fill out this onboarding form</p>
+   925→            </div>
+   926→
+   927→            <Separator />
+   928→
+   929→            {/* Step Selection */}
+   930→            <div className="space-y-3">
+   931→              <div className="flex items-center justify-between">
+   932→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+   933→                <Badge variant="secondary" className="text-xs">
+   934→                  {createForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+   935→                </Badge>
+   936→              </div>
+   937→
+   938→              <p className="text-xs text-muted-foreground">Choose which steps to include in the onboarding form</p>
+   939→
+   940→              <div className="space-y-2">
+   941→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+   942→                  const isSelected = createForm.selectedSteps.includes(step.id)
+   943→                  return (
+   944→                    <button
+   945→                      key={step.id}
+   946→                      type="button"
+   947→                      onClick={() => toggleStep(step.id)}
+   948→                      className={cn(
+   949→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+   950→                        isSelected
+   951→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+   952→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+   953→                      )}
+   954→                    >
+   955→                      <div className="flex items-start gap-3">
+   956→                        <div className={cn(
+   957→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+   958→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+   959→                        )}>
+   960→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+   961→                        </div>
+   962→                        <div className="flex-1 min-w-0">
+   963→                          <div className="flex items-center gap-2">
+   964→                            <p className="text-sm font-medium">{step.label}</p>
+   965→                            {step.required && (
+   966→                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+   967→                            )}
+   968→                          </div>
+   969→                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+   970→                        </div>
+   971→                      </div>
+   972→                    </button>
+   973→                  )
+   974→                })}
+   975→              </div>
+   976→            </div>
+   977→          </div>
+   978→
+   979→          <DialogFooter className="pt-2">
+   980→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+   981→            <Button
+   982→              onClick={handleCreateOnboarding}
+   983→              disabled={!createForm.title.trim() || !createForm.projectId || !createForm.clientId || createForm.selectedSteps.length === 0 || creating}
+   984→              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+   985→            >
+   986→              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+   987→              <ClipboardList className="h-4 w-4 mr-2" />
+   988→              Create Form
+   989→            </Button>
+   990→          </DialogFooter>
+   991→        </DialogContent>
+   992→      </Dialog>
+   993→
+   994→      {/* Edit Onboarding Form Dialog */}
+   995→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+   996→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   997→          <DialogHeader>
+   998→            <DialogTitle className="flex items-center gap-2">
+   999→              <Pencil className="h-5 w-5 text-primary" /> Edit Onboarding Form
+  1000→            </DialogTitle>
+  1001→            <DialogDescription>Update the onboarding form details</DialogDescription>
+  1002→          </DialogHeader>
+  1003→
+  1004→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+  1005→            {/* Title */}
+  1006→            <div className="space-y-1.5">
+  1007→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+  1008→              <Input
+  1009→                placeholder="e.g., Client Onboarding Package"
+  1010→                value={editForm.title}
+  1011→                onChange={(e) => setEditForm(p => ({ ...p, title: e.target.value }))}
+  1012→                autoFocus
+  1013→              />
+  1014→            </div>
+  1015→
+  1016→            {/* Description */}
+  1017→            <div className="space-y-1.5">
+  1018→              <Label className="text-sm">Description</Label>
+  1019→              <Textarea
+  1020→                placeholder="Brief description of this onboarding form (optional)"
+  1021→                value={editForm.description}
+  1022→                onChange={(e) => setEditForm(p => ({ ...p, description: e.target.value }))}
+  1023→                rows={2}
+  1024→              />
+  1025→            </div>
+  1026→
+  1027→            {/* Project Selection */}
+  1028→            <div className="space-y-1.5">
+  1029→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+  1030→              <Select value={editForm.projectId} onValueChange={(v) => setEditForm(p => ({ ...p, projectId: v }))}>
+  1031→                <SelectTrigger className="w-full">
+  1032→                  <SelectValue placeholder="Select a project" />
+  1033→                </SelectTrigger>
+  1034→                <SelectContent>
+  1035→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+  1036→                  {projects.map((p) => (
+  1037→                    <SelectItem key={p.id} value={p.id}>
+  1038→                      <span className="flex items-center gap-2">
+  1039→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+  1040→                        {p.name}
+  1041→                      </span>
+  1042→                    </SelectItem>
+  1043→                  ))}
+  1044→                </SelectContent>
+  1045→              </Select>
+  1046→            </div>
+  1047→
+  1048→            {/* Client Owner Selection */}
+  1049→            <div className="space-y-1.5">
+  1050→              <Label className="text-sm">Client Owner</Label>
+  1051→              <Select value={editForm.clientId} onValueChange={(v) => setEditForm(p => ({ ...p, clientId: v }))}>
+  1052→                <SelectTrigger className="w-full">
+  1053→                  <SelectValue placeholder="Select a client" />
+  1054→                </SelectTrigger>
+  1055→                <SelectContent>
+  1056→                  <SelectItem value="_none">No client assigned</SelectItem>
+  1057→                  {clients.map((c) => (
+  1058→                    <SelectItem key={c.id} value={c.id}>
+  1059→                      <span className="flex items-center gap-2">
+  1060→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+  1061→                          {getInitials(c.name)}
+  1062→                        </span>
+  1063→                        <span>{c.name}</span>
+  1064→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+  1065→                      </span>
+  1066→                    </SelectItem>
+  1067→                  ))}
+  1068→                </SelectContent>
+  1069→              </Select>
+  1070→            </div>
+  1071→
+  1072→            <Separator />
+  1073→
+  1074→            {/* Step Selection */}
+  1075→            <div className="space-y-3">
+  1076→              <div className="flex items-center justify-between">
+  1077→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+  1078→                <Badge variant="secondary" className="text-xs">
+  1079→                  {editForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+  1080→                </Badge>
+  1081→              </div>
+  1082→
+  1083→              <div className="space-y-2">
+  1084→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+  1085→                  const isSelected = editForm.selectedSteps.includes(step.id)
+  1086→                  return (
+  1087→                    <button
+  1088→                      key={step.id}
+  1089→                      type="button"
+  1090→                      onClick={() => setEditForm(prev => ({
+  1091→                        ...prev,
+  1092→                        selectedSteps: prev.selectedSteps.includes(step.id)
+  1093→                          ? prev.selectedSteps.filter(s => s !== step.id)
+  1094→                          : [...prev.selectedSteps, step.id],
+  1095→                      }))}
+  1096→                      className={cn(
+  1097→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+  1098→                        isSelected
+  1099→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+  1100→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+  1101→                      )}
+  1102→                    >
+  1103→                      <div className="flex items-start gap-3">
+  1104→                        <div className={cn(
+  1105→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+  1106→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+  1107→                        )}>
+  1108→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+  1109→                        </div>
+  1110→                        <div className="flex-1 min-w-0">
+  1111→                          <div className="flex items-center gap-2">
+  1112→                            <p className="text-sm font-medium">{step.label}</p>
+  1113→                            {step.required && (
+  1114→                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+  1115→                            )}
+  1116→                          </div>
+  1117→                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+  1118→                        </div>
+  1119→                      </div>
+  1120→                    </button>
+  1121→                  )
+  1122→                })}
+  1123→              </div>
+  1124→            </div>
+  1125→          </div>
+  1126→
+  1127→          <DialogFooter className="pt-2">
+  1128→            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+  1129→            <Button
+  1130→              onClick={handleEditOnboarding}
+  1131→              disabled={!editForm.title.trim() || !editForm.projectId || editForm.selectedSteps.length === 0 || editing}
+  1132→              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+  1133→            >
+  1134→              {editing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+  1135→              <Pencil className="h-4 w-4 mr-2" />
+  1136→              Save Changes
+  1137→            </Button>
+  1138→          </DialogFooter>
+  1139→        </DialogContent>
+  1140→      </Dialog>
+  1141→    </motion.div>
+  1142→  )
+  1143→}
+  1144→
+  1145→// ─── AdminProjects ─────────────────────────────────────────────────────────────
+  1146→
+  1147→const PRESET_COLORS = ['#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#e11d48']
+  1148→
+  1149→export function AdminProjects() {
+  1150→  const { user } = useAuthStore()
+  1151→  const [loading, setLoading] = useState(true)
+  1152→  const [projects, setProjects] = useState<Project[]>([])
+  1153→  const [createOpen, setCreateOpen] = useState(false)
+  1154→  const [creating, setCreating] = useState(false)
+  1155→  const [form, setForm] = useState({ name: '', description: '', priority: 'medium', dueDate: null as Date | null, color: PRESET_COLORS[0] })
+  1156→
+  1157→  const fetchProjects = useCallback(async () => {
+  1158→    try {
+  1159→      const res = await fetch('/api/projects')
+  1160→      if (!res.ok) throw new Error('Failed')
+  1161→      const data = await res.json()
+  1162→      setProjects(data.projects ?? [])
+  1163→    } catch {
+  1164→      toast.error('Failed to load projects')
+  1165→    } finally {
+  1166→      setLoading(false)
+  1167→    }
+  1168→  }, [])
+  1169→
+  1170→  useEffect(() => { fetchProjects() }, [fetchProjects])
+  1171→
+  1172→  async function handleCreate() {
+  1173→    if (!user || !form.name.trim()) return
+  1174→    setCreating(true)
+  1175→    try {
+  1176→      const createRes = await fetch('/api/projects', {
+  1177→        method: 'POST',
+  1178→        headers: { 'Content-Type': 'application/json' },
+  1179→        body: JSON.stringify({
+  1180→          name: form.name,
+  1181→          description: form.description || null,
+  1182→          priority: form.priority,
+  1183→          dueDate: form.dueDate ? form.dueDate.toISOString() : null,
+  1184→          color: form.color,
+  1185→          createdBy: user.id
+  1186→        })
+  1187→      })
+  1188→      if (!createRes.ok) {
+  1189→        const d = await createRes.json()
+  1190→        throw new Error(d.error)
+  1191→      }
+  1192→      toast.success('Project created successfully')
+  1193→      setCreateOpen(false)
+  1194→      setForm({ name: '', description: '', priority: 'medium', dueDate: null, color: PRESET_COLORS[0] })
+  1195→      fetchProjects()
+  1196→    } catch (e: unknown) {
+  1197→      toast.error(e instanceof Error ? e.message : 'Failed to create project')
+  1198→    } finally {
+  1199→      setCreating(false)
+  1200→    }
+  1201→  }
+  1202→
+  1203→  async function handleStatusChange(projectId: string, status: string) {
+  1204→    try {
+  1205→      const patchRes = await fetch(`/api/projects/${projectId}`, {
+  1206→        method: 'PATCH',
+  1207→        headers: { 'Content-Type': 'application/json' },
+  1208→        body: JSON.stringify({ status })
+  1209→      })
+  1210→      if (!patchRes.ok) throw new Error()
+  1211→      toast.success(`Project ${status}`)
+  1212→      fetchProjects()
+  1213→    } catch {
+  1214→      toast.error('Failed to update project status')
+  1215→    }
+  1216→  }
+  1217→
+  1218→  async function handleDelete(projectId: string) {
+  1219→    try {
+  1220→      const delRes = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+  1221→      if (!delRes.ok) throw new Error()
+  1222→      toast.success('Project deleted')
+  1223→      fetchProjects()
+  1224→    } catch {
+  1225→      toast.error('Failed to delete project')
+  1226→    }
+  1227→  }
+  1228→
+  1229→  function getProjectStatusBadge(status: string) {
+  1230→    switch (status) {
+  1231→      case 'active': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  1232→      case 'completed': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+  1233→      case 'archived': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+  1234→      default: return 'bg-slate-100 text-slate-700'
+  1235→    }
+  1236→  }
+  1237→
+  1238→  if (loading) {
+  1239→    return (
+  1240→      <div className="space-y-4">
+  1241→        <div className="flex justify-between items-center"><Skeleton className="h-10 w-48" /><Skeleton className="h-10 w-32" /></div>
+  1242→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+  1243→      </div>
+  1244→    )
+  1245→  }
+  1246→
+  1247→  return (
+  1248→    <motion.div {...fadeIn} className="space-y-6">
+  1249→      <div className="flex items-center justify-between">
+  1250→        <div>
+  1251→          <h2 className="text-xl font-semibold">Projects</h2>
+  1252→          <p className="text-sm text-muted-foreground">Manage all projects across the platform</p>
+  1253→        </div>
+  1254→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  1255→          <Plus className="h-4 w-4 mr-2" /> New Project
+  1256→        </Button>
+  1257→      </div>
+  1258→
+  1259→      <Card>
+  1260→        <CardContent className="p-0">
+  1261→          <Table>
+  1262→            <TableHeader>
+  1263→              <TableRow>
+  1264→                <TableHead>Name</TableHead>
+  1265→                <TableHead className="hidden md:table-cell">Description</TableHead>
+  1266→                <TableHead>Priority</TableHead>
+  1267→                <TableHead className="text-center">Tasks</TableHead>
+  1268→                <TableHead className="text-center hidden sm:table-cell">Members</TableHead>
+  1269→                <TableHead>Status</TableHead>
+  1270→                <TableHead className="w-16"></TableHead>
+  1271→              </TableRow>
+  1272→            </TableHeader>
+  1273→            <TableBody>
+  1274→              {projects.length === 0 && (
+  1275→                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No projects found</TableCell></TableRow>
+  1276→              )}
+  1277→              {projects.map((p) => {
+  1278→                const pCfg = getPriorityConfig(p.priority)
+  1279→                return (
+  1280→                  <TableRow key={p.id}>
+  1281→                    <TableCell>
+  1282→                      <div className="flex items-center gap-2">
+  1283→                        <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+  1284→                        <span className="font-medium">{p.name}</span>
+  1285→                      </div>
+  1286→                    </TableCell>
+  1287→                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-48 truncate">
+  1288→                      {p.description ?? '—'}
+  1289→                    </TableCell>
+  1290→                    <TableCell>
+  1291→                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>
+  1292→                        {pCfg.label}
+  1293→                      </Badge>
+  1294→                    </TableCell>
+  1295→                    <TableCell className="text-center">{p._count?.tasks ?? 0}</TableCell>
+  1296→                    <TableCell className="text-center hidden sm:table-cell">{p._count?.members ?? 0}</TableCell>
+  1297→                    <TableCell>
+  1298→                      <DropdownMenu>
+  1299→                        <DropdownMenuTrigger asChild>
+  1300→                          <Button variant="ghost" size="sm" className="h-7">
+  1301→                            <Badge variant="secondary" className={getProjectStatusBadge(p.status)}>
+  1302→                              {p.status}
+  1303→                            </Badge>
+  1304→                            <ChevronDown className="h-3 w-3 ml-1" />
+  1305→                          </Button>
+  1306→                        </DropdownMenuTrigger>
+  1307→                        <DropdownMenuContent>
+  1308→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'active')}>Active</DropdownMenuItem>
+  1309→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'completed')}>Completed</DropdownMenuItem>
+  1310→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'archived')}>Archived</DropdownMenuItem>
+  1311→                        </DropdownMenuContent>
+  1312→                      </DropdownMenu>
+  1313→                    </TableCell>
+  1314→                    <TableCell>
+  1315→                      <AlertDialog>
+  1316→                        <AlertDialogTrigger asChild>
+  1317→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+  1318→                            <Trash2 className="h-4 w-4" />
+  1319→                          </Button>
+  1320→                        </AlertDialogTrigger>
+  1321→                        <AlertDialogContent>
+  1322→                          <AlertDialogHeader>
+  1323→                            <AlertDialogTitle>Delete Project</AlertDialogTitle>
+  1324→                            <AlertDialogDescription>
+  1325→                              Are you sure you want to delete &quot;{p.name}&quot;? This action cannot be undone.
+  1326→                            </AlertDialogDescription>
+  1327→                          </AlertDialogHeader>
+  1328→                          <AlertDialogFooter>
+  1329→                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1330→                            <AlertDialogAction onClick={() => handleDelete(p.id)} className="bg-rose-600 hover:bg-rose-700">
+  1331→                              Delete
+  1332→                            </AlertDialogAction>
+  1333→                          </AlertDialogFooter>
+  1334→                        </AlertDialogContent>
+  1335→                      </AlertDialog>
+  1336→                    </TableCell>
+  1337→                  </TableRow>
+  1338→                )
+  1339→              })}
+  1340→            </TableBody>
+  1341→          </Table>
+  1342→        </CardContent>
+  1343→      </Card>
+  1344→
+  1345→      {/* Create Project Dialog */}
+  1346→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+  1347→        <DialogContent>
+  1348→          <DialogHeader>
+  1349→            <DialogTitle>Create New Project</DialogTitle>
+  1350→            <DialogDescription>Add a new project to your workspace</DialogDescription>
+  1351→          </DialogHeader>
+  1352→          <div className="space-y-4 py-2">
+  1353→            <div className="space-y-2">
+  1354→              <Label>Name</Label>
+  1355→              <Input placeholder="Project name" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
+  1356→            </div>
+  1357→            <div className="space-y-2">
+  1358→              <Label>Description</Label>
+  1359→              <Textarea placeholder="Brief description (optional)" value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} rows={3} />
+  1360→            </div>
+  1361→            <div className="grid grid-cols-2 gap-4">
+  1362→              <div className="space-y-2">
+  1363→                <Label>Priority</Label>
+  1364→                <Select value={form.priority} onValueChange={(v) => setForm(p => ({ ...p, priority: v }))}>
+  1365→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1366→                  <SelectContent>
+  1367→                    <SelectItem value="low">Low</SelectItem>
+  1368→                    <SelectItem value="medium">Medium</SelectItem>
+  1369→                    <SelectItem value="high">High</SelectItem>
+  1370→                    <SelectItem value="urgent">Urgent</SelectItem>
+  1371→                  </SelectContent>
+  1372→                </Select>
+  1373→              </div>
+  1374→              <div className="space-y-2">
+  1375→                <Label>Due Date</Label>
+  1376→                <Popover>
+  1377→                  <PopoverTrigger asChild>
+  1378→                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+  1379→                      <CalendarIcon className="mr-2 h-4 w-4" />
+  1380→                      {form.dueDate ? format(form.dueDate, 'MMM d, yyyy') : 'Pick a date'}
+  1381→                    </Button>
+  1382→                  </PopoverTrigger>
+  1383→                  <PopoverContent className="w-auto p-0" align="start">
+  1384→                    <Calendar
+  1385→                      mode="single"
+  1386→                      selected={form.dueDate ?? undefined}
+  1387→                      onSelect={(d: Date | undefined) => setForm(p => ({ ...p, dueDate: d ?? null }))}
+  1388→                    />
+  1389→                  </PopoverContent>
+  1390→                </Popover>
+  1391→              </div>
+  1392→            </div>
+  1393→            <div className="space-y-2">
+  1394→              <Label>Color</Label>
+  1395→              <div className="flex gap-2 flex-wrap">
+  1396→                {PRESET_COLORS.map((c) => (
+  1397→                  <button
+  1398→                    key={c}
+  1399→                    className={`h-8 w-8 rounded-full border-2 transition-all ${form.color === c ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'}`}
+  1400→                    style={{ backgroundColor: c }}
+  1401→                    onClick={() => setForm(p => ({ ...p, color: c }))}
+  1402→                  />
+  1403→                ))}
+  1404→              </div>
+  1405→            </div>
+  1406→          </div>
+  1407→          <DialogFooter>
+  1408→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+  1409→            <Button onClick={handleCreate} disabled={!form.name.trim() || creating} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  1410→              {creating ? 'Creating...' : 'Create Project'}
+  1411→            </Button>
+  1412→          </DialogFooter>
+  1413→        </DialogContent>
+  1414→      </Dialog>
+  1415→    </motion.div>
+  1416→  )
+  1417→}
+  1418→
+  1419→// ─── AdminTasks ────────────────────────────────────────────────────────────────
+  1420→
+  1421→const STATUS_FILTERS = ['all', 'todo', 'in_progress', 'in_review', 'done'] as const
+  1422→type StatusFilter = typeof STATUS_FILTERS[number]
+  1423→
+  1424→const STATUS_LABELS: Record<string, string> = {
+  1425→  all: 'All', todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done'
+  1426→}
+  1427→
+  1428→export function AdminTasks() {
+  1429→  const { user } = useAuthStore()
+  1430→  const [loading, setLoading] = useState(true)
+  1431→  const [tasks, setTasks] = useState<Task[]>([])
+  1432→  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  1433→  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  1434→  const [detailOpen, setDetailOpen] = useState(false)
+  1435→  const [comments, setComments] = useState<Comment[]>([])
+  1436→  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
+  1437→  const [assigneeOpen, setAssigneeOpen] = useState(false)
+  1438→
+  1439→  // ─── Buffered edit state ───────────────────────────────────────
+  1440→  const [editStatus, setEditStatus] = useState('')
+  1441→  const [editPriority, setEditPriority] = useState('')
+  1442→  const [editDueDate, setEditDueDate] = useState<Date | null>(null)
+  1443→  const [pendingAssigneeIds, setPendingAssigneeIds] = useState<Set<string>>(new Set())
+  1444→  const [saving, setSaving] = useState(false)
+  1445→
+  1446→  const hasChanges = selectedTask ? (
+  1447→    editStatus !== selectedTask.status ||
+  1448→    editPriority !== selectedTask.priority ||
+  1449→    (editDueDate ? editDueDate.toISOString() : null) !== (selectedTask.dueDate || null) ||
+  1450→    pendingAssigneeIds.size !== new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).size ||
+  1451→    ![...pendingAssigneeIds].every(id => new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).has(id))
+  1452→  ) : false
+  1453→
+  1454→  const fetchTasks = useCallback(async (status: StatusFilter) => {
+  1455→    setLoading(true)
+  1456→    try {
+  1457→      const url = status === 'all' ? '/api/tasks' : `/api/tasks?status=${status}`
+  1458→      const res = await fetch(url)
+  1459→      if (!res.ok) throw new Error('Failed')
+  1460→      const data = await res.json()
+  1461→      setTasks(data.tasks ?? [])
+  1462→    } catch {
+  1463→      toast.error('Failed to load tasks')
+  1464→    } finally {
+  1465→      setLoading(false)
+  1466→    }
+  1467→  }, [])
+  1468→
+  1469→  useEffect(() => { fetchTasks(statusFilter) }, [statusFilter, fetchTasks])
+  1470→
+  1471→  // Fetch all team/admin users for assignee selection
+  1472→  useEffect(() => {
+  1473→    fetch('/api/users')
+  1474→      .then(r => r.json())
+  1475→      .then(d => {
+  1476→        const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'admin')
+  1477→        setAllTeamUsers(members)
+  1478→      })
+  1479→      .catch(() => {})
+  1480→  }, [])
+  1481→
+  1482→  async function openTaskDetail(task: Task) {
+  1483→    setSelectedTask(task)
+  1484→    setDetailOpen(true)
+  1485→    // Initialize edit state from the task
+  1486→    setEditStatus(task.status)
+  1487→    setEditPriority(task.priority)
+  1488→    setEditDueDate(task.dueDate ? new Date(task.dueDate) : null)
+  1489→    const aIds = new Set((task.assignees || []).map((a: { userId: string }) => a.userId))
+  1490→    setPendingAssigneeIds(aIds)
+  1491→    // Fetch full task with comments
+  1492→    try {
+  1493→      const detailRes = await fetch(`/api/tasks/${task.id}`)
+  1494→      if (detailRes.ok) {
+  1495→        const data = await detailRes.json()
+  1496→        const fullTask = data.task
+  1497→        setSelectedTask(fullTask)
+  1498→        setComments(fullTask?.comments ?? [])
+  1499→        setEditStatus(fullTask.status)
+  1500→        setEditPriority(fullTask.priority)
+  1501→        setEditDueDate(fullTask.dueDate ? new Date(fullTask.dueDate) : null)
+  1502→        setPendingAssigneeIds(new Set((fullTask?.assignees || []).map((a: { userId: string }) => a.userId)))
+  1503→      }
+  1504→    } catch { /* use basic data */ }
+  1505→  }
+  1506→
+  1507→  function handleTogglePendingAssignee(userId: string) {
+  1508→    setPendingAssigneeIds(prev => {
+  1509→      const next = new Set(prev)
+  1510→      if (next.has(userId)) {
+  1511→        next.delete(userId)
+  1512→      } else {
+  1513→        next.add(userId)
+  1514→      }
+  1515→      return next
+  1516→    })
+  1517→  }
+  1518→
+  1519→  const assignedUsersList = allTeamUsers.filter(u => pendingAssigneeIds.has(u.id))
+  1520→
+  1521→  async function handleSave() {
+  1522→    if (!selectedTask || !hasChanges) return
+  1523→    setSaving(true)
+  1524→    try {
+  1525→      // Build updates for task fields
+  1526→      const updates: Record<string, unknown> = {}
+  1527→      if (editStatus !== selectedTask.status) updates.status = editStatus
+  1528→      if (editPriority !== selectedTask.priority) updates.priority = editPriority
+  1529→      const newDueDateStr = editDueDate ? editDueDate.toISOString() : null
+  1530→      if (newDueDateStr !== (selectedTask.dueDate || null)) updates.dueDate = newDueDateStr
+  1531→
+  1532→      if (Object.keys(updates).length > 0) {
+  1533→        const patchRes = await fetch(`/api/tasks/${selectedTask.id}`, {
+  1534→          method: 'PATCH',
+  1535→          headers: { 'Content-Type': 'application/json' },
+  1536→          body: JSON.stringify(updates)
+  1537→        })
+  1538→        if (!patchRes.ok) throw new Error()
+  1539→      }
+  1540→
+  1541→      // Handle assignee changes
+  1542→      const originalIds = new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId))
+  1543→      const toRemove = [...originalIds].filter(id => !pendingAssigneeIds.has(id))
+  1544→      const toAdd = [...pendingAssigneeIds].filter(id => !originalIds.has(id))
+  1545→
+  1546→      for (const userId of toRemove) {
+  1547→        await fetch('/api/tasks/assignments', {
+  1548→          method: 'DELETE',
+  1549→          headers: { 'Content-Type': 'application/json' },
+  1550→          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+  1551→        })
+  1552→      }
+  1553→      for (const userId of toAdd) {
+  1554→        await fetch('/api/tasks/assignments', {
+  1555→          method: 'POST',
+  1556→          headers: { 'Content-Type': 'application/json' },
+  1557→          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+  1558→        })
+  1559→      }
+  1560→
+  1561→      toast.success('Task updated')
+  1562→      fetchTasks(statusFilter)
+  1563→      // Refresh selected task
+  1564→      const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
+  1565→      if (fresh.ok) {
+  1566→        const data = await fresh.json()
+  1567→        const updatedTask = data.task
+  1568→        setSelectedTask(updatedTask)
+  1569→        setComments(updatedTask?.comments ?? [])
+  1570→        setEditStatus(updatedTask.status)
+  1571→        setEditPriority(updatedTask.priority)
+  1572→        setEditDueDate(updatedTask.dueDate ? new Date(updatedTask.dueDate) : null)
+  1573→        setPendingAssigneeIds(new Set((updatedTask?.assignees || []).map((a: { userId: string }) => a.userId)))
+  1574→      }
+  1575→    } catch {
+  1576→      toast.error('Failed to update task')
+  1577→    } finally {
+  1578→      setSaving(false)
+  1579→    }
+  1580→  }
+  1581→
+  1582→  function handleDiscard() {
+  1583→    if (!selectedTask) return
+  1584→    setEditStatus(selectedTask.status)
+  1585→    setEditPriority(selectedTask.priority)
+  1586→    setEditDueDate(selectedTask.dueDate ? new Date(selectedTask.dueDate) : null)
+  1587→    setPendingAssigneeIds(new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)))
+  1588→  }
+  1589→
+  1590→  const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
+  1591→
+  1592→  if (loading && tasks.length === 0) {
+  1593→    return (
+  1594→      <div className="space-y-4">
+  1595→        <Skeleton className="h-10 w-48" />
+  1596→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+  1597→      </div>
+  1598→    )
+  1599→  }
+  1600→
+  1601→  return (
+  1602→    <motion.div {...fadeIn} className="space-y-6">
+  1603→      <div>
+  1604→        <h2 className="text-xl font-semibold">Task Dashboard</h2>
+  1605→        <p className="text-sm text-muted-foreground">View and manage all tasks across projects</p>
+  1606→      </div>
+  1607→
+  1608→      {/* Status Filter Tabs */}
+  1609→      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+  1610→        <TabsList>
+  1611→          {STATUS_FILTERS.map((s) => (
+  1612→            <TabsTrigger key={s} value={s} className="text-sm">
+  1613→              {STATUS_LABELS[s]}
+  1614→            </TabsTrigger>
+  1615→          ))}
+  1616→        </TabsList>
+  1617→      </Tabs>
+  1618→
+  1619→      <Card>
+  1620→        <CardContent className="p-0">
+  1621→          <Table>
+  1622→            <TableHeader>
+  1623→              <TableRow>
+  1624→                <TableHead>Title</TableHead>
+  1625→                <TableHead>Status</TableHead>
+  1626→                <TableHead>Priority</TableHead>
+  1627→                <TableHead className="hidden md:table-cell">Assignees</TableHead>
+  1628→                <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+  1629→                <TableHead className="hidden lg:table-cell">Project</TableHead>
+  1630→              </TableRow>
+  1631→            </TableHeader>
+  1632→            <TableBody>
+  1633→              {filteredTasks.length === 0 && (
+  1634→                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tasks found</TableCell></TableRow>
+  1635→              )}
+  1636→              {filteredTasks.map((task) => {
+  1637→                const sCfg = getStatusConfig(task.status)
+  1638→                const pCfg = getPriorityConfig(task.priority)
+  1639→                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done'
+  1640→                return (
+  1641→                  <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openTaskDetail(task)}>
+  1642→                    <TableCell>
+  1643→                      <div className="flex items-center gap-2">
+  1644→                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${sCfg.dotColor}`} />
+  1645→                        <span className="font-medium text-sm">{task.title}</span>
+  1646→                      </div>
+  1647→                    </TableCell>
+  1648→                    <TableCell>
+  1649→                      <Badge variant="secondary" className={`${sCfg.color} text-xs`}>{sCfg.label}</Badge>
+  1650→                    </TableCell>
+  1651→                    <TableCell>
+  1652→                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>{pCfg.label}</Badge>
+  1653→                    </TableCell>
+  1654→                    <TableCell className="hidden md:table-cell">
+  1655→                      <div className="flex -space-x-2">
+  1656→                        {task.assignees?.slice(0, 3).map((a) => (
+  1657→                          <TooltipProvider key={a.id}>
+  1658→                            <Tooltip>
+  1659→                              <TooltipTrigger>
+  1660→                                <Avatar className="h-7 w-7 border-2 border-background">
+  1661→                                  {a.user?.avatar ? <AvatarImage src={a.user.avatar} /> : null}
+  1662→                                  <AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">
+  1663→                                    {a.user ? getInitials(a.user.name) : '?'}
+  1664→                                  </AvatarFallback>
+  1665→                                </Avatar>
+  1666→                              </TooltipTrigger>
+  1667→                              <TooltipContent><p>{a.user?.name}</p></TooltipContent>
+  1668→                            </Tooltip>
+  1669→                          </TooltipProvider>
+  1670→                        ))}
+  1671→                        {(task.assignees?.length ?? 0) > 3 && (
+  1672→                          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-medium border-2 border-background">
+  1673→                            +{task.assignees!.length - 3}
+  1674→                          </div>
+  1675→                        )}
+  1676→                      </div>
+  1677→                    </TableCell>
+  1678→                    <TableCell className="hidden sm:table-cell">
+  1679→                      {task.dueDate ? (
+  1680→                        <span className={`text-sm ${isOverdue ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
+  1681→                          {formatDate(task.dueDate)}
+  1682→                        </span>
+  1683→                      ) : <span className="text-sm text-muted-foreground">—</span>}
+  1684→                    </TableCell>
+  1685→                    <TableCell className="hidden lg:table-cell">
+  1686→                      <div className="flex items-center gap-2">
+  1687→                        {task.project && <div className="h-2 w-2 rounded-full" style={{ backgroundColor: task.project.color }} />}
+  1688→                        <span className="text-sm text-muted-foreground">{task.project?.name ?? '—'}</span>
+  1689→                      </div>
+  1690→                    </TableCell>
+  1691→                  </TableRow>
+  1692→                )
+  1693→              })}
+  1694→            </TableBody>
+  1695→          </Table>
+  1696→        </CardContent>
+  1697→      </Card>
+  1698→
+  1699→      {/* Task Detail Dialog */}
+  1700→      <Dialog open={detailOpen} onOpenChange={(open) => {
+  1701→        if (!open && hasChanges) {
+  1702→          // If closing with unsaved changes, discard them
+  1703→          handleDiscard()
+  1704→        }
+  1705→        setDetailOpen(open)
+  1706→      }}>
+  1707→        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+  1708→          {selectedTask && (
+  1709→            <>
+  1710→              <DialogHeader>
+  1711→                <DialogTitle className="text-lg">{selectedTask.title}</DialogTitle>
+  1712→                <DialogDescription>
+  1713→                  {selectedTask.project?.name ?? 'Project'} · Created {formatRelativeTime(selectedTask.createdAt)}
+  1714→                </DialogDescription>
+  1715→              </DialogHeader>
+  1716→
+  1717→              {/* Unsaved changes indicator */}
+  1718→              {hasChanges && (
+  1719→                <div className="flex items-center gap-2 px-1">
+  1720→                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+  1721→                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
+  1722→                </div>
+  1723→              )}
+  1724→
+  1725→              <ScrollArea className="flex-1 -mx-6 px-6">
+  1726→                <div className="space-y-6 py-2">
+  1727→                  {/* Status & Priority */}
+  1728→                  <div className="grid grid-cols-2 gap-4">
+  1729→                    <div className="space-y-2">
+  1730→                      <Label className="text-xs text-muted-foreground">Status</Label>
+  1731→                      <Select value={editStatus} onValueChange={setEditStatus}>
+  1732→                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1733→                        <SelectContent>
+  1734→                          <SelectItem value="todo">To Do</SelectItem>
+  1735→                          <SelectItem value="in_progress">In Progress</SelectItem>
+  1736→                          <SelectItem value="in_review">In Review</SelectItem>
+  1737→                          <SelectItem value="done">Done</SelectItem>
+  1738→                        </SelectContent>
+  1739→                      </Select>
+  1740→                    </div>
+  1741→                    <div className="space-y-2">
+  1742→                      <Label className="text-xs text-muted-foreground">Priority</Label>
+  1743→                      <Select value={editPriority} onValueChange={setEditPriority}>
+  1744→                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1745→                        <SelectContent>
+  1746→                          <SelectItem value="low">Low</SelectItem>
+  1747→                          <SelectItem value="medium">Medium</SelectItem>
+  1748→                          <SelectItem value="high">High</SelectItem>
+  1749→                          <SelectItem value="urgent">Urgent</SelectItem>
+  1750→                        </SelectContent>
+  1751→                      </Select>
+  1752→                    </div>
+  1753→                  </div>
+  1754→
+  1755→                  {/* Due Date */}
+  1756→                  <div className="space-y-2">
+  1757→                    <Label className="text-xs text-muted-foreground">Due Date</Label>
+  1758→                    <Popover>
+  1759→                      <PopoverTrigger asChild>
+  1760→                        <Button variant="outline" className="w-fit justify-start text-left font-normal h-9">
+  1761→                          <CalendarIcon className="mr-2 h-4 w-4" />
+  1762→                          {editDueDate ? format(editDueDate, 'MMM d, yyyy') : 'Set due date'}
+  1763→                        </Button>
+  1764→                      </PopoverTrigger>
+  1765→                      <PopoverContent className="w-auto p-0" align="start">
+  1766→                        <Calendar
+  1767→                          mode="single"
+  1768→                          selected={editDueDate ?? undefined}
+  1769→                          onSelect={(d: Date | undefined) => setEditDueDate(d ?? null)}
+  1770→                        />
+  1771→                      </PopoverContent>
+  1772→                    </Popover>
+  1773→                  </div>
+  1774→
+  1775→                  {/* Assignees */}
+  1776→                  <div className="space-y-2">
+  1777→                    <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+  1778→                      <Label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors">
+  1779→                        <Users className="w-3.5 h-3.5" />
+  1780→                        <PopoverTrigger asChild>
+  1781→                          <span>Assignees ({pendingAssigneeIds.size})</span>
+  1782→                        </PopoverTrigger>
+  1783→                        <UserPlus className="w-3 h-3" />
+  1784→                      </Label>
+  1785→                      <PopoverContent className="w-72 p-0" align="start" side="bottom">
+  1786→                        <div className="p-3 border-b">
+  1787→                          <p className="text-xs font-medium text-muted-foreground">Select team members to assign</p>
+  1788→                        </div>
+  1789→                        <div className="max-h-56 overflow-y-auto p-2 space-y-0.5">
+  1790→                          {allTeamUsers.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No team members</p>}
+  1791→                          {allTeamUsers.map(member => {
+  1792→                            const isAssigned = pendingAssigneeIds.has(member.id)
+  1793→                            return (
+  1794→                              <button
+  1795→                                key={member.id}
+  1796→                                type="button"
+  1797→                                onClick={() => handleTogglePendingAssignee(member.id)}
+  1798→                                className={cn(
+  1799→                                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-sm transition-colors cursor-pointer',
+  1800→                                  isAssigned ? 'bg-primary/5' : 'hover:bg-accent'
+  1801→                                )}
+  1802→                              >
+  1803→                                <Avatar className="w-7 h-7 shrink-0">
+  1804→                                  <AvatarFallback className="text-[10px] bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
+  1805→                                </Avatar>
+  1806→                                <span className="flex-1 truncate font-medium">{member.name}</span>
+  1807→                                <span className="text-[10px] text-muted-foreground uppercase">{member.role}</span>
+  1808→                                {isAssigned ? (
+  1809→                                  <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+  1810→                                    <Check className="w-3 h-3 text-primary-foreground" />
+  1811→                                  </div>
+  1812→                                ) : (
+  1813→                                  <div className="w-5 h-5 rounded-full border border-muted shrink-0" />
+  1814→                                )}
+  1815→                              </button>
+  1816→                            )
+  1817→                          })}
+  1818→                        </div>
+  1819→                      </PopoverContent>
+  1820→                    </Popover>
+  1821→                    {assignedUsersList.length > 0 && (
+  1822→                      <div className="flex flex-wrap gap-1.5">
+  1823→                        {assignedUsersList.map(u => (
+  1824→                          <div key={u.id} className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+  1825→                            <Avatar className="w-5 h-5"><AvatarFallback className="text-[8px]" style={{ fontSize: '8px' }}>{getInitials(u.name)}</AvatarFallback></Avatar>
+  1826→                            <span>{u.name}</span>
+  1827→                            <button type="button" onClick={() => handleTogglePendingAssignee(u.id)} className="ml-0.5 hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
+  1828→                          </div>
+  1829→                        ))}
+  1830→                      </div>
+  1831→                    )}
+  1832→                    {assignedUsersList.length === 0 && !assigneeOpen && (
+  1833→                      <p className="text-xs text-muted-foreground">No assignees yet. Click to add.</p>
+  1834→                    )}
+  1835→                  </div>
+  1836→
+  1837→                  <Separator />
+  1838→
+  1839→                  {/* Description */}
+  1840→                  {selectedTask.description && (
+  1841→                    <div className="space-y-2">
+  1842→                      <Label className="text-xs text-muted-foreground">Description</Label>
+  1843→                      <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 whitespace-pre-wrap">
+  1844→                        {selectedTask.description}
+  1845→                      </div>
+  1846→                    </div>
+  1847→                  )}
+  1848→
+  1849→                  {/* Subtasks */}
+  1850→                  {selectedTask.subtasks && selectedTask.subtasks.length > 0 && (
+  1851→                    <div className="space-y-2">
+  1852→                      <Label className="text-xs text-muted-foreground">
+  1853→                        Subtasks ({selectedTask._count?.completedSubtasks ?? 0}/{selectedTask.subtasks.length})
+  1854→                      </Label>
+  1855→                      <div className="space-y-1">
+  1856→                        {selectedTask.subtasks.map((st) => (
+  1857→                          <div key={st.id} className="flex items-center gap-2 text-sm">
+  1858→                            <div className={`h-4 w-4 rounded border ${st.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'} flex items-center justify-center`}>
+  1859→                              {st.completed && <CheckCircle2 className="h-3 w-3 text-white" />}
+  1860→                            </div>
+  1861→                            <span className={st.completed ? 'line-through text-muted-foreground' : ''}>{st.title}</span>
+  1862→                          </div>
+  1863→                        ))}
+  1864→                      </div>
+  1865→                    </div>
+  1866→                  )}
+  1867→
+  1868→                  {/* Comments */}
+  1869→                  <div className="space-y-3">
+  1870→                    <Label className="text-xs text-muted-foreground">
+  1871→                      Comments ({comments.length})
+  1872→                    </Label>
+  1873→                    <div className="space-y-3 max-h-48 overflow-y-auto">
+  1874→                      {comments.map((c) => (
+  1875→                        <div key={c.id} className="flex gap-2">
+  1876→                          <Avatar className="h-7 w-7 mt-0.5 flex-shrink-0">
+  1877→                            {c.user?.avatar ? <AvatarImage src={c.user.avatar} /> : null}
+  1878→                            <AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">
+  1879→                              {c.user ? getInitials(c.user.name) : '?'}
+  1880→                            </AvatarFallback>
+  1881→                          </Avatar>
+  1882→                          <div className="flex-1 min-w-0">
+  1883→                            <div className="flex items-center gap-2">
+  1884→                              <span className="text-xs font-medium">{c.user?.name ?? 'Unknown'}</span>
+  1885→                              <span className="text-xs text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
+  1886→                            </div>
+  1887→                            <p className="text-sm text-muted-foreground">{c.content}</p>
+  1888→                          </div>
+  1889→                        </div>
+  1890→                      ))}
+  1891→                      {comments.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No comments yet</p>}
+  1892→                    </div>
+  1893→                  </div>
+  1894→                </div>
+  1895→              </ScrollArea>
+  1896→
+  1897→              {/* Footer with Save / Discard buttons */}
+  1898→              <div className="border-t pt-3 flex items-center justify-between">
+  1899→                <div className="text-xs text-muted-foreground">
+  1900→                  {hasChanges ? 'Changes will be applied when you save' : 'No changes'}
+  1901→                </div>
+  1902→                <div className="flex items-center gap-2">
+  1903→                  {hasChanges && (
+  1904→                    <Button variant="outline" size="sm" onClick={handleDiscard} disabled={saving}>
+  1905→                      Discard
+  1906→                    </Button>
+  1907→                  )}
+  1908→                  <Button size="sm" onClick={handleSave} disabled={!hasChanges || saving} className="gap-1.5">
+  1909→                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+  1910→                    Save
+  1911→                  </Button>
+  1912→                </div>
+  1913→              </div>
+  1914→            </>
+  1915→          )}
+  1916→        </DialogContent>
+  1917→      </Dialog>
+  1918→    </motion.div>
+  1919→  )
+  1920→}
+  1921→
+  1922→// ─── AdminMessages ─────────────────────────────────────────────────────────────
+  1923→export { MessagesPanel as AdminMessages } from '@/components/messages/MessagesPanel'
+  1924→
+  1925→// ─── AdminUsers ────────────────────────────────────────────────────────────────
+  1926→
+  1927→export function AdminUsers() {
+  1928→  const { user: adminUser } = useAuthStore()
+  1929→  const [loading, setLoading] = useState(true)
+  1930→  const [mounted, setMounted] = useState(false)
+  1931→  const [users, setUsers] = useState<User[]>([])
+  1932→  const [search, setSearch] = useState('')
+  1933→  const [roleFilter, setRoleFilter] = useState<string>('all')
+  1934→  const [showAddDialog, setShowAddDialog] = useState(false)
+  1935→  const [adding, setAdding] = useState(false)
+  1936→  const [deletingId, setDeletingId] = useState<string | null>(null)
+  1937→  const [newUser, setNewUser] = useState({
+  1938→    name: '', email: '', password: '', confirmPassword: '',
+  1939→    role: 'team' as 'admin' | 'team' | 'client',
+  1940→    phone: '', company: ''
+  1941→  })
+  1942→  // Edit user state
+  1943→  const [editOpen, setEditOpen] = useState(false)
+  1944→  const [editing, setEditing] = useState(false)
+  1945→  const [editForm, setEditForm] = useState<{
+  1946→    id: string
+  1947→    name: string
+  1948→    email: string
+  1949→    role: string
+  1950→    phone: string
+  1951→    company: string
+  1952→  }>({ id: '', name: '', email: '', role: 'team', phone: '', company: '' })
+  1953→  // Reset password state
+  1954→  const [resetOpen, setResetOpen] = useState(false)
+  1955→  const [resetting, setResetting] = useState(false)
+  1956→  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null)
+  1957→  const [resetPassword, setResetPassword] = useState('')
+  1958→  const [resetConfirm, setResetConfirm] = useState('')
+  1959→
+  1960→  const fetchUsers = useCallback(async () => {
+  1961→    try {
+  1962→      const res = await fetch('/api/users')
+  1963→      if (!res.ok) throw new Error()
+  1964→      const data = await res.json()
+  1965→      setUsers(data.users ?? [])
+  1966→    } catch {
+  1967→      toast.error('Failed to load users')
+  1968→    } finally {
+  1969→      setLoading(false)
+  1970→    }
+  1971→  }, [])
+  1972→
+  1973→  useEffect(() => { setMounted(true); fetchUsers() }, [fetchUsers])
+  1974→
+  1975→  const filteredUsers = users.filter((u) => {
+  1976→    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+  1977→    if (search) {
+  1978→      const q = search.toLowerCase()
+  1979→      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.company ?? '').toLowerCase().includes(q)
+  1980→    }
+  1981→    return true
+  1982→  })
+  1983→
+  1984→  const adminCount = users.filter(u => u.role === 'admin').length
+  1985→  const teamCount = users.filter(u => u.role === 'team').length
+  1986→  const clientCount = users.filter(u => u.role === 'client').length
+  1987→
+  1988→  async function handleAddUser(e: React.FormEvent) {
+  1989→    e.preventDefault()
+  1990→    if (!newUser.name || !newUser.email || !newUser.password) {
+  1991→      toast.error('Name, email, and password are required')
+  1992→      return
+  1993→    }
+  1994→    if (newUser.password.length < 6) {
+  1995→      toast.error('Password must be at least 6 characters')
+  1996→      return
+  1997→    }
+  1998→    if (newUser.password !== newUser.confirmPassword) {
+  1999→      toast.error('Passwords do not match')
+  2000→      return
+
+[showing lines 1-2000 of 2822; use offset=2001 with limit to continue reading]

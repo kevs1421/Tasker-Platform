@@ -1,0 +1,809 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  FolderKanban, MessageSquare, UserCircle, ArrowLeft, ChevronRight,
+     8→  ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
+     9→  Calendar, Users, Loader2, FileText, Shield, Lock, Save,
+    10→  MessageCircle, ListTodo, Check, CheckCheck, Search
+    11→} from 'lucide-react'
+    12→import { useAuthStore } from '@/stores/auth'
+    13→import type {
+    14→  User, Project, Task, Message, Comment, Subtask
+    15→} from '@/types'
+    16→import {
+    17→  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
+    18→  formatDate, formatRelativeTime
+    19→} from '@/features/route-guard'
+    20→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    21→import { Button } from '@/components/ui/button'
+    22→import { Input } from '@/components/ui/input'
+    23→import { Textarea } from '@/components/ui/textarea'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Label } from '@/components/ui/label'
+    26→import { Skeleton } from '@/components/ui/skeleton'
+    27→import { Progress } from '@/components/ui/progress'
+    28→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    29→import { Separator } from '@/components/ui/separator'
+    30→import { ScrollArea } from '@/components/ui/scroll-area'
+    31→import {
+    32→  Dialog, DialogContent, DialogHeader, DialogTitle
+    33→} from '@/components/ui/dialog'
+    34→import { isBefore, parseISO } from 'date-fns'
+    35→
+    36→// ─── Animation Variants ──────────────────────────────────────────
+    37→const fadeSlide = {
+    38→  initial: { opacity: 0, y: 12 },
+    39→  animate: { opacity: 1, y: 0 },
+    40→  exit: { opacity: 0, y: -12 },
+    41→  transition: { duration: 0.25 }
+    42→}
+    43→
+    44→// ─── Shared sub-components ───────────────────────────────────────
+    45→
+    46→function PageSkeleton() {
+    47→  return (
+    48→    <div className="space-y-6 p-4 md:p-6">
+    49→      <Skeleton className="h-8 w-64" />
+    50→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    51→        {Array.from({ length: 4 }).map((_, i) => (
+    52→          <Skeleton key={i} className="h-24 rounded-lg" />
+    53→        ))}
+    54→      </div>
+    55→      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    56→        {Array.from({ length: 3 }).map((_, i) => (
+    57→          <Skeleton key={i} className="h-48 rounded-lg" />
+    58→        ))}
+    59→      </div>
+    60→    </div>
+    61→  )
+    62→}
+    63→
+    64→function StatCard({ icon: Icon, label, value, color }: {
+    65→  icon: React.ElementType; label: string; value: number | string; color: string
+    66→}) {
+    67→  return (
+    68→    <motion.div {...fadeSlide} className="bg-card border rounded-xl p-4 md:p-5 shadow-sm">
+    69→      <div className="flex items-center gap-3">
+    70→        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
+    71→          <Icon className="w-5 h-5 text-white" />
+    72→        </div>
+    73→        <div>
+    74→          <p className="text-sm text-muted-foreground">{label}</p>
+    75→          <p className="text-2xl font-bold">{value}</p>
+    76→        </div>
+    77→      </div>
+    78→    </motion.div>
+    79→  )
+    80→}
+    81→
+    82→function PriorityBadge({ priority }: { priority: string }) {
+    83→  const cfg = getPriorityConfig(priority)
+    84→  return (
+    85→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    86→      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor}`} />
+    87→      {cfg.label}
+    88→    </span>
+    89→  )
+    90→}
+    91→
+    92→function StatusBadge({ status }: { status: string }) {
+    93→  const cfg = getStatusConfig(status)
+    94→  const Icon = cfg.icon === 'check' ? CheckCircle2 : cfg.icon === 'clock' ? Clock : cfg.icon === 'eye' ? Eye : Circle
+    95→  return (
+    96→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    97→      <Icon className="w-3 h-3" />
+    98→      {cfg.label}
+    99→    </span>
+   100→  )
+   101→}
+   102→
+   103→function EmptyState({ icon: Icon, title, description }: {
+   104→  icon: React.ElementType; title: string; description: string
+   105→}) {
+   106→  return (
+   107→    <motion.div {...fadeSlide} className="flex flex-col items-center justify-center py-16 text-center">
+   108→      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   109→        <Icon className="w-8 h-8 text-muted-foreground" />
+   110→      </div>
+   111→      <h3 className="text-lg font-semibold mb-1">{title}</h3>
+   112→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+   113→    </motion.div>
+   114→  )
+   115→}
+   116→
+   117→// ═══════════════════════════════════════════════════════════════════
+   118→// CLIENT ONBOARDING (re-exported from wizard component)
+   119→// ═══════════════════════════════════════════════════════════════════
+   120→export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboardingWizard'
+   121→
+   122→// ═══════════════════════════════════════════════════════════════════
+   123→// CLIENT PROJECTS
+   124→// ═══════════════════════════════════════════════════════════════════
+   125→export function ClientProjects() {
+   126→  const { user } = useAuthStore()
+   127→  const [projects, setProjects] = useState<(Project & { tasks?: (Task & { _count: { comments: number; subtasks: number; completedSubtasks: number } })[] })[]>([])
+   128→  const [loading, setLoading] = useState(true)
+   129→  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+   130→  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
+   131→  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }) | null>(null)
+   132→  const [taskDetailLoading, setTaskDetailLoading] = useState(false)
+   133→
+   134→  const fetchProjects = useCallback(async () => {
+   135→    try {
+   136→      const res = await fetch('/api/projects')
+   137→      const data = await res.json()
+   138→      // Filter to active projects and those the client is a member of
+   139→      const clientProjects = (data.projects || [])
+   140→        .filter((p: Project) => p.status === 'active' && p.members?.some(m => m.userId === user?.id))
+   141→      setProjects(clientProjects)
+   142→    } catch {
+   143→      toast.error('Failed to load projects')
+   144→    } finally {
+   145→      setLoading(false)
+   146→    }
+   147→  }, [user?.id])
+   148→
+   149→  useEffect(() => { fetchProjects() }, [fetchProjects])
+   150→
+   151→  const expandProject = async (projectId: string) => {
+   152→    if (expandedProjectId === projectId) {
+   153→      setExpandedProjectId(null)
+   154→      setExpandedTasks([])
+   155→      return
+   156→    }
+   157→    setExpandedProjectId(projectId)
+   158→    try {
+   159→      const res = await fetch(`/api/projects/${projectId}`)
+   160→      const data = await res.json()
+   161→      setExpandedTasks(data.project?.tasks || [])
+   162→    } catch {
+   163→      toast.error('Failed to load project tasks')
+   164→    }
+   165→  }
+   166→
+   167→  const openTaskDetail = async (taskId: string) => {
+   168→    setTaskDetailLoading(true)
+   169→    setTaskDetail(null)
+   170→    try {
+   171→      const res = await fetch(`/api/tasks/${taskId}`)
+   172→      const data = await res.json()
+   173→      setTaskDetail(data.task)
+   174→    } catch {
+   175→      toast.error('Failed to load task details')
+   176→    } finally {
+   177→      setTaskDetailLoading(false)
+   178→    }
+   179→  }
+   180→
+   181→  // Stats
+   182→  const allTasks = projects.flatMap(p => p.tasks || [])
+   183→  const totalTasks = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
+   184→  const completedTasks = allTasks.filter(t => t.status === 'done').length
+   185→  const inProgressTasks = allTasks.filter(t => t.status === 'in_progress').length
+   186→
+   187→  if (loading) return <PageSkeleton />
+   188→
+   189→  return (
+   190→    <div className="p-4 md:p-6 space-y-6">
+   191→      <div className="flex items-center gap-3">
+   192→        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+   193→          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+   194→        </div>
+   195→        <div>
+   196→          <h1 className="text-2xl font-bold">My Projects</h1>
+   197→          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+   198→        </div>
+   199→      </div>
+   200→
+   201→      {/* Stats */}
+   202→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   203→        <StatCard icon={FolderKanban} label="My Projects" value={projects.length} color="bg-emerald-500" />
+   204→        <StatCard icon={ListTodo} label="Total Tasks" value={totalTasks} color="bg-amber-500" />
+   205→        <StatCard icon={CheckCircle2} label="Completed" value={completedTasks} color="bg-teal-500" />
+   206→        <StatCard icon={Clock} label="In Progress" value={inProgressTasks} color="bg-orange-500" />
+   207→      </div>
+   208→
+   209→      {/* Project Cards */}
+   210→      {projects.length === 0 ? (
+   211→        <EmptyState
+   212→          icon={FolderKanban}
+   213→          title="No active projects"
+   214→          description="You don't have any active projects yet."
+   215→        />
+   216→      ) : (
+   217→        <div className="space-y-4">
+   218→          {projects.map((project, i) => {
+   219→            const projectTasks = expandedProjectId === project.id ? expandedTasks : []
+   220→            const doneTasks = projectTasks.filter(t => t.status === 'done').length
+   221→            const totalT = project._count?.tasks || 0
+   222→            const pct = totalT > 0 ? Math.round((doneTasks / totalT) * 100) : 0
+   223→            const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+   224→
+   225→            return (
+   226→              <motion.div
+   227→                key={project.id}
+   228→                initial={{ opacity: 0, y: 12 }}
+   229→                animate={{ opacity: 1, y: 0 }}
+   230→                transition={{ delay: i * 0.05 }}
+   231→              >
+   232→                <Card
+   233→                  className="cursor-pointer hover:shadow-md transition-shadow border-l-4"
+   234→                  style={{ borderLeftColor: project.color }}
+   235→                  onClick={() => expandProject(project.id)}
+   236→                >
+   237→                  <CardContent className="p-4 md:p-5">
+   238→                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   239→                      <div className="min-w-0 flex-1">
+   240→                        <div className="flex items-center gap-2 mb-1">
+   241→                          <h3 className="font-semibold text-base truncate">{project.name}</h3>
+   242→                          <PriorityBadge priority={project.priority} />
+   243→                        </div>
+   244→                        <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+   245→                      </div>
+   246→                      <div className="flex items-center gap-4 shrink-0 text-sm">
+   247→                        {project.dueDate && (
+   248→                          <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+   249→                            <Calendar className="w-3.5 h-3.5" />
+   250→                            {formatDate(project.dueDate)}
+   251→                          </span>
+   252→                        )}
+   253→                        <span className="text-muted-foreground flex items-center gap-1">
+   254→                          <Users className="w-3.5 h-3.5" />
+   255→                          {project._count?.members || 0}
+   256→                        </span>
+   257→                        <span className="text-muted-foreground">
+   258→                          {expandedProjectId === project.id ? '▲' : '▼'}
+   259→                        </span>
+   260→                      </div>
+   261→                    </div>
+   262→
+   263→                    {/* Progress bar */}
+   264→                    <div className="mt-3 space-y-1">
+   265→                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+   266→                        <span>{doneTasks}/{totalT} tasks completed</span>
+   267→                        <span>{pct}%</span>
+   268→                      </div>
+   269→                      <Progress value={pct} className="h-2" />
+   270→                    </div>
+   271→                  </CardContent>
+   272→                </Card>
+   273→
+   274→                {/* Expanded tasks table */}
+   275→                <AnimatePresence>
+   276→                  {expandedProjectId === project.id && (
+   277→                    <motion.div
+   278→                      initial={{ opacity: 0, height: 0 }}
+   279→                      animate={{ opacity: 1, height: 'auto' }}
+   280→                      exit={{ opacity: 0, height: 0 }}
+   281→                      transition={{ duration: 0.2 }}
+   282→                      className="overflow-hidden"
+   283→                    >
+   284→                      <Card className="mt-2 rounded-t-none">
+   285→                        <CardContent className="p-0">
+   286→                          {projectTasks.length === 0 ? (
+   287→                            <div className="py-8 text-center text-sm text-muted-foreground">
+   288→                              No tasks in this project yet.
+   289→                            </div>
+   290→                          ) : (
+   291→                            <div className="overflow-x-auto">
+   292→                              <table className="w-full text-sm">
+   293→                                <thead>
+   294→                                  <tr className="border-b bg-muted/50">
+   295→                                    <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
+   296→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+   297→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
+   298→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
+   299→                                    <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
+   300→                                  </tr>
+   301→                                </thead>
+   302→                                <tbody>
+   303→                                  {projectTasks.map(task => (
+   304→                                    <tr
+   305→                                      key={task.id}
+   306→                                      className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+   307→                                      onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
+   308→                                    >
+   309→                                      <td className="p-3">
+   310→                                        <div className="font-medium">{task.title}</div>
+   311→                                        {task.description && (
+   312→                                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
+   313→                                        )}
+   314→                                      </td>
+   315→                                      <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
+   316→                                      <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
+   317→                                      <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
+   318→                                        {task.dueDate ? formatDate(task.dueDate) : '—'}
+   319→                                      </td>
+   320→                                      <td className="p-3 hidden lg:table-cell">
+   321→                                        <div className="flex -space-x-2">
+   322→                                          {task.assignees?.slice(0, 3).map(a => (
+   323→                                            <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
+   324→                                              <AvatarFallback className="text-[10px] bg-muted">
+   325→                                                {getInitials(a.user?.name || '?')}
+   326→                                              </AvatarFallback>
+   327→                                            </Avatar>
+   328→                                          ))}
+   329→                                          {(task.assignees?.length || 0) > 3 && (
+   330→                                            <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
+   331→                                              +{(task.assignees?.length || 0) - 3}
+   332→                                            </span>
+   333→                                          )}
+   334→                                        </div>
+   335→                                      </td>
+   336→                                    </tr>
+   337→                                  ))}
+   338→                                </tbody>
+   339→                              </table>
+   340→                            </div>
+   341→                          )}
+   342→                        </CardContent>
+   343→                      </Card>
+   344→                    </motion.div>
+   345→                  )}
+   346→                </AnimatePresence>
+   347→              </motion.div>
+   348→            )
+   349→          })}
+   350→        </div>
+   351→      )}
+   352→
+   353→      {/* Task Detail Dialog */}
+   354→      <Dialog open={!!taskDetail} onOpenChange={(open) => { if (!open) setTaskDetail(null) }}>
+   355→        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+   356→          {taskDetailLoading ? (
+   357→            <div className="p-6 space-y-4">
+   358→              <Skeleton className="h-6 w-3/4" />
+   359→              <Skeleton className="h-4 w-1/2" />
+   360→              <Skeleton className="h-20 w-full" />
+   361→            </div>
+   362→          ) : taskDetail ? (
+   363→            <TaskDetailDialog task={taskDetail} userId={user?.id || ''} onUpdate={() => openTaskDetail(taskDetail.id)} />
+   364→          ) : null}
+   365→        </DialogContent>
+   366→      </Dialog>
+   367→    </div>
+   368→  )
+   369→}
+   370→
+   371→// ─── Task Detail Dialog ─────────────────────────────────────
+   372→function TaskDetailDialog({
+   373→  task, userId, onUpdate
+   374→}: {
+   375→  task: Task & { _count: { comments: number; subtasks: number; completedSubtasks: number }; comments?: Comment[]; subtasks?: Subtask[] }
+   376→  userId: string
+   377→  onUpdate: () => void
+   378→}) {
+   379→  const [comments, setComments] = useState<Comment[]>(task.comments || [])
+   380→  const [newComment, setNewComment] = useState('')
+   381→  const [sendingComment, setSendingComment] = useState(false)
+   382→  const scrollRef = useRef<HTMLDivElement>(null)
+   383→
+   384→  useEffect(() => {
+   385→    if (scrollRef.current) {
+   386→      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+   387→    }
+   388→  }, [comments])
+   389→
+   390→  const sendComment = async () => {
+   391→    if (!newComment.trim()) return
+   392→    setSendingComment(true)
+   393→    try {
+   394→      const res = await fetch('/api/comments', {
+   395→        method: 'POST',
+   396→        headers: { 'Content-Type': 'application/json' },
+   397→        body: JSON.stringify({ content: newComment.trim(), taskId: task.id, userId })
+   398→      })
+   399→      if (!res.ok) throw new Error()
+   400→      const data = await res.json()
+   401→      setComments(prev => [...prev, data.comment])
+   402→      setNewComment('')
+   403→      toast.success('Comment added')
+   404→    } catch {
+   405→      toast.error('Failed to add comment')
+   406→    } finally {
+   407→      setSendingComment(false)
+   408→    }
+   409→  }
+   410→
+   411→  const statusCfg = getStatusConfig(task.status)
+   412→  const priorityCfg = getPriorityConfig(task.priority)
+   413→
+   414→  return (
+   415→    <>
+   416→      <DialogHeader>
+   417→        <div className="flex items-center gap-2 flex-wrap">
+   418→          <DialogTitle className="text-xl">{task.title}</DialogTitle>
+   419→          <StatusBadge status={task.status} />
+   420→          <PriorityBadge priority={task.priority} />
+   421→        </div>
+   422→        {task.project && (
+   423→          <div className="flex items-center gap-2 mt-1">
+   424→            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: task.project.color }} />
+   425→            <span className="text-sm text-muted-foreground">{task.project.name}</span>
+   426→          </div>
+   427→        )}
+   428→      </DialogHeader>
+   429→
+   430→      <ScrollArea className="flex-1 -mx-6 px-6" ref={scrollRef}>
+   431→        <div className="space-y-5 py-4">
+   432→          {/* Description */}
+   433→          {task.description && (
+   434→            <div>
+   435→              <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
+   436→              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
+   437→            </div>
+   438→          )}
+   439→
+   440→          {/* Details Grid */}
+   441→          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+   442→            {task.dueDate && (
+   443→              <div className="space-y-1">
+   444→                <span className="text-xs text-muted-foreground">Due Date</span>
+   445→                <div className="flex items-center gap-1.5 text-sm font-medium">
+   446→                  <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+   447→                  {formatDate(task.dueDate)}
+   448→                </div>
+   449→              </div>
+   450→            )}
+   451→            <div className="space-y-1">
+   452→              <span className="text-xs text-muted-foreground">Assignees</span>
+   453→              <div className="flex items-center gap-1.5">
+   454→                {task.assignees?.map(a => (
+   455→                  <Avatar key={a.id} className="w-6 h-6">
+   456→                    <AvatarFallback className="text-[10px] bg-muted">
+   457→                      {getInitials(a.user?.name || '?')}
+   458→                    </AvatarFallback>
+   459→                  </Avatar>
+   460→                ))}
+   461→                {(!task.assignees || task.assignees.length === 0) && (
+   462→                  <span className="text-sm text-muted-foreground">Unassigned</span>
+   463→                )}
+   464→              </div>
+   465→            </div>
+   466→            <div className="space-y-1">
+   467→              <span className="text-xs text-muted-foreground">Created</span>
+   468→              <span className="text-sm">{formatRelativeTime(task.createdAt)}</span>
+   469→            </div>
+   470→          </div>
+   471→
+   472→          {/* Subtasks */}
+   473→          {task.subtasks && task.subtasks.length > 0 && (
+   474→            <div className="space-y-2">
+   475→              <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+   476→                <ListTodo className="w-3.5 h-3.5" />
+   477→                Subtasks ({task._count.completedSubtasks}/{task._count.subtasks})
+   478→              </h4>
+   479→              <div className="space-y-1.5">
+   480→                {task.subtasks.map(sub => (
+   481→                  <div key={sub.id} className="flex items-center gap-2 text-sm">
+   482→                    {sub.completed ? (
+   483→                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+   484→                    ) : (
+   485→                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
+   486→                    )}
+   487→                    <span className={sub.completed ? 'line-through text-muted-foreground' : ''}>
+   488→                      {sub.title}
+   489→                    </span>
+   490→                  </div>
+   491→                ))}
+   492→              </div>
+   493→            </div>
+   494→          )}
+   495→
+   496→          <Separator />
+   497→
+   498→          {/* Comments */}
+   499→          <div className="space-y-3">
+   500→            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+   501→              <MessageCircle className="w-3.5 h-3.5" />
+   502→              Comments ({comments.length})
+   503→            </h4>
+   504→            <div className="space-y-3">
+   505→              {comments.map(comment => (
+   506→                <div key={comment.id} className="flex gap-3">
+   507→                  <Avatar className="w-8 h-8 shrink-0">
+   508→                    <AvatarFallback className="text-xs bg-muted">
+   509→                      {getInitials(comment.user?.name || '?')}
+   510→                    </AvatarFallback>
+   511→                  </Avatar>
+   512→                  <div className="min-w-0 flex-1">
+   513→                    <div className="flex items-center gap-2">
+   514→                      <span className="text-sm font-medium">{comment.user?.name || 'Unknown'}</span>
+   515→                      <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.createdAt)}</span>
+   516→                      {comment.user?.role && (
+   517→                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeClasses(comment.user.role)}`}>
+   518→                          {comment.user.role}
+   519→                        </span>
+   520→                      )}
+   521→                    </div>
+   522→                    <p className="text-sm mt-0.5 whitespace-pre-wrap">{comment.content}</p>
+   523→                  </div>
+   524→                </div>
+   525→              ))}
+   526→              {comments.length === 0 && (
+   527→                <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
+   528→              )}
+   529→            </div>
+   530→          </div>
+   531→        </div>
+   532→      </ScrollArea>
+   533→
+   534→      {/* Comment input */}
+   535→      <div className="border-t pt-4 mt-auto">
+   536→        <div className="flex gap-2">
+   537→          <Input
+   538→            value={newComment}
+   539→            onChange={e => setNewComment(e.target.value)}
+   540→            placeholder="Add a comment..."
+   541→            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() } }}
+   542→          />
+   543→          <Button size="icon" onClick={sendComment} disabled={!newComment.trim() || sendingComment}>
+   544→            {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+   545→          </Button>
+   546→        </div>
+   547→      </div>
+   548→    </>
+   549→  )
+   550→}
+   551→
+   552→// ═══════════════════════════════════════════════════════════════════
+   553→// CLIENT MESSAGES
+   554→// ═══════════════════════════════════════════════════════════════════
+   555→export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesPanel'
+   556→
+   557→// ═══════════════════════════════════════════════════════════════════
+   558→// CLIENT PROFILE
+   559→// ═══════════════════════════════════════════════════════════════════
+   560→export function ClientProfile() {
+   561→  const { user, login } = useAuthStore()
+   562→  const [loading, setLoading] = useState(true)
+   563→  const [saving, setSaving] = useState(false)
+   564→  const [savingPassword, setSavingPassword] = useState(false)
+   565→
+   566→  const [name, setName] = useState('')
+   567→  const [email, setEmail] = useState('')
+   568→  const [phone, setPhone] = useState('')
+   569→  const [company, setCompany] = useState('')
+   570→
+   571→  const [currentPassword, setCurrentPassword] = useState('')
+   572→  const [newPassword, setNewPassword] = useState('')
+   573→  const [confirmPassword, setConfirmPassword] = useState('')
+   574→
+   575→  useEffect(() => {
+   576→    if (!user?.id) return
+   577→    const fetchProfile = async () => {
+   578→      try {
+   579→        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+   580→        const data = await res.json()
+   581→        if (data.user) {
+   582→          setName(data.user.name || '')
+   583→          setEmail(data.user.email || '')
+   584→          setPhone(data.user.phone || '')
+   585→          setCompany(data.user.company || '')
+   586→        }
+   587→      } catch {
+   588→        toast.error('Failed to load profile')
+   589→      } finally {
+   590→        setLoading(false)
+   591→      }
+   592→    }
+   593→    fetchProfile()
+   594→  }, [user?.id])
+   595→
+   596→  const saveProfile = async () => {
+   597→    if (!user?.id) return
+   598→    setSaving(true)
+   599→    try {
+   600→      const res = await fetch('/api/user/profile', {
+   601→        method: 'PATCH',
+   602→        headers: { 'Content-Type': 'application/json' },
+   603→        body: JSON.stringify({ userId: user.id, name, email, phone, company })
+   604→      })
+   605→      if (!res.ok) {
+   606→        const data = await res.json()
+   607→        throw new Error(data.error || 'Failed')
+   608→      }
+   609→      const data = await res.json()
+   610→      toast.success('Profile updated successfully')
+   611→      // Update user in store
+   612→      if (data.user && user) {
+   613→        login({ ...user, name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+   614→      }
+   615→    } catch (e: unknown) {
+   616→      const msg = e instanceof Error ? e.message : 'Failed to update profile'
+   617→      toast.error(msg)
+   618→    } finally {
+   619→      setSaving(false)
+   620→    }
+   621→  }
+   622→
+   623→  const changePassword = async () => {
+   624→    if (!user?.id) return
+   625→    if (!currentPassword || !newPassword || !confirmPassword) {
+   626→      toast.error('Please fill in all password fields')
+   627→      return
+   628→    }
+   629→    if (newPassword !== confirmPassword) {
+   630→      toast.error('New passwords do not match')
+   631→      return
+   632→    }
+   633→    if (newPassword.length < 6) {
+   634→      toast.error('Password must be at least 6 characters')
+   635→      return
+   636→    }
+   637→    setSavingPassword(true)
+   638→    try {
+   639→      const res = await fetch('/api/user/profile', {
+   640→        method: 'PATCH',
+   641→        headers: { 'Content-Type': 'application/json' },
+   642→        body: JSON.stringify({
+   643→          userId: user.id,
+   644→          currentPassword,
+   645→          newPassword
+   646→        })
+   647→      })
+   648→      if (!res.ok) {
+   649→        const data = await res.json()
+   650→        throw new Error(data.error || 'Failed')
+   651→      }
+   652→      toast.success('Password changed successfully')
+   653→      setCurrentPassword('')
+   654→      setNewPassword('')
+   655→      setConfirmPassword('')
+   656→    } catch (e: unknown) {
+   657→      const msg = e instanceof Error ? e.message : 'Failed to change password'
+   658→      toast.error(msg)
+   659→    } finally {
+   660→      setSavingPassword(false)
+   661→    }
+   662→  }
+   663→
+   664→  if (loading) return <PageSkeleton />
+   665→
+   666→  return (
+   667→    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
+   668→      <div className="flex items-center gap-3">
+   669→        <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+   670→          <UserCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+   671→        </div>
+   672→        <div>
+   673→          <h1 className="text-2xl font-bold">Profile Settings</h1>
+   674→          <p className="text-sm text-muted-foreground">Manage your account information</p>
+   675→        </div>
+   676→      </div>
+   677→
+   678→      {/* Profile Card */}
+   679→      <motion.div {...fadeSlide}>
+   680→        <Card>
+   681→          <CardHeader>
+   682→            <div className="flex items-center justify-between">
+   683→              <CardTitle className="text-lg">Personal Information</CardTitle>
+   684→              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+   685→                Client
+   686→              </span>
+   687→            </div>
+   688→            {user?.createdAt && (
+   689→              <p className="text-sm text-muted-foreground">
+   690→                Member since {formatDate(user.createdAt)}
+   691→              </p>
+   692→            )}
+   693→          </CardHeader>
+   694→          <CardContent className="space-y-4">
+   695→            <div className="space-y-2">
+   696→              <Label htmlFor="profile-name">Full Name</Label>
+   697→              <Input
+   698→                id="profile-name"
+   699→                value={name}
+   700→                onChange={e => setName(e.target.value)}
+   701→                placeholder="Your full name"
+   702→              />
+   703→            </div>
+   704→            <div className="space-y-2">
+   705→              <Label htmlFor="profile-email">Email Address</Label>
+   706→              <Input
+   707→                id="profile-email"
+   708→                type="email"
+   709→                value={email}
+   710→                onChange={e => setEmail(e.target.value)}
+   711→                placeholder="your@email.com"
+   712→              />
+   713→            </div>
+   714→            <div className="space-y-2">
+   715→              <Label htmlFor="profile-phone">Phone Number</Label>
+   716→              <Input
+   717→                id="profile-phone"
+   718→                type="tel"
+   719→                value={phone}
+   720→                onChange={e => setPhone(e.target.value)}
+   721→                placeholder="+1 (555) 000-0000"
+   722→              />
+   723→            </div>
+   724→            <div className="space-y-2">
+   725→              <Label htmlFor="profile-company">Company</Label>
+   726→              <Input
+   727→                id="profile-company"
+   728→                value={company}
+   729→                onChange={e => setCompany(e.target.value)}
+   730→                placeholder="Your company name"
+   731→              />
+   732→            </div>
+   733→            <div className="pt-2">
+   734→              <Button onClick={saveProfile} disabled={saving} className="w-full sm:w-auto">
+   735→                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+   736→                Save Changes
+   737→              </Button>
+   738→            </div>
+   739→          </CardContent>
+   740→        </Card>
+   741→      </motion.div>
+   742→
+   743→      {/* Change Password */}
+   744→      <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   745→        <Card>
+   746→          <CardHeader>
+   747→            <CardTitle className="text-lg flex items-center gap-2">
+   748→              <Shield className="w-5 h-5 text-muted-foreground" />
+   749→              Change Password
+   750→            </CardTitle>
+   751→            <p className="text-sm text-muted-foreground">
+   752→              Update your password to keep your account secure
+   753→            </p>
+   754→          </CardHeader>
+   755→          <CardContent className="space-y-4">
+   756→            <div className="space-y-2">
+   757→              <Label htmlFor="current-password">Current Password</Label>
+   758→              <div className="relative">
+   759→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   760→                <Input
+   761→                  id="current-password"
+   762→                  type="password"
+   763→                  value={currentPassword}
+   764→                  onChange={e => setCurrentPassword(e.target.value)}
+   765→                  placeholder="Enter current password"
+   766→                  className="pl-9"
+   767→                />
+   768→              </div>
+   769→            </div>
+   770→            <div className="space-y-2">
+   771→              <Label htmlFor="new-password">New Password</Label>
+   772→              <div className="relative">
+   773→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   774→                <Input
+   775→                  id="new-password"
+   776→                  type="password"
+   777→                  value={newPassword}
+   778→                  onChange={e => setNewPassword(e.target.value)}
+   779→                  placeholder="Enter new password"
+   780→                  className="pl-9"
+   781→                />
+   782→              </div>
+   783→            </div>
+   784→            <div className="space-y-2">
+   785→              <Label htmlFor="confirm-password">Confirm New Password</Label>
+   786→              <div className="relative">
+   787→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   788→                <Input
+   789→                  id="confirm-password"
+   790→                  type="password"
+   791→                  value={confirmPassword}
+   792→                  onChange={e => setConfirmPassword(e.target.value)}
+   793→                  placeholder="Confirm new password"
+   794→                  className="pl-9"
+   795→                />
+   796→              </div>
+   797→            </div>
+   798→            <div className="pt-2">
+   799→              <Button onClick={changePassword} disabled={savingPassword} variant="outline" className="w-full sm:w-auto">
+   800→                {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+   801→                Change Password
+   802→              </Button>
+   803→            </div>
+   804→          </CardContent>
+   805→        </Card>
+   806→      </motion.div>
+   807→    </div>
+   808→  )
+   809→}

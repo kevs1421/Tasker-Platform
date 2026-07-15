@@ -1,0 +1,734 @@
+  2001→          role: editForm.role,
+  2002→          phone: editForm.phone || undefined,
+  2003→          company: editForm.company || undefined,
+  2004→        })
+  2005→      })
+  2006→      const data = await res.json()
+  2007→      if (!res.ok) throw new Error(data.error)
+  2008→      toast.success(`User "${editForm.name}" updated successfully`)
+  2009→      setEditOpen(false)
+  2010→      fetchUsers()
+  2011→    } catch (err: unknown) {
+  2012→      toast.error(err instanceof Error ? err.message : 'Failed to update user')
+  2013→    } finally {
+  2014→      setEditing(false)
+  2015→    }
+  2016→  }
+  2017→
+  2018→  function openResetDialog(u: User) {
+  2019→    setResetTarget({ id: u.id, name: u.name })
+  2020→    setResetPassword('')
+  2021→    setResetConfirm('')
+  2022→    setResetOpen(true)
+  2023→  }
+  2024→
+  2025→  async function handleResetPassword(e: React.FormEvent) {
+  2026→    e.preventDefault()
+  2027→    if (!resetTarget) return
+  2028→    if (!resetPassword) {
+  2029→      toast.error('New password is required')
+  2030→      return
+  2031→    }
+  2032→    if (resetPassword.length < 6) {
+  2033→      toast.error('Password must be at least 6 characters')
+  2034→      return
+  2035→    }
+  2036→    if (resetPassword !== resetConfirm) {
+  2037→      toast.error('Passwords do not match')
+  2038→      return
+  2039→    }
+  2040→    setResetting(true)
+  2041→    try {
+  2042→      const res = await fetch(`/api/users/${resetTarget.id}`, {
+  2043→        method: 'PATCH',
+  2044→        headers: { 'Content-Type': 'application/json' },
+  2045→        body: JSON.stringify({
+  2046→          newPassword: resetPassword,
+  2047→          adminUserId: adminUser?.id,
+  2048→        })
+  2049→      })
+  2050→      const data = await res.json()
+  2051→      if (!res.ok) throw new Error(data.error)
+  2052→      toast.success(data.message || `Password reset for "${resetTarget.name}"`)
+  2053→      setResetOpen(false)
+  2054→    } catch (err: unknown) {
+  2055→      toast.error(err instanceof Error ? err.message : 'Failed to reset password')
+  2056→    } finally {
+  2057→      setResetting(false)
+  2058→    }
+  2059→  }
+  2060→
+  2061→  async function handleDeleteUser(u: User) {
+  2062→    setDeletingId(u.id)
+  2063→    try {
+  2064→      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' })
+  2065→      if (!res.ok) {
+  2066→        const d = await res.json()
+  2067→        throw new Error(d.error || 'Failed')
+  2068→      }
+  2069→      toast.success(`User "${u.name}" deleted`)
+  2070→      fetchUsers()
+  2071→    } catch (e: unknown) {
+  2072→      toast.error(e instanceof Error ? e.message : 'Failed to delete user')
+  2073→    } finally {
+  2074→      setDeletingId(null)
+  2075→    }
+  2076→  }
+  2077→
+  2078→  if (loading) {
+  2079→    return (
+  2080→      <div className="space-y-6">
+  2081→        <Skeleton className="h-10 w-48" />
+  2082→        <div className="grid grid-cols-3 gap-4">
+  2083→          <Skeleton className="h-24 w-full" />
+  2084→          <Skeleton className="h-24 w-full" />
+  2085→          <Skeleton className="h-24 w-full" />
+  2086→        </div>
+  2087→        <Skeleton className="h-96 w-full" />
+  2088→      </div>
+  2089→    )
+  2090→  }
+  2091→
+  2092→  return (
+  2093→    <motion.div {...fadeIn} className="space-y-6">
+  2094→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  2095→        <div>
+  2096→          <h2 className="text-xl font-semibold">User Management</h2>
+  2097→          <p className="text-sm text-muted-foreground">Create and manage all user accounts</p>
+  2098→        </div>
+  2099→        <Button onClick={() => setShowAddDialog(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2100→          <UserPlus className="w-4 h-4 mr-2" />
+  2101→          Add User
+  2102→        </Button>
+  2103→      </div>
+  2104→
+  2105→      {/* Summary cards */}
+  2106→      <div className="grid grid-cols-3 gap-4">
+  2107→        {[
+  2108→          { label: 'Admins', count: adminCount, icon: Shield, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  2109→          { label: 'Team Members', count: teamCount, icon: UserCog, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+  2110→          { label: 'Clients', count: clientCount, icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+  2111→        ].map((c) => (
+  2112→          <Card key={c.label}>
+  2113→            <CardContent className="p-4 flex items-center gap-3">
+  2114→              <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+  2115→                <c.icon className={`h-5 w-5 ${c.color}`} />
+  2116→              </div>
+  2117→              <div>
+  2118→                <p className="text-2xl font-bold">{c.count}</p>
+  2119→                <p className="text-xs text-muted-foreground">{c.label}</p>
+  2120→              </div>
+  2121→            </CardContent>
+  2122→          </Card>
+  2123→        ))}
+  2124→      </div>
+  2125→
+  2126→      {/* Filters */}
+  2127→      <Card>
+  2128→        <CardContent className="p-4">
+  2129→          <div className="flex flex-col sm:flex-row gap-3">
+  2130→            <div className="relative flex-1">
+  2131→              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+  2132→              <Input
+  2133→                placeholder="Search by name, email, or company..."
+  2134→                value={search}
+  2135→                onChange={(e) => setSearch(e.target.value)}
+  2136→                className="pl-9"
+  2137→              />
+  2138→            </div>
+  2139→            <Select value={roleFilter} onValueChange={setRoleFilter}>
+  2140→              <SelectTrigger className="w-full sm:w-40">
+  2141→                <SelectValue placeholder="Filter by role" />
+  2142→              </SelectTrigger>
+  2143→              <SelectContent>
+  2144→                <SelectItem value="all">All Roles</SelectItem>
+  2145→                <SelectItem value="admin">Admin</SelectItem>
+  2146→                <SelectItem value="team">Team</SelectItem>
+  2147→                <SelectItem value="client">Client</SelectItem>
+  2148→              </SelectContent>
+  2149→            </Select>
+  2150→          </div>
+  2151→        </CardContent>
+  2152→      </Card>
+  2153→
+  2154→      {/* Users Table */}
+  2155→      <Card>
+  2156→        <CardContent className="p-0">
+  2157→          <div className="overflow-x-auto">
+  2158→            <Table>
+  2159→              <TableHeader>
+  2160→                <TableRow>
+  2161→                  <TableHead className="w-[250px]">User</TableHead>
+  2162→                  <TableHead className="hidden sm:table-cell">Role</TableHead>
+  2163→                  <TableHead className="hidden md:table-cell">Status</TableHead>
+  2164→                  <TableHead className="hidden lg:table-cell">Company</TableHead>
+  2165→                  <TableHead className="hidden lg:table-cell">Tasks</TableHead>
+  2166→                  <TableHead className="hidden xl:table-cell">Joined</TableHead>
+  2167→                  <TableHead className="text-right">Actions</TableHead>
+  2168→                </TableRow>
+  2169→              </TableHeader>
+  2170→              <TableBody>
+  2171→                {filteredUsers.length === 0 ? (
+  2172→                  <TableRow>
+  2173→                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+  2174→                      {search || roleFilter !== 'all' ? 'No users match your filters' : 'No users found'}
+  2175→                    </TableCell>
+  2176→                  </TableRow>
+  2177→                ) : (
+  2178→                  filteredUsers.map((u) => (
+  2179→                    <TableRow key={u.id}>
+  2180→                      <TableCell>
+  2181→                        <div className="flex items-center gap-3">
+  2182→                          <Avatar className="h-8 w-8">
+  2183→                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+  2184→                              {getInitials(u.name)}
+  2185→                            </AvatarFallback>
+  2186→                          </Avatar>
+  2187→                          <div className="min-w-0">
+  2188→                            <p className="font-medium text-sm truncate">{u.name}</p>
+  2189→                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+  2190→                          </div>
+  2191→                        </div>
+  2192→                      </TableCell>
+  2193→                      <TableCell className="hidden sm:table-cell">
+  2194→                        <Select
+  2195→                          value={u.role}
+  2196→                          onValueChange={(val) => handleChangeRole(u, val)}
+  2197→                          disabled={u.id === adminUser?.id}
+  2198→                        >
+  2199→                          <SelectTrigger className="w-28 h-8 text-xs">
+  2200→                            <SelectValue />
+  2201→                          </SelectTrigger>
+  2202→                          <SelectContent>
+  2203→                            <SelectItem value="admin">Admin</SelectItem>
+  2204→                            <SelectItem value="team">Team</SelectItem>
+  2205→                            <SelectItem value="client">Client</SelectItem>
+  2206→                          </SelectContent>
+  2207→                        </Select>
+  2208→                      </TableCell>
+  2209→                      <TableCell className="hidden md:table-cell">
+  2210→                        <Badge
+  2211→                          variant="secondary"
+  2212→                          className={u.status === 'active'
+  2213→                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  2214→                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+  2215→                          }
+  2216→                        >
+  2217→                          {u.status}
+  2218→                        </Badge>
+  2219→                      </TableCell>
+  2220→                      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+  2221→                        {u.company || '—'}
+  2222→                      </TableCell>
+  2223→                      <TableCell className="hidden lg:table-cell text-sm">
+  2224→                        {u._count ? (u._count.assignedTasks + u._count.createdTasks) : 0}
+  2225→                      </TableCell>
+  2226→                      <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
+  2227→                        {formatDate(u.createdAt)}
+  2228→                      </TableCell>
+  2229→                      <TableCell className="text-right">
+  2230→                        <DropdownMenu>
+  2231→                          <DropdownMenuTrigger asChild>
+  2232→                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={u.id === adminUser?.id}>
+  2233→                              <MoreHorizontal className="h-4 w-4" />
+  2234→                            </Button>
+  2235→                          </DropdownMenuTrigger>
+  2236→                          <DropdownMenuContent align="end">
+  2237→                            <DropdownMenuItem onClick={() => openEditDialog(u)}>
+  2238→                              <Pencil className="h-4 w-4 mr-2" />
+  2239→                              Edit User
+  2240→                            </DropdownMenuItem>
+  2241→                            <DropdownMenuItem onClick={() => openResetDialog(u)}>
+  2242→                              <KeyRound className="h-4 w-4 mr-2" />
+  2243→                              Reset Password
+  2244→                            </DropdownMenuItem>
+  2245→                            <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
+  2246→                              {u.status === 'active' ? (
+  2247→                                <>
+  2248→                                  <X className="h-4 w-4 mr-2" />
+  2249→                                  Deactivate
+  2250→                                </>
+  2251→                              ) : (
+  2252→                                <>
+  2253→                                  <CheckCircle2 className="h-4 w-4 mr-2" />
+  2254→                                  Activate
+  2255→                                </>
+  2256→                              )}
+  2257→                            </DropdownMenuItem>
+  2258→                            <DropdownMenuItem
+  2259→                              onClick={() => handleDeleteUser(u)}
+  2260→                              disabled={u.id === adminUser?.id || deletingId === u.id}
+  2261→                              className="text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-900/20"
+  2262→                            >
+  2263→                              {deletingId === u.id ? (
+  2264→                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+  2265→                              ) : (
+  2266→                                <Trash2 className="h-4 w-4 mr-2" />
+  2267→                              )}
+  2268→                              Delete User
+  2269→                            </DropdownMenuItem>
+  2270→                          </DropdownMenuContent>
+  2271→                        </DropdownMenu>
+  2272→                      </TableCell>
+  2273→                    </TableRow>
+  2274→                  ))
+  2275→                )}
+  2276→              </TableBody>
+  2277→            </Table>
+  2278→          </div>
+  2279→        </CardContent>
+  2280→      </Card>
+  2281→
+  2282→      {/* Add User Dialog */}
+  2283→      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+  2284→        <DialogContent className="sm:max-w-md">
+  2285→          <DialogHeader>
+  2286→            <DialogTitle>Create New User</DialogTitle>
+  2287→            <DialogDescription>Add a new member to the platform. They will receive their credentials from you.</DialogDescription>
+  2288→          </DialogHeader>
+  2289→          <form onSubmit={handleAddUser} className="space-y-4">
+  2290→            <div className="space-y-2">
+  2291→              <Label htmlFor="add-name">Full Name *</Label>
+  2292→              <Input
+  2293→                id="add-name"
+  2294→                placeholder="John Doe"
+  2295→                value={newUser.name}
+  2296→                onChange={(e) => setNewUser(p => ({ ...p, name: e.target.value }))}
+  2297→              />
+  2298→            </div>
+  2299→            <div className="space-y-2">
+  2300→              <Label htmlFor="add-email">Email *</Label>
+  2301→              <Input
+  2302→                id="add-email"
+  2303→                type="email"
+  2304→                placeholder="name@company.com"
+  2305→                value={newUser.email}
+  2306→                onChange={(e) => setNewUser(p => ({ ...p, email: e.target.value }))}
+  2307→              />
+  2308→            </div>
+  2309→            <div className="grid grid-cols-2 gap-3">
+  2310→              <div className="space-y-2">
+  2311→                <Label htmlFor="add-role">Role *</Label>
+  2312→                <Select value={newUser.role} onValueChange={(val: 'admin' | 'team' | 'client') => setNewUser(p => ({ ...p, role: val }))}>
+  2313→                  <SelectTrigger id="add-role">
+  2314→                    <SelectValue />
+  2315→                  </SelectTrigger>
+  2316→                  <SelectContent>
+  2317→                    <SelectItem value="admin">Admin</SelectItem>
+  2318→                    <SelectItem value="team">Team</SelectItem>
+  2319→                    <SelectItem value="client">Client</SelectItem>
+  2320→                  </SelectContent>
+  2321→                </Select>
+  2322→              </div>
+  2323→              <div className="space-y-2">
+  2324→                <Label htmlFor="add-phone">Phone</Label>
+  2325→                <Input
+  2326→                  id="add-phone"
+  2327→                  placeholder="+1 (555) 000"
+  2328→                  value={newUser.phone}
+  2329→                  onChange={(e) => setNewUser(p => ({ ...p, phone: e.target.value }))}
+  2330→                />
+  2331→              </div>
+  2332→            </div>
+  2333→            <div className="space-y-2">
+  2334→              <Label htmlFor="add-company">Company</Label>
+  2335→              <Input
+  2336→                id="add-company"
+  2337→                placeholder="Acme Inc."
+  2338→                value={newUser.company}
+  2339→                onChange={(e) => setNewUser(p => ({ ...p, company: e.target.value }))}
+  2340→              />
+  2341→            </div>
+  2342→            <Separator />
+  2343→            <div className="space-y-3">
+  2344→              <p className="text-sm font-medium">Set Password</p>
+  2345→              {mounted && (
+  2346→              <>
+  2347→              <div className="grid grid-cols-2 gap-3">
+  2348→                <div className="space-y-2">
+  2349→                  <Label htmlFor="add-password">Password *</Label>
+  2350→                  <Input
+  2351→                    id="add-password"
+  2352→                    type="password"
+  2353→                    autoComplete="new-password"
+  2354→                    placeholder="Min. 6 characters"
+  2355→                    value={newUser.password}
+  2356→                    onChange={(e) => setNewUser(p => ({ ...p, password: e.target.value }))}
+  2357→                  />
+  2358→                </div>
+  2359→                <div className="space-y-2">
+  2360→                  <Label htmlFor="add-confirm">Confirm *</Label>
+  2361→                  <Input
+  2362→                    id="add-confirm"
+  2363→                    type="password"
+  2364→                    autoComplete="new-password"
+  2365→                    placeholder="Re-enter"
+  2366→                    value={newUser.confirmPassword}
+  2367→                    onChange={(e) => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))}
+  2368→                  />
+  2369→                </div>
+  2370→              </div>
+  2371→              <p className="text-xs text-muted-foreground">Share the credentials with the new user after creation.</p>
+  2372→              </>
+  2373→              )}
+  2374→            </div>
+  2375→            <DialogFooter>
+  2376→              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+  2377→                Cancel
+  2378→              </Button>
+  2379→              <Button type="submit" disabled={adding} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2380→                {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  2381→                Create User
+  2382→              </Button>
+  2383→            </DialogFooter>
+  2384→          </form>
+  2385→        </DialogContent>
+  2386→      </Dialog>
+  2387→
+  2388→      {/* Edit User Dialog */}
+  2389→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+  2390→        <DialogContent className="sm:max-w-md">
+  2391→          <DialogHeader>
+  2392→            <DialogTitle>Edit User</DialogTitle>
+  2393→            <DialogDescription>Update user information. Changes are saved immediately.</DialogDescription>
+  2394→          </DialogHeader>
+  2395→          <form onSubmit={handleEditUser} className="space-y-4">
+  2396→            <div className="space-y-2">
+  2397→              <Label htmlFor="edit-name">Full Name *</Label>
+  2398→              <Input
+  2399→                id="edit-name"
+  2400→                placeholder="John Doe"
+  2401→                value={editForm.name}
+  2402→                onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))}
+  2403→              />
+  2404→            </div>
+  2405→            <div className="space-y-2">
+  2406→              <Label htmlFor="edit-email">Email *</Label>
+  2407→              <Input
+  2408→                id="edit-email"
+  2409→                type="email"
+  2410→                placeholder="name@company.com"
+  2411→                value={editForm.email}
+  2412→                onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
+  2413→              />
+  2414→            </div>
+  2415→            <div className="grid grid-cols-2 gap-3">
+  2416→              <div className="space-y-2">
+  2417→                <Label htmlFor="edit-role">Role *</Label>
+  2418→                <Select value={editForm.role} onValueChange={(val) => setEditForm(p => ({ ...p, role: val }))}>
+  2419→                  <SelectTrigger id="edit-role">
+  2420→                    <SelectValue />
+  2421→                  </SelectTrigger>
+  2422→                  <SelectContent>
+  2423→                    <SelectItem value="admin">Admin</SelectItem>
+  2424→                    <SelectItem value="team">Team</SelectItem>
+  2425→                    <SelectItem value="client">Client</SelectItem>
+  2426→                  </SelectContent>
+  2427→                </Select>
+  2428→              </div>
+  2429→              <div className="space-y-2">
+  2430→                <Label htmlFor="edit-phone">Phone</Label>
+  2431→                <Input
+  2432→                  id="edit-phone"
+  2433→                  placeholder="+1 (555) 000"
+  2434→                  value={editForm.phone}
+  2435→                  onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))}
+  2436→                />
+  2437→              </div>
+  2438→            </div>
+  2439→            <div className="space-y-2">
+  2440→              <Label htmlFor="edit-company">Company</Label>
+  2441→              <Input
+  2442→                id="edit-company"
+  2443→                placeholder="Acme Inc."
+  2444→                value={editForm.company}
+  2445→                onChange={(e) => setEditForm(p => ({ ...p, company: e.target.value }))}
+  2446→              />
+  2447→            </div>
+  2448→            <DialogFooter>
+  2449→              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+  2450→                Cancel
+  2451→              </Button>
+  2452→              <Button type="submit" disabled={editing} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2453→                {editing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  2454→                Save Changes
+  2455→              </Button>
+  2456→            </DialogFooter>
+  2457→          </form>
+  2458→        </DialogContent>
+  2459→      </Dialog>
+  2460→
+  2461→      {/* Reset Password Dialog */}
+  2462→      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+  2463→        <DialogContent className="sm:max-w-md">
+  2464→          <DialogHeader>
+  2465→            <DialogTitle className="flex items-center gap-2">
+  2466→              <KeyRound className="h-5 w-5 text-amber-600" />
+  2467→              Reset Password
+  2468→            </DialogTitle>
+  2469→            <DialogDescription>
+  2470→              Set a new password for <span className="font-semibold text-foreground">{resetTarget?.name}</span>. Make sure to share the new credentials with them securely.
+  2471→            </DialogDescription>
+  2472→          </DialogHeader>
+  2473→          <form onSubmit={handleResetPassword} className="space-y-4">
+  2474→            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
+  2475→              <p className="text-sm text-amber-800 dark:text-amber-300">
+  2476→                <AlertTriangle className="h-4 w-4 inline-block mr-1.5 -mt-0.5" />
+  2477→                The user will need to use the new password for their next login.
+  2478→              </p>
+  2479→            </div>
+  2480→            {mounted && (
+  2481→            <>
+  2482→            <div className="space-y-2">
+  2483→              <Label htmlFor="reset-password">New Password *</Label>
+  2484→              <Input
+  2485→                id="reset-password"
+  2486→                type="password"
+  2487→                autoComplete="new-password"
+  2488→                placeholder="Min. 6 characters"
+  2489→                value={resetPassword}
+  2490→                onChange={(e) => setResetPassword(e.target.value)}
+  2491→              />
+  2492→            </div>
+  2493→            <div className="space-y-2">
+  2494→              <Label htmlFor="reset-confirm">Confirm Password *</Label>
+  2495→              <Input
+  2496→                id="reset-confirm"
+  2497→                type="password"
+  2498→                autoComplete="new-password"
+  2499→                placeholder="Re-enter new password"
+  2500→                value={resetConfirm}
+  2501→                onChange={(e) => setResetConfirm(e.target.value)}
+  2502→              />
+  2503→            </div>
+  2504→            </>
+  2505→            )}
+  2506→            <DialogFooter>
+  2507→              <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+  2508→                Cancel
+  2509→              </Button>
+  2510→              <Button type="submit" disabled={resetting} className="bg-amber-600 hover:bg-amber-700 text-white">
+  2511→                {resetting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  2512→                Reset Password
+  2513→              </Button>
+  2514→            </DialogFooter>
+  2515→          </form>
+  2516→        </DialogContent>
+  2517→      </Dialog>
+  2518→    </motion.div>
+  2519→  )
+  2520→}
+  2521→
+  2522→// ─── AdminProfile ──────────────────────────────────────────────────────────────
+  2523→
+  2524→export function AdminProfile() {
+  2525→  const { user, login } = useAuthStore()
+  2526→  const [loading, setLoading] = useState(true)
+  2527→  const [saving, setSaving] = useState(false)
+  2528→  const [profile, setProfile] = useState({
+  2529→    name: '', email: '', phone: '', company: ''
+  2530→  })
+  2531→  const [passwords, setPasswords] = useState({
+  2532→    currentPassword: '', newPassword: '', confirmPassword: ''
+  2533→  })
+  2534→
+  2535→  useEffect(() => {
+  2536→    const currentUserId = user?.id
+  2537→    if (!currentUserId) return
+  2538→    async function fetchData() {
+  2539→      try {
+  2540→        const res = await fetch(`/api/user/profile?userId=${currentUserId}`)
+  2541→        if (!res.ok) throw new Error('Failed')
+  2542→        const data = await res.json()
+  2543→        setProfile({
+  2544→          name: data.user.name ?? '',
+  2545→          email: data.user.email ?? '',
+  2546→          phone: data.user.phone ?? '',
+  2547→          company: data.user.company ?? '',
+  2548→        })
+  2549→      } catch {
+  2550→        toast.error('Failed to load profile')
+  2551→      } finally {
+  2552→        setLoading(false)
+  2553→      }
+  2554→    }
+  2555→    fetchData()
+  2556→  }, [user])
+  2557→
+  2558→  async function handleSave() {
+  2559→    if (!user) return
+  2560→    setSaving(true)
+  2561→    try {
+  2562→      const body: Record<string, string> = {
+  2563→        userId: user.id,
+  2564→        name: profile.name,
+  2565→        email: profile.email,
+  2566→        phone: profile.phone,
+  2567→        company: profile.company,
+  2568→      }
+  2569→      if (passwords.currentPassword && passwords.newPassword) {
+  2570→        if (passwords.newPassword !== passwords.confirmPassword) {
+  2571→          toast.error('New passwords do not match')
+  2572→          setSaving(false)
+  2573→          return
+  2574→        }
+  2575→        if (passwords.newPassword.length < 6) {
+  2576→          toast.error('Password must be at least 6 characters')
+  2577→          setSaving(false)
+  2578→          return
+  2579→        }
+  2580→        body.currentPassword = passwords.currentPassword
+  2581→        body.newPassword = passwords.newPassword
+  2582→      }
+  2583→      const patchRes = await fetch('/api/user/profile', {
+  2584→        method: 'PATCH',
+  2585→        headers: { 'Content-Type': 'application/json' },
+  2586→        body: JSON.stringify(body)
+  2587→      })
+  2588→      if (!patchRes.ok) {
+  2589→        const d = await patchRes.json()
+  2590→        throw new Error(d.error)
+  2591→      }
+  2592→      const data = await patchRes.json()
+  2593→      toast.success('Profile updated successfully')
+  2594→      // Update store user
+  2595→      if (data.user && user) {
+  2596→        login({ ...user, ...data.user, password: (user as unknown as Record<string, unknown>).password as string })
+  2597→      }
+  2598→      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  2599→    } catch (e: unknown) {
+  2600→      toast.error(e instanceof Error ? e.message : 'Failed to update profile')
+  2601→    } finally {
+  2602→      setSaving(false)
+  2603→    }
+  2604→  }
+  2605→
+  2606→  if (loading) {
+  2607→    return (
+  2608→      <div className="space-y-6">
+  2609→        <Skeleton className="h-10 w-48" />
+  2610→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  2611→          <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+  2612→          <Card><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+  2613→        </div>
+  2614→      </div>
+  2615→    )
+  2616→  }
+  2617→
+  2618→  return (
+  2619→    <motion.div {...fadeIn} className="space-y-6">
+  2620→      <div>
+  2621→        <h2 className="text-xl font-semibold">Profile Settings</h2>
+  2622→        <p className="text-sm text-muted-foreground">Manage your account information and preferences</p>
+  2623→      </div>
+  2624→
+  2625→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  2626→        {/* Profile Form */}
+  2627→        <Card className="lg:col-span-2">
+  2628→          <CardHeader>
+  2629→            <CardTitle className="text-base">Personal Information</CardTitle>
+  2630→            <CardDescription>Update your account details</CardDescription>
+  2631→          </CardHeader>
+  2632→          <CardContent className="space-y-4">
+  2633→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  2634→              <div className="space-y-2">
+  2635→                <Label htmlFor="name">Full Name</Label>
+  2636→                <Input id="name" value={profile.name} onChange={(e) => setProfile(p => ({ ...p, name: e.target.value }))} />
+  2637→              </div>
+  2638→              <div className="space-y-2">
+  2639→                <Label htmlFor="email">Email</Label>
+  2640→                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile(p => ({ ...p, email: e.target.value }))} />
+  2641→              </div>
+  2642→              <div className="space-y-2">
+  2643→                <Label htmlFor="phone">Phone</Label>
+  2644→                <Input id="phone" value={profile.phone} onChange={(e) => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="Optional" />
+  2645→              </div>
+  2646→              <div className="space-y-2">
+  2647→                <Label htmlFor="company">Company</Label>
+  2648→                <Input id="company" value={profile.company} onChange={(e) => setProfile(p => ({ ...p, company: e.target.value }))} placeholder="Optional" />
+  2649→              </div>
+  2650→            </div>
+  2651→
+  2652→            <Separator />
+  2653→
+  2654→            {/* Change Password */}
+  2655→            <div className="space-y-3">
+  2656→              <h3 className="text-sm font-medium">Change Password</h3>
+  2657→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  2658→                <div className="space-y-2">
+  2659→                  <Label htmlFor="currentPass">Current Password</Label>
+  2660→                  <Input id="currentPass" type="password" autoComplete="current-password" value={passwords.currentPassword} onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} placeholder="Enter current" />
+  2661→                </div>
+  2662→                <div className="space-y-2">
+  2663→                  <Label htmlFor="newPass">New Password</Label>
+  2664→                  <Input id="newPass" type="password" autoComplete="new-password" value={passwords.newPassword} onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} placeholder="Enter new" />
+  2665→                </div>
+  2666→                <div className="space-y-2">
+  2667→                  <Label htmlFor="confirmPass">Confirm Password</Label>
+  2668→                  <Input id="confirmPass" type="password" autoComplete="new-password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
+  2669→                </div>
+  2670→              </div>
+  2671→              <p className="text-xs text-muted-foreground">Leave password fields empty to keep your current password.</p>
+  2672→            </div>
+  2673→
+  2674→            <div className="flex justify-end pt-2">
+  2675→              <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  2676→                {saving ? 'Saving...' : 'Save Changes'}
+  2677→              </Button>
+  2678→            </div>
+  2679→          </CardContent>
+  2680→        </Card>
+  2681→
+  2682→        {/* Account Info Card */}
+  2683→        <Card>
+  2684→          <CardHeader>
+  2685→            <CardTitle className="text-base">Account Info</CardTitle>
+  2686→          </CardHeader>
+  2687→          <CardContent className="space-y-6">
+  2688→            <div className="flex flex-col items-center text-center">
+  2689→              <Avatar className="h-20 w-20 mb-3">
+  2690→                {user?.avatar ? <AvatarImage src={user.avatar} /> : null}
+  2691→                <AvatarFallback className="text-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+  2692→                  {user ? getInitials(user.name) : '?'}
+  2693→                </AvatarFallback>
+  2694→              </Avatar>
+  2695→              <h3 className="font-semibold">{user?.name}</h3>
+  2696→              <p className="text-sm text-muted-foreground">{user?.email}</p>
+  2697→            </div>
+  2698→
+  2699→            <Separator />
+  2700→
+  2701→            <div className="space-y-3">
+  2702→              <div className="flex items-center justify-between">
+  2703→                <span className="text-sm text-muted-foreground">Role</span>
+  2704→                <Badge variant="secondary" className={getRoleBadgeClasses(user?.role ?? '')}>
+  2705→                  {user?.role ?? '—'}
+  2706→                </Badge>
+  2707→              </div>
+  2708→              <div className="flex items-center justify-between">
+  2709→                <span className="text-sm text-muted-foreground">Status</span>
+  2710→                <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+  2711→                  {user?.status ?? 'active'}
+  2712→                </Badge>
+  2713→              </div>
+  2714→              <div className="flex items-center justify-between">
+  2715→                <span className="text-sm text-muted-foreground">Member since</span>
+  2716→                <span className="text-sm font-medium">{user?.createdAt ? formatDate(user.createdAt) : '—'}</span>
+  2717→              </div>
+  2718→            </div>
+  2719→
+  2720→            <Separator />
+  2721→
+  2722→            <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+  2723→              <Shield className="h-5 w-5 text-emerald-600" />
+  2724→              <div>
+  2725→                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Admin Access</p>
+  2726→                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">Full platform management</p>
+  2727→              </div>
+  2728→            </div>
+  2729→          </CardContent>
+  2730→        </Card>
+  2731→      </div>
+  2732→    </motion.div>
+  2733→  )
+  2734→}

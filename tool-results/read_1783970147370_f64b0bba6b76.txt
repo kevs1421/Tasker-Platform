@@ -1,0 +1,1285 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useEffect, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { toast } from 'sonner'
+     6→import { format, formatDistanceToNow } from 'date-fns'
+     7→import {
+     8→  BarChart,
+     9→  Bar,
+    10→  XAxis,
+    11→  YAxis,
+    12→  CartesianGrid,
+    13→  Tooltip,
+    14→  ResponsiveContainer,
+    15→} from 'recharts'
+    16→import {
+    17→  CheckCircle2,
+    18→  Clock,
+    19→  AlertTriangle,
+    20→  FolderKanban,
+    21→  Users,
+    22→  UserCheck,
+    23→  TrendingUp,
+    24→  ListTodo,
+    25→  Eye,
+    26→  Plus,
+    27→  Pencil,
+    28→  MoreHorizontal,
+    29→  Activity,
+    30→  MessageSquare,
+    31→  Trash2,
+    32→  ArrowUpRight,
+    33→  ArrowRight,
+    34→  CalendarDays,
+    35→  CircleDot,
+    36→  Star,
+    37→  UserCog,
+    38→  UserX,
+    39→  Shield,
+    40→} from 'lucide-react'
+    41→
+    42→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+    43→import { Badge } from '@/components/ui/badge'
+    44→import { Button } from '@/components/ui/button'
+    45→import { Input } from '@/components/ui/input'
+    46→import { Label } from '@/components/ui/label'
+    47→import { Textarea } from '@/components/ui/textarea'
+    48→import { Skeleton } from '@/components/ui/skeleton'
+    49→import { Separator } from '@/components/ui/separator'
+    50→import { ScrollArea } from '@/components/ui/scroll-area'
+    51→import {
+    52→  Dialog,
+    53→  DialogContent,
+    54→  DialogDescription,
+    55→  DialogFooter,
+    56→  DialogHeader,
+    57→  DialogTitle,
+    58→  DialogTrigger,
+    59→} from '@/components/ui/dialog'
+    60→import {
+    61→  Select,
+    62→  SelectContent,
+    63→  SelectItem,
+    64→  SelectTrigger,
+    65→  SelectValue,
+    66→} from '@/components/ui/select'
+    67→import {
+    68→  Table,
+    69→  TableBody,
+    70→  TableCell,
+    71→  TableHead,
+    72→  TableHeader,
+    73→  TableRow,
+    74→} from '@/components/ui/table'
+    75→import {
+    76→  DropdownMenu,
+    77→  DropdownMenuContent,
+    78→  DropdownMenuItem,
+    79→  DropdownMenuTrigger,
+    80→} from '@/components/ui/dropdown-menu'
+    81→
+    82→import { useAuthStore } from '@/stores/auth'
+    83→import type { User, Project, ActivityLog, DashboardStats } from '@/types'
+    84→
+    85→// ─── Constants ────────────────────────────────────────────────────────────────
+    86→
+    87→const PRESET_COLORS = [
+    88→  '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+    89→  '#ec4899', '#06b6d4', '#f97316', '#14b8a6',
+    90→  '#6366f1', '#84cc16', '#e11d48', '#0ea5e9',
+    91→]
+    92→
+    93→const ROLE_COLORS: Record<string, string> = {
+    94→  admin: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    95→  team: 'bg-amber-100 text-amber-700 border-amber-200',
+    96→  client: 'bg-rose-100 text-rose-700 border-rose-200',
+    97→}
+    98→
+    99→const PRIORITY_COLORS: Record<string, string> = {
+   100→  urgent: 'bg-rose-100 text-rose-700 border-rose-200',
+   101→  high: 'bg-orange-100 text-orange-700 border-orange-200',
+   102→  medium: 'bg-amber-100 text-amber-700 border-amber-200',
+   103→  low: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   104→}
+   105→
+   106→const STATUS_COLORS: Record<string, string> = {
+   107→  active: 'bg-emerald-100 text-emerald-700',
+   108→  inactive: 'bg-gray-100 text-gray-500',
+   109→  archived: 'bg-zinc-100 text-zinc-500',
+   110→}
+   111→
+   112→const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
+   113→  created: <CircleDot className="h-4 w-4 text-emerald-500" />,
+   114→  updated: <Pencil className="h-4 w-4 text-amber-500" />,
+   115→  commented: <MessageSquare className="h-4 w-4 text-violet-500" />,
+   116→  completed: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+   117→  deleted: <Trash2 className="h-4 w-4 text-rose-500" />,
+   118→  assigned: <UserCheck className="h-4 w-4 text-cyan-500" />,
+   119→  status_changed: <ArrowRight className="h-4 w-4 text-amber-500" />,
+   120→}
+   121→
+   122→// ─── Types ────────────────────────────────────────────────────────────────────
+   123→
+   124→interface ExtendedDashboardStats extends DashboardStats {
+   125→  inReviewTasks: number
+   126→  todoTasks: number
+   127→  totalClients: number
+   128→  thisWeekCompleted: number
+   129→}
+   130→
+   131→interface ExtendedUser extends User {
+   132→  _count?: {
+   133→    assignedTasks: number
+   134→    createdTasks: number
+   135→  }
+   136→}
+   137→
+   138→// ─── Component ────────────────────────────────────────────────────────────────
+   139→
+   140→export default function AdminDashboard() {
+   141→  const { adminView, user: currentUser } = useAuthStore()
+   142→
+   143→  // ── State ──
+   144→  const [loading, setLoading] = useState(true)
+   145→  const [stats, setStats] = useState<ExtendedDashboardStats | null>(null)
+   146→  const [projects, setProjects] = useState<Project[]>([])
+   147→  const [users, setUsers] = useState<ExtendedUser[]>([])
+   148→  const [activities, setActivities] = useState<ActivityLog[]>([])
+   149→
+   150→  // ── Create Project Dialog State ──
+   151→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+   152→  const [newProject, setNewProject] = useState({
+   153→    name: '',
+   154→    description: '',
+   155→    color: '#10b981',
+   156→    priority: 'medium',
+   157→    dueDate: '',
+   158→  })
+   159→  const [creating, setCreating] = useState(false)
+   160→
+   161→  // ── Data Fetching ──
+   162→
+   163→  const fetchStats = useCallback(async () => {
+   164→    try {
+   165→      const res = await fetch('/api/dashboard/stats')
+   166→      if (!res.ok) throw new Error('Failed to fetch stats')
+   167→      const data = await res.json()
+   168→      setStats(data.stats)
+   169→    } catch {
+   170→      toast.error('Failed to load dashboard stats')
+   171→    }
+   172→  }, [])
+   173→
+   174→  const fetchProjects = useCallback(async () => {
+   175→    try {
+   176→      const res = await fetch('/api/projects')
+   177→      if (!res.ok) throw new Error('Failed to fetch projects')
+   178→      const data = await res.json()
+   179→      setProjects(data.projects)
+   180→    } catch {
+   181→      toast.error('Failed to load projects')
+   182→    }
+   183→  }, [])
+   184→
+   185→  const fetchUsers = useCallback(async () => {
+   186→    try {
+   187→      const res = await fetch('/api/users')
+   188→      if (!res.ok) throw new Error('Failed to fetch users')
+   189→      const data = await res.json()
+   190→      setUsers(data.users)
+   191→    } catch {
+   192→      toast.error('Failed to load users')
+   193→    }
+   194→  }, [])
+   195→
+   196→  const fetchActivities = useCallback(async () => {
+   197→    try {
+   198→      const res = await fetch('/api/dashboard/activity')
+   199→      if (!res.ok) throw new Error('Failed to fetch activities')
+   200→      const data = await res.json()
+   201→      setActivities(data.activities)
+   202→    } catch {
+   203→      toast.error('Failed to load activities')
+   204→    }
+   205→  }, [])
+   206→
+   207→  useEffect(() => {
+   208→    const loadAll = async () => {
+   209→      setLoading(true)
+   210→      await Promise.all([fetchStats(), fetchProjects(), fetchUsers(), fetchActivities()])
+   211→      setLoading(false)
+   212→    }
+   213→    loadAll()
+   214→  }, [fetchStats, fetchProjects, fetchUsers, fetchActivities])
+   215→
+   216→  // ── Handlers ──
+   217→
+   218→  const handleCreateProject = useCallback(async () => {
+   219→    if (!newProject.name.trim()) {
+   220→      toast.error('Project name is required')
+   221→      return
+   222→    }
+   223→    if (!currentUser) return
+   224→
+   225→    setCreating(true)
+   226→    try {
+   227→      const res = await fetch('/api/projects', {
+   228→        method: 'POST',
+   229→        headers: { 'Content-Type': 'application/json' },
+   230→        body: JSON.stringify({
+   231→          ...newProject,
+   232→          createdBy: currentUser.id,
+   233→          dueDate: newProject.dueDate || null,
+   234→        }),
+   235→      })
+   236→      if (!res.ok) throw new Error('Failed to create project')
+   237→      toast.success('Project created successfully')
+   238→      setCreateDialogOpen(false)
+   239→      setNewProject({ name: '', description: '', color: '#10b981', priority: 'medium', dueDate: '' })
+   240→      fetchProjects()
+   241→      fetchStats()
+   242→    } catch {
+   243→      toast.error('Failed to create project')
+   244→    } finally {
+   245→      setCreating(false)
+   246→    }
+   247→  }, [newProject, currentUser, fetchProjects, fetchStats])
+   248→
+   249→  const handleUpdateUserRole = useCallback(async (userId: string, role: string) => {
+   250→    try {
+   251→      const res = await fetch('/api/users', {
+   252→        method: 'PATCH',
+   253→        headers: { 'Content-Type': 'application/json' },
+   254→        body: JSON.stringify({ id: userId, role }),
+   255→      })
+   256→      if (!res.ok) throw new Error('Failed to update user role')
+   257→      toast.success('User role updated')
+   258→      fetchUsers()
+   259→    } catch {
+   260→      toast.error('Failed to update user role')
+   261→    }
+   262→  }, [fetchUsers])
+   263→
+   264→  const handleToggleUserStatus = useCallback(async (userId: string, currentStatus: string) => {
+   265→    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+   266→    try {
+   267→      const res = await fetch('/api/users', {
+   268→        method: 'PATCH',
+   269→        headers: { 'Content-Type': 'application/json' },
+   270→        body: JSON.stringify({ id: userId, status: newStatus }),
+   271→      })
+   272→      if (!res.ok) throw new Error('Failed to update user status')
+   273→      toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`)
+   274→      fetchUsers()
+   275→    } catch {
+   276→      toast.error('Failed to update user status')
+   277→    }
+   278→  }, [fetchUsers])
+   279→
+   280→  const handleUpdateProjectStatus = useCallback(async (projectId: string, status: string) => {
+   281→    try {
+   282→      const res = await fetch(`/api/projects/${projectId}`, {
+   283→        method: 'PATCH',
+   284→        headers: { 'Content-Type': 'application/json' },
+   285→        body: JSON.stringify({ status }),
+   286→      })
+   287→      if (!res.ok) throw new Error('Failed to update project status')
+   288→      toast.success('Project status updated')
+   289→      fetchProjects()
+   290→      fetchStats()
+   291→    } catch {
+   292→      toast.error('Failed to update project status')
+   293→    }
+   294→  }, [fetchProjects, fetchStats])
+   295→
+   296→  // ── Chart Data ──
+   297→
+   298→  const chartData = stats
+   299→    ? [
+   300→        { name: 'Todo', count: stats.todoTasks, fill: '#6366f1' },
+   301→        { name: 'In Progress', count: stats.inProgressTasks, fill: '#f59e0b' },
+   302→        { name: 'In Review', count: stats.inReviewTasks, fill: '#06b6d4' },
+   303→        { name: 'Done', count: stats.completedTasks, fill: '#10b981' },
+   304→      ]
+   305→    : []
+   306→
+   307→  // ── Render Helpers ──
+   308→
+   309→  const getActivityIcon = (action: string) => {
+   310→    const lower = action.toLowerCase()
+   311→    if (lower.includes('comment')) return ACTIVITY_ICONS.commented
+   312→    if (lower.includes('complet') || lower.includes('done')) return ACTIVITY_ICONS.completed
+   313→    if (lower.includes('delet')) return ACTIVITY_ICONS.deleted
+   314→    if (lower.includes('assign')) return ACTIVITY_ICONS.assigned
+   315→    if (lower.includes('status') || lower.includes('move')) return ACTIVITY_ICONS.status_changed
+   316→    if (lower.includes('updat') || lower.includes('edit')) return ACTIVITY_ICONS.updated
+   317→    return ACTIVITY_ICONS.created
+   318→  }
+   319→
+   320→  // ── Loading State ──
+   321→
+   322→  if (loading) {
+   323→    return (
+   324→      <div className="space-y-6 p-4 md:p-6">
+   325→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   326→          {Array.from({ length: 7 }).map((_, i) => (
+   327→            <Skeleton key={i} className="h-28 rounded-xl" />
+   328→          ))}
+   329→        </div>
+   330→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   331→          <Skeleton className="h-80 rounded-xl" />
+   332→          <Skeleton className="h-80 rounded-xl" />
+   333→        </div>
+   334→      </div>
+   335→    )
+   336→  }
+   337→
+   338→  // ── Tab Rendering ──
+   339→
+   340→  return (
+   341→    <div className="space-y-6 p-4 md:p-6">
+   342→      {adminView === 'overview' && (
+   343→        <OverviewTab
+   344→          stats={stats!}
+   345→          chartData={chartData}
+   346→          activities={activities}
+   347→          getActivityIcon={getActivityIcon}
+   348→        />
+   349→      )}
+   350→      {adminView === 'projects' && (
+   351→        <ProjectsTab
+   352→          projects={projects}
+   353→          onCreateClick={() => setCreateDialogOpen(true)}
+   354→          onUpdateStatus={handleUpdateProjectStatus}
+   355→        />
+   356→      )}
+   357→      {adminView === 'users' && (
+   358→        <UsersTab
+   359→          users={users}
+   360→          onUpdateRole={handleUpdateUserRole}
+   361→          onToggleStatus={handleToggleUserStatus}
+   362→        />
+   363→      )}
+   364→      {adminView === 'activity' && (
+   365→        <ActivityTab
+   366→          activities={activities}
+   367→          getActivityIcon={getActivityIcon}
+   368→        />
+   369→      )}
+   370→
+   371→      {/* ── Create Project Dialog ── */}
+   372→      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+   373→        <DialogContent className="sm:max-w-[480px]">
+   374→          <DialogHeader>
+   375→            <DialogTitle>Create New Project</DialogTitle>
+   376→            <DialogDescription>
+   377→              Add a new project to your workspace. Fill in the details below.
+   378→            </DialogDescription>
+   379→          </DialogHeader>
+   380→          <div className="space-y-4 py-2">
+   381→            <div className="space-y-2">
+   382→              <Label htmlFor="project-name">Name *</Label>
+   383→              <Input
+   384→                id="project-name"
+   385→                placeholder="Enter project name"
+   386→                value={newProject.name}
+   387→                onChange={(e) => setNewProject((p) => ({ ...p, name: e.target.value }))}
+   388→              />
+   389→            </div>
+   390→            <div className="space-y-2">
+   391→              <Label htmlFor="project-desc">Description</Label>
+   392→              <Textarea
+   393→                id="project-desc"
+   394→                placeholder="Brief project description"
+   395→                value={newProject.description}
+   396→                onChange={(e) => setNewProject((p) => ({ ...p, description: e.target.value }))}
+   397→                rows={3}
+   398→              />
+   399→            </div>
+   400→            <div className="space-y-2">
+   401→              <Label>Color</Label>
+   402→              <div className="flex flex-wrap gap-2">
+   403→                {PRESET_COLORS.map((c) => (
+   404→                  <button
+   405→                    key={c}
+   406→                    type="button"
+   407→                    className="h-8 w-8 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+   408→                    style={{
+   409→                      backgroundColor: c,
+   410→                      borderColor: newProject.color === c ? '#000' : 'transparent',
+   411→                    }}
+   412→                    onClick={() => setNewProject((p) => ({ ...p, color: c }))}
+   413→                  />
+   414→                ))}
+   415→              </div>
+   416→            </div>
+   417→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   418→              <div className="space-y-2">
+   419→                <Label>Priority</Label>
+   420→                <Select
+   421→                  value={newProject.priority}
+   422→                  onValueChange={(val) => setNewProject((p) => ({ ...p, priority: val }))}
+   423→                >
+   424→                  <SelectTrigger>
+   425→                    <SelectValue />
+   426→                  </SelectTrigger>
+   427→                  <SelectContent>
+   428→                    <SelectItem value="low">Low</SelectItem>
+   429→                    <SelectItem value="medium">Medium</SelectItem>
+   430→                    <SelectItem value="high">High</SelectItem>
+   431→                    <SelectItem value="urgent">Urgent</SelectItem>
+   432→                  </SelectContent>
+   433→                </Select>
+   434→              </div>
+   435→              <div className="space-y-2">
+   436→                <Label htmlFor="project-due">Due Date</Label>
+   437→                <Input
+   438→                  id="project-due"
+   439→                  type="date"
+   440→                  value={newProject.dueDate}
+   441→                  onChange={(e) => setNewProject((p) => ({ ...p, dueDate: e.target.value }))}
+   442→                />
+   443→              </div>
+   444→            </div>
+   445→          </div>
+   446→          <DialogFooter>
+   447→            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+   448→              Cancel
+   449→            </Button>
+   450→            <Button onClick={handleCreateProject} disabled={creating || !newProject.name.trim()}>
+   451→              {creating ? 'Creating...' : 'Create Project'}
+   452→            </Button>
+   453→          </DialogFooter>
+   454→        </DialogContent>
+   455→      </Dialog>
+   456→    </div>
+   457→  )
+   458→}
+   459→
+   460→// ─── Overview Tab ─────────────────────────────────────────────────────────────
+   461→
+   462→function OverviewTab({
+   463→  stats,
+   464→  chartData,
+   465→  activities,
+   466→  getActivityIcon,
+   467→}: {
+   468→  stats: ExtendedDashboardStats
+   469→  chartData: { name: string; count: number; fill: string }[]
+   470→  activities: ActivityLog[]
+   471→  getActivityIcon: (action: string) => React.ReactNode
+   472→}) {
+   473→  const statCards = [
+   474→    {
+   475→      label: 'Total Tasks',
+   476→      value: stats.totalTasks,
+   477→      icon: <ListTodo className="h-5 w-5" />,
+   478→      color: 'text-emerald-600',
+   479→      bg: 'bg-emerald-50',
+   480→    },
+   481→    {
+   482→      label: 'Completed',
+   483→      value: stats.completedTasks,
+   484→      icon: <CheckCircle2 className="h-5 w-5" />,
+   485→      color: 'text-emerald-600',
+   486→      bg: 'bg-emerald-50',
+   487→    },
+   488→    {
+   489→      label: 'In Progress',
+   490→      value: stats.inProgressTasks,
+   491→      icon: <Clock className="h-5 w-5" />,
+   492→      color: 'text-amber-600',
+   493→      bg: 'bg-amber-50',
+   494→    },
+   495→    {
+   496→      label: 'Overdue',
+   497→      value: stats.overdueTasks,
+   498→      icon: <AlertTriangle className="h-5 w-5" />,
+   499→      color: 'text-rose-600',
+   500→      bg: 'bg-rose-50',
+   501→    },
+   502→    {
+   503→      label: 'Projects',
+   504→      value: stats.totalProjects,
+   505→      icon: <FolderKanban className="h-5 w-5" />,
+   506→      color: 'text-violet-600',
+   507→      bg: 'bg-violet-50',
+   508→    },
+   509→    {
+   510→      label: 'Members',
+   511→      value: stats.totalMembers,
+   512→      icon: <Users className="h-5 w-5" />,
+   513→      color: 'text-cyan-600',
+   514→      bg: 'bg-cyan-50',
+   515→    },
+   516→    {
+   517→      label: 'Clients',
+   518→      value: stats.totalClients,
+   519→      icon: <UserCheck className="h-5 w-5" />,
+   520→      color: 'text-pink-600',
+   521→      bg: 'bg-pink-50',
+   522→    },
+   523→  ]
+   524→
+   525→  const completionRate = stats.totalTasks > 0
+   526→    ? Math.round((stats.completedTasks / stats.totalTasks) * 100)
+   527→    : 0
+   528→
+   529→  return (
+   530→    <>
+   531→      {/* Stat Cards */}
+   532→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   533→        {statCards.map((card) => (
+   534→          <motion.div
+   535→            key={card.label}
+   536→            initial={{ opacity: 0, y: 10 }}
+   537→            animate={{ opacity: 1, y: 0 }}
+   538→            transition={{ duration: 0.3 }}
+   539→          >
+   540→            <Card className="hover:shadow-md transition-shadow">
+   541→              <CardContent className="p-4">
+   542→                <div className="flex items-center justify-between">
+   543→                  <div>
+   544→                    <p className="text-sm text-muted-foreground">{card.label}</p>
+   545→                    <p className="text-2xl font-bold mt-1">{card.value}</p>
+   546→                  </div>
+   547→                  <div className={`p-2.5 rounded-lg ${card.bg}`}>
+   548→                    <span className={card.color}>{card.icon}</span>
+   549→                  </div>
+   550→                </div>
+   551→              </CardContent>
+   552→            </Card>
+   553→          </motion.div>
+   554→        ))}
+   555→      </div>
+   556→
+   557→      {/* Completion Rate Banner */}
+   558→      <motion.div
+   559→        initial={{ opacity: 0, y: 10 }}
+   560→        animate={{ opacity: 1, y: 0 }}
+   561→        transition={{ duration: 0.3, delay: 0.1 }}
+   562→      >
+   563→        <Card>
+   564→          <CardContent className="p-4">
+   565→            <div className="flex items-center justify-between mb-2">
+   566→              <div className="flex items-center gap-2">
+   567→                <TrendingUp className="h-5 w-5 text-emerald-500" />
+   568→                <span className="font-medium text-sm">Overall Completion Rate</span>
+   569→              </div>
+   570→              <span className="text-2xl font-bold text-emerald-600">{completionRate}%</span>
+   571→            </div>
+   572→            <div className="w-full bg-gray-100 rounded-full h-2.5">
+   573→              <div
+   574→                className="bg-emerald-500 h-2.5 rounded-full transition-all duration-500"
+   575→                style={{ width: `${completionRate}%` }}
+   576→              />
+   577→            </div>
+   578→            <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+   579→              <span>{stats.thisWeekCompleted} completed this week</span>
+   580→              <span>{stats.totalTasks - stats.completedTasks} remaining</span>
+   581→            </div>
+   582→          </CardContent>
+   583→        </Card>
+   584→      </motion.div>
+   585→
+   586→      {/* Chart + Recent Activity */}
+   587→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   588→        <motion.div
+   589→          initial={{ opacity: 0, y: 10 }}
+   590→          animate={{ opacity: 1, y: 0 }}
+   591→          transition={{ duration: 0.3, delay: 0.2 }}
+   592→        >
+   593→          <Card className="h-full">
+   594→            <CardHeader className="pb-2">
+   595→              <CardTitle className="text-base font-semibold">Task Distribution</CardTitle>
+   596→              <CardDescription>Breakdown by current status</CardDescription>
+   597→            </CardHeader>
+   598→            <CardContent className="pt-0">
+   599→              <div className="h-64">
+   600→                <ResponsiveContainer width="100%" height="100%">
+   601→                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+   602→                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+   603→                    <XAxis
+   604→                      dataKey="name"
+   605→                      tick={{ fontSize: 12, fill: '#6b7280' }}
+   606→                      axisLine={false}
+   607→                      tickLine={false}
+   608→                    />
+   609→                    <YAxis
+   610→                      tick={{ fontSize: 12, fill: '#6b7280' }}
+   611→                      axisLine={false}
+   612→                      tickLine={false}
+   613→                      allowDecimals={false}
+   614→                    />
+   615→                    <Tooltip
+   616→                      contentStyle={{
+   617→                        borderRadius: '8px',
+   618→                        border: '1px solid #e5e7eb',
+   619→                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+   620→                        fontSize: '13px',
+   621→                      }}
+   622→                    />
+   623→                    <Bar dataKey="count" radius={[6, 6, 0, 0]} fill="#10b981">
+   624→                      {chartData.map((entry, index) => (
+   625→                        <rect key={index} fill={entry.fill} />
+   626→                      ))}
+   627→                    </Bar>
+   628→                  </BarChart>
+   629→                </ResponsiveContainer>
+   630→              </div>
+   631→            </CardContent>
+   632→          </Card>
+   633→        </motion.div>
+   634→
+   635→        <motion.div
+   636→          initial={{ opacity: 0, y: 10 }}
+   637→          animate={{ opacity: 1, y: 0 }}
+   638→          transition={{ duration: 0.3, delay: 0.3 }}
+   639→        >
+   640→          <Card className="h-full">
+   641→            <CardHeader className="pb-2">
+   642→              <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
+   643→              <CardDescription>Latest actions across the workspace</CardDescription>
+   644→            </CardHeader>
+   645→            <CardContent className="pt-0">
+   646→              <ScrollArea className="h-64 pr-3">
+   647→                <div className="space-y-4">
+   648→                  {activities.slice(0, 10).map((activity) => (
+   649→                    <div key={activity.id} className="flex items-start gap-3">
+   650→                      <div className="mt-0.5 shrink-0">
+   651→                        {getActivityIcon(activity.action)}
+   652→                      </div>
+   653→                      <div className="flex-1 min-w-0">
+   654→                        <p className="text-sm leading-snug">
+   655→                          {activity.user ? (
+   656→                            <span className="font-medium">{activity.user.name}</span>
+   657→                          ) : (
+   658→                            <span className="text-muted-foreground">System</span>
+   659→                          )}
+   660→                          {' '}
+   661→                          <span className="text-muted-foreground">{activity.action.toLowerCase()}</span>
+   662→                          {' '}
+   663→                          <span className="font-medium">{activity.details}</span>
+   664→                        </p>
+   665→                        <p className="text-xs text-muted-foreground mt-0.5">
+   666→                          {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+   667→                        </p>
+   668→                      </div>
+   669→                    </div>
+   670→                  ))}
+   671→                  {activities.length === 0 && (
+   672→                    <p className="text-sm text-muted-foreground text-center py-8">
+   673→                      No recent activity
+   674→                    </p>
+   675→                  )}
+   676→                </div>
+   677→              </ScrollArea>
+   678→            </CardContent>
+   679→          </Card>
+   680→        </motion.div>
+   681→      </div>
+   682→    </>
+   683→  )
+   684→}
+   685→
+   686→// ─── Projects Tab ─────────────────────────────────────────────────────────────
+   687→
+   688→function ProjectsTab({
+   689→  projects,
+   690→  onCreateClick,
+   691→  onUpdateStatus,
+   692→}: {
+   693→  projects: Project[]
+   694→  onCreateClick: () => void
+   695→  onUpdateStatus: (id: string, status: string) => void
+   696→}) {
+   697→  return (
+   698→    <>
+   699→      <div className="flex items-center justify-between">
+   700→        <div>
+   701→          <h2 className="text-xl font-semibold">Projects</h2>
+   702→          <p className="text-sm text-muted-foreground">Manage all workspace projects</p>
+   703→        </div>
+   704→        <Button onClick={onCreateClick} className="gap-2">
+   705→          <Plus className="h-4 w-4" />
+   706→          Create Project
+   707→        </Button>
+   708→      </div>
+   709→
+   710→      <motion.div
+   711→        initial={{ opacity: 0, y: 10 }}
+   712→        animate={{ opacity: 1, y: 0 }}
+   713→        transition={{ duration: 0.3 }}
+   714→      >
+   715→        <Card>
+   716→          <CardContent className="p-0">
+   717→            {/* Desktop Table */}
+   718→            <div className="hidden md:block overflow-x-auto">
+   719→              <Table>
+   720→                <TableHeader>
+   721→                  <TableRow>
+   722→                    <TableHead>Project</TableHead>
+   723→                    <TableHead>Priority</TableHead>
+   724→                    <TableHead className="text-center">Tasks</TableHead>
+   725→                    <TableHead className="text-center">Members</TableHead>
+   726→                    <TableHead>Status</TableHead>
+   727→                    <TableHead className="text-right">Actions</TableHead>
+   728→                  </TableRow>
+   729→                </TableHeader>
+   730→                <TableBody>
+   731→                  {projects.map((project) => (
+   732→                    <TableRow key={project.id}>
+   733→                      <TableCell>
+   734→                        <div className="flex items-center gap-3">
+   735→                          <div
+   736→                            className="h-3 w-3 rounded-full shrink-0"
+   737→                            style={{ backgroundColor: project.color }}
+   738→                          />
+   739→                          <div>
+   740→                            <p className="font-medium text-sm">{project.name}</p>
+   741→                            {project.description && (
+   742→                              <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
+   743→                                {project.description}
+   744→                              </p>
+   745→                            )}
+   746→                          </div>
+   747→                        </div>
+   748→                      </TableCell>
+   749→                      <TableCell>
+   750→                        <Badge
+   751→                          variant="outline"
+   752→                          className={PRIORITY_COLORS[project.priority] || ''}
+   753→                        >
+   754→                          {project.priority}
+   755→                        </Badge>
+   756→                      </TableCell>
+   757→                      <TableCell className="text-center">
+   758→                        <span className="font-medium">{project._count?.tasks ?? 0}</span>
+   759→                      </TableCell>
+   760→                      <TableCell className="text-center">
+   761→                        <span className="font-medium">{project.members?.length ?? 0}</span>
+   762→                      </TableCell>
+   763→                      <TableCell>
+   764→                        <Badge
+   765→                          variant="secondary"
+   766→                          className={STATUS_COLORS[project.status] || ''}
+   767→                        >
+   768→                          {project.status}
+   769→                        </Badge>
+   770→                      </TableCell>
+   771→                      <TableCell className="text-right">
+   772→                        <DropdownMenu>
+   773→                          <DropdownMenuTrigger asChild>
+   774→                            <Button variant="ghost" size="icon" className="h-8 w-8">
+   775→                              <MoreHorizontal className="h-4 w-4" />
+   776→                            </Button>
+   777→                          </DropdownMenuTrigger>
+   778→                          <DropdownMenuContent align="end">
+   779→                            <DropdownMenuItem
+   780→                              onClick={() => onUpdateStatus(project.id, 'active')}
+   781→                              disabled={project.status === 'active'}
+   782→                            >
+   783→                              <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-500" />
+   784→                              Set Active
+   785→                            </DropdownMenuItem>
+   786→                            <DropdownMenuItem
+   787→                              onClick={() => onUpdateStatus(project.id, 'inactive')}
+   788→                              disabled={project.status === 'inactive'}
+   789→                            >
+   790→                              <Clock className="h-4 w-4 mr-2 text-amber-500" />
+   791→                              Set Inactive
+   792→                            </DropdownMenuItem>
+   793→                            <DropdownMenuItem
+   794→                              onClick={() => onUpdateStatus(project.id, 'archived')}
+   795→                              disabled={project.status === 'archived'}
+   796→                            >
+   797→                              <FolderKanban className="h-4 w-4 mr-2 text-zinc-500" />
+   798→                              Archive
+   799→                            </DropdownMenuItem>
+   800→                          </DropdownMenuContent>
+   801→                        </DropdownMenu>
+   802→                      </TableCell>
+   803→                    </TableRow>
+   804→                  ))}
+   805→                  {projects.length === 0 && (
+   806→                    <TableRow>
+   807→                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+   808→                        No projects found. Create your first project to get started.
+   809→                      </TableCell>
+   810→                    </TableRow>
+   811→                  )}
+   812→                </TableBody>
+   813→              </Table>
+   814→            </div>
+   815→
+   816→            {/* Mobile Cards */}
+   817→            <div className="md:hidden p-4 space-y-3">
+   818→              {projects.map((project) => (
+   819→                <Card key={project.id} className="border shadow-none bg-muted/30">
+   820→                  <CardContent className="p-4 space-y-3">
+   821→                    <div className="flex items-start justify-between">
+   822→                      <div className="flex items-center gap-2">
+   823→                        <div
+   824→                          className="h-3 w-3 rounded-full shrink-0"
+   825→                          style={{ backgroundColor: project.color }}
+   826→                        />
+   827→                        <p className="font-medium text-sm">{project.name}</p>
+   828→                      </div>
+   829→                      <DropdownMenu>
+   830→                        <DropdownMenuTrigger asChild>
+   831→                          <Button variant="ghost" size="icon" className="h-7 w-7">
+   832→                            <MoreHorizontal className="h-4 w-4" />
+   833→                          </Button>
+   834→                        </DropdownMenuTrigger>
+   835→                        <DropdownMenuContent align="end">
+   836→                          <DropdownMenuItem
+   837→                            onClick={() => onUpdateStatus(project.id, 'active')}
+   838→                            disabled={project.status === 'active'}
+   839→                          >
+   840→                            Set Active
+   841→                          </DropdownMenuItem>
+   842→                          <DropdownMenuItem
+   843→                            onClick={() => onUpdateStatus(project.id, 'inactive')}
+   844→                            disabled={project.status === 'inactive'}
+   845→                          >
+   846→                            Set Inactive
+   847→                          </DropdownMenuItem>
+   848→                          <DropdownMenuItem
+   849→                            onClick={() => onUpdateStatus(project.id, 'archived')}
+   850→                            disabled={project.status === 'archived'}
+   851→                          >
+   852→                            Archive
+   853→                          </DropdownMenuItem>
+   854→                        </DropdownMenuContent>
+   855→                      </DropdownMenu>
+   856→                    </div>
+   857→                    {project.description && (
+   858→                      <p className="text-xs text-muted-foreground line-clamp-1">
+   859→                        {project.description}
+   860→                      </p>
+   861→                    )}
+   862→                    <div className="flex items-center gap-2 flex-wrap">
+   863→                      <Badge variant="outline" className={PRIORITY_COLORS[project.priority] || ''}>
+   864→                        {project.priority}
+   865→                      </Badge>
+   866→                      <Badge variant="secondary" className={STATUS_COLORS[project.status] || ''}>
+   867→                        {project.status}
+   868→                      </Badge>
+   869→                    </div>
+   870→                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   871→                      <span className="flex items-center gap-1">
+   872→                        <ListTodo className="h-3 w-3" />
+   873→                        {project._count?.tasks ?? 0} tasks
+   874→                      </span>
+   875→                      <span className="flex items-center gap-1">
+   876→                        <Users className="h-3 w-3" />
+   877→                        {project.members?.length ?? 0} members
+   878→                      </span>
+   879→                    </div>
+   880→                  </CardContent>
+   881→                </Card>
+   882→              ))}
+   883→              {projects.length === 0 && (
+   884→                <p className="text-sm text-muted-foreground text-center py-8">
+   885→                  No projects found. Create your first project to get started.
+   886→                </p>
+   887→              )}
+   888→            </div>
+   889→          </CardContent>
+   890→        </Card>
+   891→      </motion.div>
+   892→    </>
+   893→  )
+   894→}
+   895→
+   896→// ─── Users Tab ────────────────────────────────────────────────────────────────
+   897→
+   898→function UsersTab({
+   899→  users,
+   900→  onUpdateRole,
+   901→  onToggleStatus,
+   902→}: {
+   903→  users: ExtendedUser[]
+   904→  onUpdateRole: (userId: string, role: string) => void
+   905→  onToggleStatus: (userId: string, currentStatus: string) => void
+   906→}) {
+   907→  const getInitials = (name: string) => {
+   908→    return name
+   909→      .split(' ')
+   910→      .map((n) => n[0])
+   911→      .join('')
+   912→      .toUpperCase()
+   913→      .slice(0, 2)
+   914→  }
+   915→
+   916→  const avatarColors = [
+   917→    'bg-emerald-500',
+   918→    'bg-amber-500',
+   919→    'bg-rose-500',
+   920→    'bg-violet-500',
+   921→    'bg-cyan-500',
+   922→    'bg-orange-500',
+   923→    'bg-pink-500',
+   924→    'bg-teal-500',
+   925→  ]
+   926→
+   927→  const getAvatarColor = (id: string) => {
+   928→    let hash = 0
+   929→    for (let i = 0; i < id.length; i++) {
+   930→      hash = id.charCodeAt(i) + ((hash << 5) - hash)
+   931→    }
+   932→    return avatarColors[Math.abs(hash) % avatarColors.length]
+   933→  }
+   934→
+   935→  return (
+   936→    <>
+   937→      <div>
+   938→        <h2 className="text-xl font-semibold">Users</h2>
+   939→        <p className="text-sm text-muted-foreground">Manage workspace members and roles</p>
+   940→      </div>
+   941→
+   942→      <motion.div
+   943→        initial={{ opacity: 0, y: 10 }}
+   944→        animate={{ opacity: 1, y: 0 }}
+   945→        transition={{ duration: 0.3 }}
+   946→      >
+   947→        <Card>
+   948→          <CardContent className="p-0">
+   949→            {/* Desktop Table */}
+   950→            <div className="hidden md:block overflow-x-auto">
+   951→              <Table>
+   952→                <TableHeader>
+   953→                  <TableRow>
+   954→                    <TableHead>User</TableHead>
+   955→                    <TableHead>Email</TableHead>
+   956→                    <TableHead>Role</TableHead>
+   957→                    <TableHead>Status</TableHead>
+   958→                    <TableHead className="text-center">Assigned</TableHead>
+   959→                    <TableHead className="text-center">Created</TableHead>
+   960→                    <TableHead className="text-right">Actions</TableHead>
+   961→                  </TableRow>
+   962→                </TableHeader>
+   963→                <TableBody>
+   964→                  {users.map((u) => (
+   965→                    <TableRow key={u.id}>
+   966→                      <TableCell>
+   967→                        <div className="flex items-center gap-3">
+   968→                          <div
+   969→                            className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium text-white shrink-0 ${getAvatarColor(u.id)}`}
+   970→                          >
+   971→                            {u.avatar ? (
+   972→                              <img
+   973→                                src={u.avatar}
+   974→                                alt={u.name}
+   975→                                className="h-8 w-8 rounded-full object-cover"
+   976→                              />
+   977→                            ) : (
+   978→                              getInitials(u.name)
+   979→                            )}
+   980→                          </div>
+   981→                          <span className="font-medium text-sm">{u.name}</span>
+   982→                        </div>
+   983→                      </TableCell>
+   984→                      <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
+   985→                      <TableCell>
+   986→                        <Badge variant="outline" className={ROLE_COLORS[u.role] || ''}>
+   987→                          {u.role === 'admin' && <Shield className="h-3 w-3 mr-1" />}
+   988→                          {u.role}
+   989→                        </Badge>
+   990→                      </TableCell>
+   991→                      <TableCell>
+   992→                        <Badge
+   993→                          variant="secondary"
+   994→                          className={
+   995→                            u.status === 'active'
+   996→                              ? 'bg-emerald-100 text-emerald-700'
+   997→                              : 'bg-gray-100 text-gray-500'
+   998→                          }
+   999→                        >
+  1000→                          {u.status}
+  1001→                        </Badge>
+  1002→                      </TableCell>
+  1003→                      <TableCell className="text-center">
+  1004→                        <span className="font-medium text-sm">
+  1005→                          {u._count?.assignedTasks ?? 0}
+  1006→                        </span>
+  1007→                      </TableCell>
+  1008→                      <TableCell className="text-center">
+  1009→                        <span className="font-medium text-sm">
+  1010→                          {u._count?.createdTasks ?? 0}
+  1011→                        </span>
+  1012→                      </TableCell>
+  1013→                      <TableCell className="text-right">
+  1014→                        <DropdownMenu>
+  1015→                          <DropdownMenuTrigger asChild>
+  1016→                            <Button variant="ghost" size="icon" className="h-8 w-8">
+  1017→                              <MoreHorizontal className="h-4 w-4" />
+  1018→                            </Button>
+  1019→                          </DropdownMenuTrigger>
+  1020→                          <DropdownMenuContent align="end">
+  1021→                            <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'admin')}>
+  1022→                              <Shield className="h-4 w-4 mr-2 text-emerald-500" />
+  1023→                              Set as Admin
+  1024→                            </DropdownMenuItem>
+  1025→                            <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'team')}>
+  1026→                              <UserCog className="h-4 w-4 mr-2 text-amber-500" />
+  1027→                              Set as Team
+  1028→                            </DropdownMenuItem>
+  1029→                            <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'client')}>
+  1030→                              <UserX className="h-4 w-4 mr-2 text-rose-500" />
+  1031→                              Set as Client
+  1032→                            </DropdownMenuItem>
+  1033→                            <DropdownMenuItem
+  1034→                              onClick={() => onToggleStatus(u.id, u.status)}
+  1035→                            >
+  1036→                              {u.status === 'active' ? (
+  1037→                                <>
+  1038→                                  <UserX className="h-4 w-4 mr-2 text-rose-500" />
+  1039→                                  Deactivate
+  1040→                                </>
+  1041→                              ) : (
+  1042→                                <>
+  1043→                                  <UserCheck className="h-4 w-4 mr-2 text-emerald-500" />
+  1044→                                  Activate
+  1045→                                </>
+  1046→                              )}
+  1047→                            </DropdownMenuItem>
+  1048→                          </DropdownMenuContent>
+  1049→                        </DropdownMenu>
+  1050→                      </TableCell>
+  1051→                    </TableRow>
+  1052→                  ))}
+  1053→                  {users.length === 0 && (
+  1054→                    <TableRow>
+  1055→                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+  1056→                        No users found.
+  1057→                      </TableCell>
+  1058→                    </TableRow>
+  1059→                  )}
+  1060→                </TableBody>
+  1061→              </Table>
+  1062→            </div>
+  1063→
+  1064→            {/* Mobile Cards */}
+  1065→            <div className="md:hidden p-4 space-y-3">
+  1066→              {users.map((u) => (
+  1067→                <Card key={u.id} className="border shadow-none bg-muted/30">
+  1068→                  <CardContent className="p-4 space-y-3">
+  1069→                    <div className="flex items-start justify-between">
+  1070→                      <div className="flex items-center gap-3">
+  1071→                        <div
+  1072→                          className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-medium text-white shrink-0 ${getAvatarColor(u.id)}`}
+  1073→                        >
+  1074→                          {u.avatar ? (
+  1075→                            <img
+  1076→                              src={u.avatar}
+  1077→                              alt={u.name}
+  1078→                              className="h-9 w-9 rounded-full object-cover"
+  1079→                            />
+  1080→                          ) : (
+  1081→                            getInitials(u.name)
+  1082→                          )}
+  1083→                        </div>
+  1084→                        <div>
+  1085→                          <p className="font-medium text-sm">{u.name}</p>
+  1086→                          <p className="text-xs text-muted-foreground">{u.email}</p>
+  1087→                        </div>
+  1088→                      </div>
+  1089→                      <DropdownMenu>
+  1090→                        <DropdownMenuTrigger asChild>
+  1091→                          <Button variant="ghost" size="icon" className="h-7 w-7">
+  1092→                            <MoreHorizontal className="h-4 w-4" />
+  1093→                          </Button>
+  1094→                        </DropdownMenuTrigger>
+  1095→                        <DropdownMenuContent align="end">
+  1096→                          <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'admin')}>
+  1097→                            Set as Admin
+  1098→                          </DropdownMenuItem>
+  1099→                          <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'team')}>
+  1100→                            Set as Team
+  1101→                          </DropdownMenuItem>
+  1102→                          <DropdownMenuItem onClick={() => onUpdateRole(u.id, 'client')}>
+  1103→                            Set as Client
+  1104→                          </DropdownMenuItem>
+  1105→                          <DropdownMenuItem onClick={() => onToggleStatus(u.id, u.status)}>
+  1106→                            {u.status === 'active' ? 'Deactivate' : 'Activate'}
+  1107→                          </DropdownMenuItem>
+  1108→                        </DropdownMenuContent>
+  1109→                      </DropdownMenu>
+  1110→                    </div>
+  1111→                    <div className="flex items-center gap-2 flex-wrap">
+  1112→                      <Badge variant="outline" className={ROLE_COLORS[u.role] || ''}>
+  1113→                        {u.role}
+  1114→                      </Badge>
+  1115→                      <Badge
+  1116→                        variant="secondary"
+  1117→                        className={
+  1118→                          u.status === 'active'
+  1119→                            ? 'bg-emerald-100 text-emerald-700'
+  1120→                            : 'bg-gray-100 text-gray-500'
+  1121→                        }
+  1122→                      >
+  1123→                        {u.status}
+  1124→                      </Badge>
+  1125→                    </div>
+  1126→                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+  1127→                      <span>{u._count?.assignedTasks ?? 0} assigned</span>
+  1128→                      <span>{u._count?.createdTasks ?? 0} created</span>
+  1129→                      <span>Joined {format(new Date(u.createdAt), 'MMM d, yyyy')}</span>
+  1130→                    </div>
+  1131→                  </CardContent>
+  1132→                </Card>
+  1133→              ))}
+  1134→              {users.length === 0 && (
+  1135→                <p className="text-sm text-muted-foreground text-center py-8">
+  1136→                  No users found.
+  1137→                </p>
+  1138→              )}
+  1139→            </div>
+  1140→          </CardContent>
+  1141→        </Card>
+  1142→      </motion.div>
+  1143→    </>
+  1144→  )
+  1145→}
+  1146→
+  1147→// ─── Activity Tab ─────────────────────────────────────────────────────────────
+  1148→
+  1149→function ActivityTab({
+  1150→  activities,
+  1151→  getActivityIcon,
+  1152→}: {
+  1153→  activities: ActivityLog[]
+  1154→  getActivityIcon: (action: string) => React.ReactNode
+  1155→}) {
+  1156→  const getTimelineColor = (action: string) => {
+  1157→    const lower = action.toLowerCase()
+  1158→    if (lower.includes('complet') || lower.includes('done')) return 'border-emerald-500'
+  1159→    if (lower.includes('delet')) return 'border-rose-500'
+  1160→    if (lower.includes('comment')) return 'border-violet-500'
+  1161→    if (lower.includes('updat') || lower.includes('edit') || lower.includes('status') || lower.includes('move'))
+  1162→      return 'border-amber-500'
+  1163→    return 'border-emerald-500'
+  1164→  }
+  1165→
+  1166→  const getIconBg = (action: string) => {
+  1167→    const lower = action.toLowerCase()
+  1168→    if (lower.includes('complet') || lower.includes('done')) return 'bg-emerald-100'
+  1169→    if (lower.includes('delet')) return 'bg-rose-100'
+  1170→    if (lower.includes('comment')) return 'bg-violet-100'
+  1171→    if (lower.includes('updat') || lower.includes('edit') || lower.includes('status') || lower.includes('move'))
+  1172→      return 'bg-amber-100'
+  1173→    return 'bg-emerald-100'
+  1174→  }
+  1175→
+  1176→  return (
+  1177→    <>
+  1178→      <div>
+  1179→        <h2 className="text-xl font-semibold">Activity</h2>
+  1180→        <p className="text-sm text-muted-foreground">Timeline of all recent workspace activity</p>
+  1181→      </div>
+  1182→
+  1183→      <motion.div
+  1184→        initial={{ opacity: 0, y: 10 }}
+  1185→        animate={{ opacity: 1, y: 0 }}
+  1186→        transition={{ duration: 0.3 }}
+  1187→      >
+  1188→        <Card>
+  1189→          <CardContent className="p-0">
+  1190→            <ScrollArea className="max-h-[600px]">
+  1191→              <div className="p-4 md:p-6">
+  1192→                {activities.length === 0 ? (
+  1193→                  <div className="text-center py-16">
+  1194→                    <Activity className="h-12 w-12 text-muted-foreground/40 mx-auto mb-4" />
+  1195→                    <p className="text-muted-foreground">No activity recorded yet</p>
+  1196→                    <p className="text-sm text-muted-foreground/60 mt-1">
+  1197→                      Activity will appear here as your team works on tasks
+  1198→                    </p>
+  1199→                  </div>
+  1200→                ) : (
+  1201→                  <div className="relative">
+  1202→                    {/* Timeline line */}
+  1203→                    <div className="absolute left-5 top-0 bottom-0 w-px bg-border hidden sm:block" />
+  1204→
+  1205→                    <div className="space-y-6">
+  1206→                      {activities.map((activity, index) => (
+  1207→                        <div key={activity.id} className="relative flex gap-4 sm:gap-6">
+  1208→                          {/* Timeline dot */}
+  1209→                          <div className="hidden sm:flex flex-col items-center shrink-0 z-10">
+  1210→                            <div
+  1211→                              className={`h-10 w-10 rounded-full flex items-center justify-center ${getIconBg(activity.action)}`}
+  1212→                            >
+  1213→                              {getActivityIcon(activity.action)}
+  1214→                            </div>
+  1215→                            {index < activities.length - 1 && (
+  1216→                              <div className={`w-px flex-1 mt-2 ${getTimelineColor(activity.action)}`} />
+  1217→                            )}
+  1218→                          </div>
+  1219→
+  1220→                          {/* Mobile icon */}
+  1221→                          <div className="sm:hidden shrink-0 mt-0.5">
+  1222→                            <div
+  1223→                              className={`h-8 w-8 rounded-full flex items-center justify-center ${getIconBg(activity.action)}`}
+  1224→                            >
+  1225→                              {getActivityIcon(activity.action)}
+  1226→                            </div>
+  1227→                          </div>
+  1228→
+  1229→                          {/* Content */}
+  1230→                          <div className="flex-1 min-w-0 pb-1">
+  1231→                            <div className="flex items-center gap-2 flex-wrap">
+  1232→                              {activity.user ? (
+  1233→                                <span className="font-medium text-sm">{activity.user.name}</span>
+  1234→                              ) : (
+  1235→                                <span className="text-sm text-muted-foreground">System</span>
+  1236→                              )}
+  1237→                              <span className="text-sm text-muted-foreground">
+  1238→                                {activity.action.toLowerCase()}
+  1239→                              </span>
+  1240→                              <span className="font-medium text-sm truncate">
+  1241→                                {activity.details}
+  1242→                              </span>
+  1243→                            </div>
+  1244→                            <div className="flex items-center gap-2 mt-1">
+  1245→                              <span className="text-xs text-muted-foreground">
+  1246→                                {formatDistanceToNow(new Date(activity.createdAt), {
+  1247→                                  addSuffix: true,
+  1248→                                })}
+  1249→                              </span>
+  1250→                              <span className="text-xs text-muted-foreground">
+  1251→                                &middot; {format(new Date(activity.createdAt), 'MMM d, h:mm a')}
+  1252→                              </span>
+  1253→                            </div>
+  1254→
+  1255→                            {/* Project / Task context */}
+  1256→                            {(activity.projectId || activity.taskId) && (
+  1257→                              <div className="flex items-center gap-2 mt-2">
+  1258→                                {activity.projectId && (
+  1259→                                  <Badge variant="outline" className="text-xs gap-1">
+  1260→                                    <FolderKanban className="h-3 w-3" />
+  1261→                                    Project
+  1262→                                  </Badge>
+  1263→                                )}
+  1264→                                {activity.taskId && (
+  1265→                                  <Badge variant="outline" className="text-xs gap-1">
+  1266→                                    <ListTodo className="h-3 w-3" />
+  1267→                                    Task
+  1268→                                  </Badge>
+  1269→                                )}
+  1270→                              </div>
+  1271→                            )}
+  1272→                          </div>
+  1273→                        </div>
+  1274→                      ))}
+  1275→                    </div>
+  1276→                  </div>
+  1277→                )}
+  1278→              </div>
+  1279→            </ScrollArea>
+  1280→          </CardContent>
+  1281→        </Card>
+  1282→      </motion.div>
+  1283→    </>
+  1284→  )
+  1285→}
