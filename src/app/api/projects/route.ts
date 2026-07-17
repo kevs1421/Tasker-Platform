@@ -39,11 +39,14 @@ export async function POST(request: NextRequest) {
     const { name, description, color, priority, dueDate, createdBy, memberIds } = await request.json()
     if (!name || !createdBy) return NextResponse.json({ error: 'Name and createdBy required' }, { status: 400 })
 
+    // Filter out creator from memberIds to avoid unique constraint violation
+    const filteredMemberIds = (memberIds || []).filter((id: string) => id !== createdBy)
+
     const project = await db.project.create({
       data: {
         name, description: description || null, color: color || '#f59e0b',
         priority: priority || 'medium', dueDate: dueDate ? new Date(dueDate) : null, createdBy,
-        members: { create: [{ userId: createdBy, role: 'owner' }, ...(memberIds || []).map((id: string) => ({ userId: id, role: 'member' }))] }
+        members: { create: [{ userId: createdBy, role: 'owner' }, ...filteredMemberIds.map((id: string) => ({ userId: id, role: 'member' }))] }
       },
       include: {
         creator: { select: { id: true, name: true, role: true } },
@@ -53,7 +56,8 @@ export async function POST(request: NextRequest) {
     })
     await db.activityLog.create({ data: { action: 'project_created', details: `Created project "${name}"`, userId: createdBy, projectId: project.id } })
     return NextResponse.json({ project }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to process project request' }, { status: 500 })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to process project request'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

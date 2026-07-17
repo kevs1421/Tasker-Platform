@@ -1042,3 +1042,20 @@ Stage Summary:
 - Removed ~500+ lines of demo/dead code across 8 files
 - 6 files deleted, 4 files rewritten, 1 file fixed (layout.tsx import)
 - App still fully functional with proper auth flow (no more demo bypass)
+
+---
+Task ID: fix-create-project-error
+Agent: main
+Task: Fix "Failed to process project request" error when creating project with admin as selected member
+
+Work Log:
+- Analyzed screenshot showing error when creating project with admin user (Alex Morgan) checked as member
+- Traced error to /api/projects POST route catching a Prisma unique constraint violation
+- Root cause: ProjectMember has @@unique([projectId, userId]). The route creates owner member from createdBy, then loops memberIds. If admin checks themselves, both createdBy and memberIds contain the same ID → duplicate key error
+- Fixed by filtering out createdBy from memberIds before creating members
+- Also improved error message to surface actual Prisma error instead of generic message
+
+Stage Summary:
+- Fixed unique constraint violation in project creation when creator is also in memberIds
+- Added filteredMemberIds = memberIds.filter(id => id !== createdBy) in POST /api/projects
+- Improved error handling to surface actual error message from Prisma
