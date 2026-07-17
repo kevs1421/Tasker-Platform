@@ -23,6 +23,12 @@ export async function POST(request: Request) {
     const { content, taskId, userId } = await request.json()
     if (!content || !taskId || !userId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
+    // Training users cannot post comments
+    const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
+    if (user?.role === 'training') {
+      return NextResponse.json({ error: 'Training users cannot post comments' }, { status: 403 })
+    }
+
     const comment = await db.comment.create({
       data: { content, taskId, userId },
       include: { user: { select: { id: true, name: true, role: true, avatar: true } } }

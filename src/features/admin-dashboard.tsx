@@ -1685,7 +1685,7 @@ export function AdminTasks() {
     fetch('/api/users')
       .then(r => r.json())
       .then(d => {
-        const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'admin')
+        const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'training' || u.role === 'admin')
         setAllTeamUsers(members)
       })
       .catch(() => {})
@@ -2130,7 +2130,7 @@ export function AdminUsers() {
   const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<User | null>(null)
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', confirmPassword: '',
-    role: 'team' as 'admin' | 'team' | 'client',
+    role: 'team' as 'admin' | 'team' | 'training' | 'client',
     phone: '', company: ''
   })
   // Edit user state
@@ -2427,6 +2427,7 @@ export function AdminUsers() {
                 <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="team">Team</SelectItem>
+                <SelectItem value="training">Training</SelectItem>
                 <SelectItem value="client">Client</SelectItem>
               </SelectContent>
             </Select>
@@ -2611,13 +2612,14 @@ export function AdminUsers() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="add-role">Role *</Label>
-                <Select value={newUser.role} onValueChange={(val: 'admin' | 'team' | 'client') => setNewUser(p => ({ ...p, role: val }))}>
+                <Select value={newUser.role} onValueChange={(val: 'admin' | 'team' | 'training' | 'client') => setNewUser(p => ({ ...p, role: val }))}>
                   <SelectTrigger id="add-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="training">Training</SelectItem>
                     <SelectItem value="client">Client</SelectItem>
                   </SelectContent>
                 </Select>
@@ -2724,6 +2726,7 @@ export function AdminUsers() {
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="training">Training</SelectItem>
                     <SelectItem value="client">Client</SelectItem>
                   </SelectContent>
                 </Select>

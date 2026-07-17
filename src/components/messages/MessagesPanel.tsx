@@ -101,11 +101,16 @@ function CreateGroupDialog({
     fetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
-        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+        setUsers((d.users ?? []).filter((u: User) => {
+          if (u.id === currentUser.id) return false
+          // Training users cannot message clients
+          if (currentUser.role === 'training' && u.role === 'client') return false
+          return true
+        }))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [open, currentUser.id])
+  }, [open, currentUser.id, currentUser.role])
 
   const toggleUser = (userId: string) => {
     setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId])
@@ -225,12 +230,17 @@ function NewMessageDialog({
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
-        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+        setUsers((d.users ?? []).filter((u: User) => {
+          if (u.id === currentUser.id) return false
+          // Training users cannot message clients
+          if (currentUser.role === 'training' && u.role === 'client') return false
+          return true
+        }))
         setLoading(false)
       })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [open, currentUser.id])
+  }, [open, currentUser.id, currentUser.role])
 
   const filteredUsers = users.filter(
     (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
@@ -287,11 +297,11 @@ function NewMessageDialog({
 // ─── Group Info Dialog ──────────────────────────────────────────────────────────
 
 function GroupInfoDialog({
-  open, onOpenChange, group, currentUserId,
+  open, onOpenChange, group, currentUserId, currentUserRole,
 }: {
   open: boolean; onOpenChange: (open: boolean) => void
   group: { id: string; name: string; members?: GroupMember[]; _count?: { members: number } } | null
-  currentUserId: string
+  currentUserId: string; currentUserRole: string
 }) {
   const [members, setMembers] = useState<(GroupMember & { user: User })[]>([])
   const [users, setUsers] = useState<User[]>([])
@@ -351,7 +361,12 @@ function GroupInfoDialog({
       .then((r) => r.json())
       .then((d) => {
         const memberIds = members.map((m) => m.userId)
-        setUsers((d.users ?? []).filter((u: User) => !memberIds.includes(u.id)))
+        setUsers((d.users ?? []).filter((u: User) => {
+          if (memberIds.includes(u.id)) return false
+          // Training users cannot add clients to groups
+          if (currentUserRole === 'training' && u.role === 'client') return false
+          return true
+        }))
       })
       .catch(() => {})
     setShowAddUser(true)
@@ -952,6 +967,7 @@ export function MessagesPanel() {
         onOpenChange={setShowGroupInfo}
         group={selectedGroup ? { id: selectedGroup.id, name: selectedGroup.name, _count: selectedGroup._count } : null}
         currentUserId={user?.id ?? ''}
+        currentUserRole={user?.role ?? ''}
       />
 
       {/* ─── Delete Confirmation ─────────────────────── */}

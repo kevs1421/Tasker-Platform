@@ -1,6 +1,6 @@
 export interface User {
   id: string; email: string; name: string; phone?: string | null; company?: string | null;
-  avatar?: string | null; role: 'admin' | 'team' | 'client'; status: string;
+  avatar?: string | null; role: 'admin' | 'team' | 'training' | 'client'; status: string;
   createdAt: string; updatedAt: string;
   _count?: { assignedTasks: number; createdTasks: number; sentMessages?: number };
 }
@@ -86,7 +86,7 @@ export interface DashboardStats {
   totalClients: number; thisWeekCompleted: number; totalMessages: number;
 }
 
-export type Role = 'admin' | 'team' | 'client'
+export type Role = 'admin' | 'team' | 'training' | 'client'
 
 // SPA route types
 export type AppRoute =

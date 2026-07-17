@@ -2,6 +2,7 @@ export function getRoleBadgeClasses(role: string) {
   switch (role) {
     case 'admin': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'team': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    case 'training': return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
     case 'client': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
     default: return 'bg-slate-100 text-slate-700'
   }

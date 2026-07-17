@@ -1059,3 +1059,30 @@ Stage Summary:
 - Fixed unique constraint violation in project creation when creator is also in memberIds
 - Added filteredMemberIds = memberIds.filter(id => id !== createdBy) in POST /api/projects
 - Improved error handling to surface actual error message from Prisma
+
+---
+Task ID: add-training-role
+Agent: main
+Task: Add "training" role that can view but not create tasks or message clients
+
+Work Log:
+- Added 'training' to Role type union in types/index.ts
+- Added sky-blue badge styling for training role in route-guard.tsx
+- Updated auth store: training users route to team dashboard
+- Updated app-shell sidebar: training shows "Training" label, no time tracking widget, same nav as team
+- Added isTraining guard in TeamProjects: hides "Add Task" button per project card
+- Added isTraining guard in TeamTasks: hides "Create Task" button, hides edit pencil on title, hides Save/Discard/Delete buttons, hides comment input
+- Updated MessagesPanel: training users cannot see clients in New Message dialog, New Group dialog, or Add Member to Group dialog
+- Updated admin-dashboard: added Training to role filter, Add User dialog, Edit User dialog
+- Included training users in project member assignment lists (admin + team dashboards)
+- Backend guards: POST /api/tasks rejects training users (403), PATCH /api/tasks/[id] rejects training users, DELETE /api/tasks/[id] rejects training users, POST /api/comments rejects training users
+
+Stage Summary:
+- Training role is a read-only variant of team role
+- Can view projects, tasks (including details), messages, and profile
+- CANNOT create, edit, or delete tasks
+- CANNOT post comments on tasks
+- CANNOT message or contact clients directly
+- Can be assigned to projects by admin
+- Shows sky-blue badge in UI
+- All restrictions enforced on both frontend and backend

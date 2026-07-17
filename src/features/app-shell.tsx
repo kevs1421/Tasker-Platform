@@ -439,7 +439,7 @@ function getNavItems(role: string): NavItem[] {
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
   ]
-  if (role === 'team') return [
+  if (role === 'team' || role === 'training') return [
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
     { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
     { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
@@ -467,7 +467,7 @@ export function AppSidebar() {
     <div className="flex flex-col h-full">
       <div className="p-4 flex items-center justify-between">
         <Badge variant="secondary" className="text-xs">
-          {user.role === 'admin' ? 'Admin Panel' : user.role === 'team' ? 'Team Workspace' : 'Client Portal'}
+          {user.role === 'admin' ? 'Admin Panel' : user.role === 'client' ? 'Client Portal' : user.role === 'training' ? 'Training' : 'Team Workspace'}
         </Badge>
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
           <X className="w-4 h-4" />

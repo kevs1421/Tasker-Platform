@@ -24,7 +24,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params
     const body = await req.json()
-    const { title, description, status, priority, dueDate, tags } = body
+    const { title, description, status, priority, dueDate, tags, updatedBy } = body
+
+    // Training users cannot update tasks
+    if (updatedBy) {
+      const user = await db.user.findUnique({ where: { id: updatedBy }, select: { role: true } })
+      if (user?.role === 'training') {
+        return NextResponse.json({ error: 'Training users cannot update tasks' }, { status: 403 })
+      }
+    }
 
     const task = await db.task.update({
       where: { id },
@@ -54,6 +62,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params
     let deletedBy = ''
     try { const b = await req.json(); deletedBy = b.deletedBy || '' } catch { /* no body */ }
+
+    // Training users cannot delete tasks
+    if (deletedBy) {
+      const user = await db.user.findUnique({ where: { id: deletedBy }, select: { role: true } })
+      if (user?.role === 'training') {
+        return NextResponse.json({ error: 'Training users cannot delete tasks' }, { status: 403 })
+      }
+    }
+
     const task = await db.task.findUnique({ where: { id } })
     await db.task.delete({ where: { id } })
     if (task) await db.activityLog.create({ data: { action: 'task_deleted', details: `Deleted "${task.title}"`, userId: deletedBy || task.createdById, projectId: task.projectId, taskId: task.id } })

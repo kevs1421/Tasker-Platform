@@ -148,6 +148,7 @@ function EmptyState({ icon: Icon, title, description }: { icon: React.ElementTyp
 
 export function TeamProjects() {
   const { user, setSelectedProjectId } = useAuthStore()
+  const isTraining = user?.role === 'training'
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -191,7 +192,7 @@ export function TeamProjects() {
     fetch('/api/users')
       .then(r => r.json())
       .then(d => {
-        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'admin') && u.status === 'active')
+        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
         setAllTeamUsers(members)
       })
       .catch(() => {})
@@ -399,9 +400,11 @@ export function TeamProjects() {
                                 ))}
                               </div>
                             </div>
+                            {!isTraining && (
                             <Button size="sm" className="h-8 text-xs gap-1" onClick={() => openCreateTaskForProject(project.id)}>
                               <Plus className="h-3 w-3" /> Add Task
                             </Button>
+                            )}
                           </div>
                           {expandedLoading ? (
                             <div className="space-y-2">
@@ -552,6 +555,7 @@ export function TeamProjects() {
 
 export function TeamTasks() {
   const { user, setSelectedTaskId, setSelectedProjectId } = useAuthStore()
+  const isTraining = user?.role === 'training'
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [tasks, setTasks] = useState<Task[]>([])
@@ -642,7 +646,7 @@ export function TeamTasks() {
     fetch('/api/users')
       .then(r => r.json())
       .then(d => {
-        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'admin') && u.status === 'active')
+        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
         setAllTeamUsers(members)
       })
       .catch(() => {})
@@ -910,6 +914,7 @@ export function TeamTasks() {
               <List className="h-3.5 w-3.5" /> List
             </Button>
           </div>
+          {!isTraining && (
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
@@ -1006,6 +1011,7 @@ export function TeamTasks() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -1316,11 +1322,11 @@ export function TeamTasks() {
                     />
                   ) : (
                     <DialogTitle
-                      className="group text-lg cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors"
-                      onClick={() => setIsEditingTitle(true)}
+                      className={cn('group text-lg', !isTraining && 'cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors')}
+                      onClick={() => !isTraining && setIsEditingTitle(true)}
                     >
                       {editTitle}
-                      <Pencil className="h-3.5 w-3. inline-block ml-2 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                      {!isTraining && <Pencil className="h-3.5 w-3. inline-block ml-2 text-muted-foreground opacity-0 group-hover:opacity-100" />}
                     </DialogTitle>
                   )}
                 </div>
@@ -1513,6 +1519,7 @@ export function TeamTasks() {
                       )}
                     </div>
                   </ScrollArea>
+                  {!isTraining && (
                   <div className="flex gap-2">
                     <Textarea
                       placeholder="Write a comment... (Ctrl+Enter to send)"
@@ -1531,11 +1538,13 @@ export function TeamTasks() {
                       {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
+                  )}
                 </div>
 
                 <Separator />
 
                 {/* Action buttons: Save, Discard, Delete */}
+                {!isTraining && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {hasChanges && (
@@ -1590,6 +1599,7 @@ export function TeamTasks() {
                     </AlertDialog>
                   </div>
                 </div>
+                )}
               </div>
             </>
           )}

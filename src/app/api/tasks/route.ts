@@ -42,6 +42,12 @@ export async function POST(request: Request) {
     const { title, description, status, priority, dueDate, projectId, createdById, assigneeIds, tags } = body
     if (!title || !projectId || !createdById) return NextResponse.json({ error: 'Title, projectId, createdById required' }, { status: 400 })
 
+    // Check if creator is a training user — they cannot create tasks
+    const creator = await db.user.findUnique({ where: { id: createdById }, select: { role: true } })
+    if (creator?.role === 'training') {
+      return NextResponse.json({ error: 'Training users cannot create tasks' }, { status: 403 })
+    }
+
     const task = await db.task.create({
       data: {
         title, description: description || null, status: status || 'todo', priority: priority || 'medium',

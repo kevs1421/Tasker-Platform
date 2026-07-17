@@ -101,6 +101,7 @@ interface AuthState {
 function getDefaultRoute(role: string): AppRoute {
   if (role === 'admin') return { page: 'admin-dashboard', tab: 'overview' }
   if (role === 'client') return { page: 'client-dashboard', tab: 'project' }
+  // both 'team' and 'training' use the team dashboard
   return { page: 'team-dashboard', tab: 'project' }
 }
 
