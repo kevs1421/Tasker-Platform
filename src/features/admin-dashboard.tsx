@@ -44,6 +44,7 @@ import {
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
   KeyRound, Download, Save, FileArchive, FileDown, Play, Square
 } from 'lucide-react'
+import { useAutoScreenshot, AutoScreenshotPanel } from '@/features/auto-screenshot'
 
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -3131,6 +3132,9 @@ export function AdminTimeTracking() {
   // Live timer tick
   const [timerTick, setTimerTick] = useState(0)
 
+  // Auto screenshot hook
+  const autoScreenshot = useAutoScreenshot()
+
   // Fetch team users and projects
   useEffect(() => {
     async function fetchMetadata() {
@@ -3308,6 +3312,10 @@ export function AdminTimeTracking() {
         setClockInTasks([])
         fetchMyActiveTimer()
         fetchEntries()
+        // Auto-start screenshot capture if enabled in config
+        if (autoScreenshot.config?.autoEnabled) {
+          autoScreenshot.startAutoCapture(autoScreenshot.config.intervalMinutes)
+        }
       } else {
         const data = await res.json()
         toast.error(data.error || 'Failed to clock in')
@@ -3332,6 +3340,10 @@ export function AdminTimeTracking() {
         toast.success('Clocked out successfully!')
         setMyActiveEntry(null)
         fetchEntries()
+        // Stop auto screenshot capture
+        if (autoScreenshot.isRunning) {
+          autoScreenshot.stopAutoCapture()
+        }
       } else {
         toast.error('Failed to clock out')
       }
@@ -3453,6 +3465,12 @@ export function AdminTimeTracking() {
           </div>
         </Card>
       </motion.div>
+
+      {/* Auto Screenshot Panel */}
+      <AutoScreenshotPanel
+        isTimerActive={!!myActiveEntry}
+        autoHook={autoScreenshot}
+      />
 
       {/* Clock In Dialog */}
       <Dialog open={clockInOpen} onOpenChange={setClockInOpen}>

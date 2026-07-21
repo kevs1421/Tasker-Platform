@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import {
   Camera, Trash2, Search, Eye, Download, Filter,
   Loader2, Image as ImageIcon, BarChart3, Users, Calendar,
-  ChevronDown, ChevronUp, ArrowUpDown,
+  ChevronDown, ChevronUp, ArrowUpDown, Zap,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import type { Screenshot } from '@/types'
@@ -324,6 +324,12 @@ export function AdminScreenshotReport() {
                       {ss.project.name}
                     </Badge>
                   )}
+                  {ss.isAuto && (
+                    <Badge className="absolute top-2 right-2 text-[10px] bg-purple-500/90 text-white border-0 gap-1">
+                      <Zap className="h-2.5 w-2.5" />
+                      Auto
+                    </Badge>
+                  )}
                 </div>
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between gap-2">
@@ -418,6 +424,12 @@ export function AdminScreenshotReport() {
                         <p className="text-sm font-medium truncate max-w-[200px]">{ss.title || 'Untitled'}</p>
                         {ss.description && (
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{ss.description}</p>
+                        )}
+                        {ss.isAuto && (
+                          <Badge className="mt-1 text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400 border-0 gap-0.5 h-4 px-1">
+                            <Zap className="h-2.5 w-2.5" />
+                            Auto
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell>

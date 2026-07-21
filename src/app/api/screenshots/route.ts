@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     const description = formData.get('description') as string | null
     const projectId = formData.get('projectId') as string | null
     const taskId = formData.get('taskId') as string | null
+    const isAuto = formData.get('isAuto') === 'true'
 
     if (!file || !userId) {
       return NextResponse.json({ error: 'File and userId are required' }, { status: 400 })
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
         filePath: `/uploads/screenshots/${uniqueName}`,
         fileSize: file.size,
         mimeType: file.type,
+        isAuto,
       },
       include: {
         user: { select: { id: true, name: true, email: true, role: true } },

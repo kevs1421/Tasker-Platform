@@ -1112,3 +1112,39 @@ Stage Summary:
 - API blocks client role from uploading (403 Forbidden)
 - All lint checks pass (0 errors, 0 warnings)
 - Browser verified: admin sees report page, team sees capture page, training sees capture page, client does NOT see screenshots
+---
+Task ID: 7
+Agent: main
+Task: Add auto-screenshot capture with customizable time interval for admin user on time tracking
+
+Work Log:
+- Read existing codebase: team-dashboard.tsx (TeamTimeTracking), admin-dashboard.tsx (AdminTimeTracking), screenshot API, types, Prisma schema
+- Added `ScreenshotConfig` model to Prisma schema with `userId` (unique), `autoEnabled`, `intervalMinutes` fields
+- Added `isAuto` boolean field to `Screenshot` model to tag auto-captured screenshots
+- Pushed schema to database and regenerated Prisma client
+- Created `/api/screenshot-config` API route (GET for reading config, PUT for updating with validation 1-60 min)
+- Updated `/api/screenshots` POST to accept and store `isAuto` flag
+- Created `src/features/auto-screenshot.tsx` with:
+  - `useAutoScreenshot()` hook: manages config state, interval timer, countdown, screen capture via `getDisplayMedia` API
+  - `AutoScreenshotPanel` component: toggle switch, preset interval buttons (1/2/3/5/10/15/30/60 min), custom input, countdown display, capture count, manual capture button
+- Integrated AutoScreenshotPanel into AdminTimeTracking component (after timer card)
+- Wired admin clock-in to auto-start screenshots if config.autoEnabled is true
+- Wired admin clock-out to stop auto-screenshot capture
+- Updated AdminScreenshotReport with purple "Auto" badge (Zap icon) for auto-captured screenshots in both grid and list views
+- Updated Screenshot type with `isAuto: boolean` and added `ScreenshotConfig` interface to types
+- Installed `@radix-ui/react-switch` package for the toggle component
+- Fixed existing screenshots with null `isAuto` values in DB
+- Fixed cross-origin dev issue with `allowedDevOrigins` in next.config.ts
+- All lint checks pass with 0 errors/0 warnings
+- Verified all APIs via curl: GET/PUT config, validation, screenshots listing
+
+Stage Summary:
+- Auto-screenshot feature fully implemented for admin user in Time Tracking
+- Config persists in database per user (autoEnabled, intervalMinutes)
+- Customizable intervals: preset buttons (1-60 min) plus free-form input
+- Toggle switch disabled when timer is not active, with tooltip
+- Auto-capture uses browser's `getDisplayMedia` API for real screen capture
+- Countdown timer shows next capture time
+- "Capture Now" button for manual trigger
+- Auto-captured screenshots tagged with purple "Auto" badge in report
+- Timer start/stop automatically controls auto-capture lifecycle

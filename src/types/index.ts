@@ -96,10 +96,17 @@ export interface Screenshot {
   filePath: string
   fileSize: number
   mimeType: string
+  isAuto: boolean
   createdAt: string
   user?: { id: string; name: string; email: string; role: string; avatar?: string | null }
   project?: { id: string; name: string; color?: string } | null
   task?: { id: string; title: string; status?: string } | null
+}
+
+export interface ScreenshotConfig {
+  userId: string
+  autoEnabled: boolean
+  intervalMinutes: number
 }
 
 export type Role = 'admin' | 'team' | 'training' | 'client'
