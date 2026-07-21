@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, CameraOff, Hourglass } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,12 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   const [description, setDescription] = useState('')
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [loadingTasks, setLoadingTasks] = useState(false)
+
+  // Auto-screenshot state
+  const [autoScreenshot, setAutoScreenshot] = useState(true)
+  const [screenshotDelay, setScreenshotDelay] = useState('0')
+  const [capturingScreenshot, setCapturingScreenshot] = useState(false)
+  const screenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number>(0)
@@ -155,8 +162,45 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     }
   }
 
+  // Capture auto-screenshot after optional delay
+  const captureAutoScreenshot = useCallback(async (projId: string, taskId: string, desc: string, delay: number, userRole: string) => {
+    if (delay > 0) {
+      setCapturingScreenshot(true)
+      // Show countdown toast
+      toast.info(`Screenshot will be captured in ${delay} second${delay > 1 ? 's' : ''}...`, { duration: (delay * 1000) - 500 })
+      await new Promise(resolve => {
+        screenshotTimerRef.current = setTimeout(resolve, delay * 1000)
+      })
+    }
+    try {
+      const res = await fetch('/api/screenshots/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          userRole,
+          projectId: projId || null,
+          taskId: taskId || null,
+          description: desc || null,
+          delaySeconds: delay,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Screenshot captured', { description: 'Proof-of-work screenshot saved' })
+      } else {
+        // Non-blocking — don't fail the whole clock-in
+        toast.error('Auto-screenshot failed', { description: 'Time-in was still recorded' })
+      }
+    } catch {
+      // Silent fail — screenshot is optional
+    } finally {
+      setCapturingScreenshot(false)
+    }
+  }, [userId])
+
   // Clock in
   const handleClockIn = async () => {
+    const user = useAuthStore.getState().user
     setClockingIn(true)
     try {
       const body: Record<string, unknown> = { action: 'time_in', userId }
@@ -182,6 +226,12 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       }
       setDialogOpen(false)
       toast.success('Clocked in successfully')
+
+      // Auto-screenshot (fire-and-forget, after dialog closes)
+      if (autoScreenshot && user && user.role !== 'client') {
+        const delay = parseInt(screenshotDelay) || 0
+        captureAutoScreenshot(selectedProjectId, selectedTaskId, description, delay, user.role)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to clock in')
     } finally {
@@ -225,6 +275,13 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   if (activeEntry) {
     return (
       <>
+        {capturingScreenshot && (
+          <div className="mb-2 rounded-lg border border-primary/30 bg-primary/5 dark:bg-primary/10 px-3 py-1.5 flex items-center gap-2 animate-pulse">
+            <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="text-[11px] text-primary font-medium">Capturing screenshot in {screenshotDelay}s...</span>
+            <Loader2 className="w-3 h-3 animate-spin text-primary ml-auto" />
+          </div>
+        )}
         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-2">
           <Timer className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
           <div className="flex-1 min-w-0">
@@ -261,7 +318,15 @@ function TimeInOutWidget({ userId }: { userId: string }) {
         <span className="text-xs font-medium text-green-700 dark:text-green-300">Time In</span>
       </button>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open)
+        // Cleanup timer if dialog is closed
+        if (!open && screenshotTimerRef.current) {
+          clearTimeout(screenshotTimerRef.current)
+          screenshotTimerRef.current = null
+          setCapturingScreenshot(false)
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Clock In</DialogTitle>
@@ -292,7 +357,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
                     {tasks.map((t) => (
                       <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
                     ))}
-                  </SelectContent>
+                    </SelectContent>
                 </Select>
               </div>
             )}
@@ -305,13 +370,80 @@ function TimeInOutWidget({ userId }: { userId: string }) {
                 className="h-9"
               />
             </div>
+
+            {/* Auto-screenshot section */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {autoScreenshot
+                    ? <Camera className="w-4 h-4 text-primary" />
+                    : <CameraOff className="w-4 h-4 text-muted-foreground" />}
+                  <Label className="text-sm font-medium cursor-pointer" onClick={() => setAutoScreenshot(!autoScreenshot)}>
+                    Auto Screenshot
+                  </Label>
+                </div>
+                <Checkbox
+                  checked={autoScreenshot}
+                  onCheckedChange={(checked) => setAutoScreenshot(checked === true)}
+                  className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                />
+              </div>
+              {autoScreenshot && (
+                <div className="flex items-center gap-2 pl-6">
+                  <Hourglass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Capture delay:</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="300"
+                      step="5"
+                      value={screenshotDelay}
+                      onChange={(e) => setScreenshotDelay(e.target.value)}
+                      className="h-8 w-20 text-center text-sm"
+                    />
+                    <span className="text-xs text-muted-foreground">sec</span>
+                  </div>
+                  <Select
+                    value={
+                      screenshotDelay === '0' ? 'instant' :
+                      screenshotDelay === '5' ? '5s' :
+                      screenshotDelay === '10' ? '10s' :
+                      screenshotDelay === '30' ? '30s' :
+                      screenshotDelay === '60' ? '60s' : 'custom'
+                    }
+                    onValueChange={(v) => {
+                      if (v === 'custom') return
+                      setScreenshotDelay(v === 'instant' ? '0' : v.replace('s', ''))
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-24 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="instant">Instant</SelectItem>
+                      <SelectItem value="5s">5 sec</SelectItem>
+                      <SelectItem value="10s">10 sec</SelectItem>
+                      <SelectItem value="30s">30 sec</SelectItem>
+                      <SelectItem value="60s">1 min</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {autoScreenshot && (
+                <p className="text-[11px] text-muted-foreground pl-6">
+                  A proof-of-work screenshot will be captured{parseInt(screenshotDelay) > 0 ? ` after ${screenshotDelay}s` : ' instantly'} when you clock in.
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
-            <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
-              {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            <Button onClick={handleClockIn} disabled={clockingIn || capturingScreenshot} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+              {(clockingIn || capturingScreenshot) && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               <Play className="w-3.5 h-3.5 mr-1.5" />
-              Clock In
+              {capturingScreenshot ? `Capturing in ${screenshotDelay}s...` : 'Clock In'}
             </Button>
           </DialogFooter>
         </DialogContent>
