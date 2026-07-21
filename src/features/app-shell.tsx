@@ -11,14 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, CameraOff, Hourglass } from 'lucide-react'
-import { Checkbox } from '@/components/ui/checkbox'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, CameraOff, Settings2, RefreshCw } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
+import { screenshotSession } from '@/lib/screenshot-capture'
 
 // ─── Time In/Out Widget ──────────────────────────────────
 
@@ -50,6 +50,14 @@ function formatElapsed(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '0:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 function TimeInOutWidget({ userId }: { userId: string }) {
   const [activeEntry, setActiveEntry] = useState<ActiveTimeEntry | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -67,14 +75,48 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [loadingTasks, setLoadingTasks] = useState(false)
 
-  // Auto-screenshot state
+  // Screenshot session state
   const [autoScreenshot, setAutoScreenshot] = useState(true)
-  const [screenshotDelay, setScreenshotDelay] = useState('0')
-  const [capturingScreenshot, setCapturingScreenshot] = useState(false)
-  const screenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isCapturing, setIsCapturing] = useState(false)
+  const [captureCount, setCaptureCount] = useState(0)
+  const [nextCaptureIn, setNextCaptureIn] = useState(0)
+  const [screenshotInterval, setScreenshotInterval] = useState(5) // minutes
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number>(0)
+
+  // Fetch screenshot config on mount
+  useEffect(() => {
+    fetch(`/api/screenshot-config?userId=${userId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.autoEnabled !== undefined) setAutoScreenshot(d.autoEnabled)
+        if (d.intervalMinutes) setScreenshotInterval(d.intervalMinutes)
+      })
+      .catch(() => {})
+  }, [userId])
+
+  // Countdown timer for next screenshot
+  useEffect(() => {
+    if (activeEntry && autoScreenshot && screenshotSession.getIsRunning()) {
+      countdownRef.current = setInterval(() => {
+        setNextCaptureIn(screenshotSession.getTimeUntilNextCapture())
+      }, 1000)
+    } else {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+      setNextCaptureIn(0)
+    }
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+    }
+  }, [activeEntry, autoScreenshot])
 
   // Fetch active timer on mount
   const fetchActiveTimer = useCallback(async () => {
@@ -88,6 +130,32 @@ function TimeInOutWidget({ userId }: { userId: string }) {
         if (entry) {
           startTimeRef.current = new Date(entry.timeIn).getTime()
           setElapsedMs(Date.now() - startTimeRef.current)
+
+          // Re-start screenshot session if we find an active timer (page reload)
+          const user = useAuthStore.getState().user
+          if (user && user.role !== 'client') {
+            fetch(`/api/screenshot-config?userId=${userId}`)
+              .then(r => r.json())
+              .then(config => {
+                if (config.autoEnabled) {
+                  screenshotSession.start({
+                    userId,
+                    userRole: user.role,
+                    projectId: entry.projectId || undefined,
+                    taskId: entry.task?.id || undefined,
+                    intervalMinutes: config.intervalMinutes || 5,
+                    quality: 0.6,
+                    onCaptureStart: () => setIsCapturing(true),
+                    onCaptureComplete: (count) => {
+                      setCaptureCount(count)
+                      setIsCapturing(false)
+                    },
+                    onCaptureError: () => setIsCapturing(false),
+                  })
+                }
+              })
+              .catch(() => {})
+          }
         }
       }
     } catch {
@@ -99,6 +167,10 @@ function TimeInOutWidget({ userId }: { userId: string }) {
 
   useEffect(() => {
     fetchActiveTimer()
+    // Cleanup screenshot session on unmount
+    return () => {
+      screenshotSession.stop()
+    }
   }, [fetchActiveTimer])
 
   // 1-second interval for elapsed display
@@ -162,42 +234,6 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     }
   }
 
-  // Capture auto-screenshot after optional delay
-  const captureAutoScreenshot = useCallback(async (projId: string, taskId: string, desc: string, delay: number, userRole: string) => {
-    if (delay > 0) {
-      setCapturingScreenshot(true)
-      // Show countdown toast
-      toast.info(`Screenshot will be captured in ${delay} second${delay > 1 ? 's' : ''}...`, { duration: (delay * 1000) - 500 })
-      await new Promise(resolve => {
-        screenshotTimerRef.current = setTimeout(resolve, delay * 1000)
-      })
-    }
-    try {
-      const res = await fetch('/api/screenshots/auto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          userRole,
-          projectId: projId || null,
-          taskId: taskId || null,
-          description: desc || null,
-          delaySeconds: delay,
-        }),
-      })
-      if (res.ok) {
-        toast.success('Screenshot captured', { description: 'Proof-of-work screenshot saved' })
-      } else {
-        // Non-blocking — don't fail the whole clock-in
-        toast.error('Auto-screenshot failed', { description: 'Time-in was still recorded' })
-      }
-    } catch {
-      // Silent fail — screenshot is optional
-    } finally {
-      setCapturingScreenshot(false)
-    }
-  }, [userId])
-
   // Clock in
   const handleClockIn = async () => {
     const user = useAuthStore.getState().user
@@ -227,10 +263,27 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       setDialogOpen(false)
       toast.success('Clocked in successfully')
 
-      // Auto-screenshot (fire-and-forget, after dialog closes)
+      // Start periodic screenshot session
       if (autoScreenshot && user && user.role !== 'client') {
-        const delay = parseInt(screenshotDelay) || 0
-        captureAutoScreenshot(selectedProjectId, selectedTaskId, description, delay, user.role)
+        setCaptureCount(0)
+        screenshotSession.start({
+          userId,
+          userRole: user.role,
+          projectId: selectedProjectId || undefined,
+          taskId: selectedTaskId || undefined,
+          intervalMinutes: screenshotInterval,
+          quality: 0.6,
+          onCaptureStart: () => setIsCapturing(true),
+          onCaptureComplete: (count) => {
+            setCaptureCount(count)
+            setIsCapturing(false)
+          },
+          onCaptureError: () => setIsCapturing(false),
+        })
+        toast.info('Screenshot monitoring started', {
+          description: `Screenshots will be captured every ${screenshotInterval} min`,
+          duration: 3000,
+        })
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to clock in')
@@ -243,6 +296,13 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   const handleClockOut = async () => {
     if (!activeEntry) return
     setClockingOut(true)
+
+    // Stop screenshot session immediately
+    screenshotSession.stop()
+    setIsCapturing(false)
+
+    const finalCount = screenshotSession.getCaptureCount()
+
     try {
       const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
         method: 'PATCH',
@@ -255,7 +315,13 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       }
       setActiveEntry(null)
       setElapsedMs(0)
-      toast.success('Clocked out successfully')
+      setCaptureCount(0)
+      setNextCaptureIn(0)
+      toast.success('Clocked out successfully', {
+        ...(finalCount > 0 && {
+          description: `${finalCount} screenshot${finalCount > 1 ? 's' : ''} saved during this session`,
+        }),
+      })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to clock out')
     } finally {
@@ -275,11 +341,36 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   if (activeEntry) {
     return (
       <>
-        {capturingScreenshot && (
-          <div className="mb-2 rounded-lg border border-primary/30 bg-primary/5 dark:bg-primary/10 px-3 py-1.5 flex items-center gap-2 animate-pulse">
-            <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span className="text-[11px] text-primary font-medium">Capturing screenshot in {screenshotDelay}s...</span>
-            <Loader2 className="w-3 h-3 animate-spin text-primary ml-auto" />
+        {/* Screenshot monitoring status */}
+        {autoScreenshot && (
+          <div className={cn(
+            'mb-2 rounded-lg border px-3 py-1.5 flex items-center gap-2',
+            isCapturing
+              ? 'border-primary/40 bg-primary/5 dark:bg-primary/10 animate-pulse'
+              : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30'
+          )}>
+            {isCapturing ? (
+              <>
+                <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-[11px] text-primary font-medium flex-1">Capturing screenshot…</span>
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+              </>
+            ) : (
+              <>
+                <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                    Monitoring • {captureCount} captured
+                  </span>
+                  {nextCaptureIn > 0 && (
+                    <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 ml-1.5">
+                      Next in {formatCountdown(nextCaptureIn)}
+                    </span>
+                  )}
+                </div>
+                <RefreshCw className="w-3 h-3 text-emerald-500 dark:text-emerald-400 animate-[spin_3s_linear_infinite]" />
+              </>
+            )}
           </div>
         )}
         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-2">
@@ -318,15 +409,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
         <span className="text-xs font-medium text-green-700 dark:text-green-300">Time In</span>
       </button>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => {
-        setDialogOpen(open)
-        // Cleanup timer if dialog is closed
-        if (!open && screenshotTimerRef.current) {
-          clearTimeout(screenshotTimerRef.current)
-          screenshotTimerRef.current = null
-          setCapturingScreenshot(false)
-        }
-      }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Clock In</DialogTitle>
@@ -357,7 +440,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
                     {tasks.map((t) => (
                       <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
                     ))}
-                    </SelectContent>
+                  </SelectContent>
                 </Select>
               </div>
             )}
@@ -379,71 +462,56 @@ function TimeInOutWidget({ userId }: { userId: string }) {
                     ? <Camera className="w-4 h-4 text-primary" />
                     : <CameraOff className="w-4 h-4 text-muted-foreground" />}
                   <Label className="text-sm font-medium cursor-pointer" onClick={() => setAutoScreenshot(!autoScreenshot)}>
-                    Auto Screenshot
+                    Auto Screenshot Monitoring
                   </Label>
                 </div>
-                <Checkbox
-                  checked={autoScreenshot}
-                  onCheckedChange={(checked) => setAutoScreenshot(checked === true)}
-                  className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'h-6 px-2 text-[10px]',
+                    autoScreenshot ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                  onClick={() => setAutoScreenshot(!autoScreenshot)}
+                >
+                  {autoScreenshot ? 'ON' : 'OFF'}
+                </Button>
               </div>
               {autoScreenshot && (
-                <div className="flex items-center gap-2 pl-6">
-                  <Hourglass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Capture delay:</Label>
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="300"
-                      step="5"
-                      value={screenshotDelay}
-                      onChange={(e) => setScreenshotDelay(e.target.value)}
-                      className="h-8 w-20 text-center text-sm"
-                    />
-                    <span className="text-xs text-muted-foreground">sec</span>
+                <div className="pl-6 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Settings2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Interval:</Label>
+                    <Select
+                      value={String(screenshotInterval)}
+                      onValueChange={(v) => setScreenshotInterval(Number(v))}
+                    >
+                      <SelectTrigger className="h-7 w-28 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Every 1 min</SelectItem>
+                        <SelectItem value="3">Every 3 min</SelectItem>
+                        <SelectItem value="5">Every 5 min</SelectItem>
+                        <SelectItem value="10">Every 10 min</SelectItem>
+                        <SelectItem value="15">Every 15 min</SelectItem>
+                        <SelectItem value="30">Every 30 min</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select
-                    value={
-                      screenshotDelay === '0' ? 'instant' :
-                      screenshotDelay === '5' ? '5s' :
-                      screenshotDelay === '10' ? '10s' :
-                      screenshotDelay === '30' ? '30s' :
-                      screenshotDelay === '60' ? '60s' : 'custom'
-                    }
-                    onValueChange={(v) => {
-                      if (v === 'custom') return
-                      setScreenshotDelay(v === 'instant' ? '0' : v.replace('s', ''))
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-24 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="instant">Instant</SelectItem>
-                      <SelectItem value="5s">5 sec</SelectItem>
-                      <SelectItem value="10s">10 sec</SelectItem>
-                      <SelectItem value="30s">30 sec</SelectItem>
-                      <SelectItem value="60s">1 min</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Screen will be captured every {screenshotInterval} minute{screenshotInterval > 1 ? 's' : ''} while you are timed in. Screenshots are saved to your work log.
+                  </p>
                 </div>
-              )}
-              {autoScreenshot && (
-                <p className="text-[11px] text-muted-foreground pl-6">
-                  A proof-of-work screenshot will be captured{parseInt(screenshotDelay) > 0 ? ` after ${screenshotDelay}s` : ' instantly'} when you clock in.
-                </p>
               )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
-            <Button onClick={handleClockIn} disabled={clockingIn || capturingScreenshot} className="h-9 bg-green-600 hover:bg-green-700 text-white">
-              {(clockingIn || capturingScreenshot) && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+              {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               <Play className="w-3.5 h-3.5 mr-1.5" />
-              {capturingScreenshot ? `Capturing in ${screenshotDelay}s...` : 'Clock In'}
+              Clock In
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -467,6 +535,12 @@ export function AppHeader() {
         .catch(() => {})
     }
   }, [user])
+
+  // Stop screenshot session on logout
+  const handleLogout = () => {
+    screenshotSession.stop()
+    logout()
+  }
 
   if (!user) return null
   const roleInfo = getRoleBadgeClasses(user.role)
@@ -540,7 +614,7 @@ export function AppHeader() {
               <User className="mr-2 h-4 w-4" />Profile
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
               <LogOut className="mr-2 h-4 w-4" />Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -572,12 +646,19 @@ function getNavItems(role: string): NavItem[] {
     { id: 'screenshots', label: 'Screenshot Report', icon: Camera, route: { page: 'admin-dashboard', tab: 'screenshots' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
   ]
-  if (role === 'team' || role === 'training') return [
+  if (role === 'team') return [
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
     { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
     { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
     { id: 'screenshots', label: 'Screenshots', icon: Camera, route: { page: 'team-dashboard', tab: 'screenshots' } },
+    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
+  ]
+  if (role === 'training') return [
+    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
+    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
   ]
   return [ // client
@@ -593,7 +674,7 @@ export function AppSidebar() {
 
   if (!user) return null
   const navItems = getNavItems(user.role)
-  const showTimeWidget = user.role === 'admin' || user.role === 'team'
+  const showTimeWidget = user.role === 'admin' || user.role === 'team' || user.role === 'training'
 
   const isCurrentTab = (item: NavItem) => route.page === item.route.page && route.tab === item.route.tab
 

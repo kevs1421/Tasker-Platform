@@ -67,6 +67,7 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { screenshotSession } from '@/lib/screenshot-capture'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -2092,12 +2093,40 @@ export function TeamTimeTracking() {
       if (!res.ok) throw new Error()
       toast.success('Clocked in successfully!')
       setShowTimeInDialog(false)
+      const projectId = selectedProjectId
+      const taskId = selectedTaskId
       setSelectedProjectId('')
       setSelectedTaskId('')
       setTimeInDescription('')
       await fetchActiveEntry()
       await fetchEntries(dateFilter, customDateFrom, customDateTo)
       await fetchSummary()
+
+      // Start screenshot monitoring session (non-blocking)
+      if (user.role !== 'client') {
+        try {
+          const configRes = await fetch(`/api/screenshot-config?userId=${user.id}`)
+          if (configRes.ok) {
+            const config = await configRes.json()
+            if (config.autoEnabled) {
+              screenshotSession.start({
+                userId: user.id,
+                userRole: user.role,
+                projectId: projectId || undefined,
+                taskId: taskId || undefined,
+                intervalMinutes: config.intervalMinutes || 5,
+                quality: 0.6,
+              })
+              toast.info('Screenshot monitoring started', {
+                description: `Every ${config.intervalMinutes || 5} min`,
+                duration: 3000,
+              })
+            }
+          }
+        } catch {
+          // Silent — screenshot is optional
+        }
+      }
     } catch {
       toast.error('Failed to clock in')
     } finally {
@@ -2109,6 +2138,10 @@ export function TeamTimeTracking() {
   const handleTimeOut = async () => {
     if (!activeEntry) return
     setTimeOutLoading(true)
+
+    // Stop screenshot monitoring immediately
+    screenshotSession.stop()
+
     try {
       const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
         method: 'PATCH',
