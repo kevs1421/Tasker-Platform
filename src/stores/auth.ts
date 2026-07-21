@@ -43,6 +43,7 @@ const HASH_ROUTES: Record<string, AppRoute> = {
   'admin/kanban': { page: 'admin-dashboard', tab: 'task-view' },
   'admin/time': { page: 'admin-dashboard', tab: 'time-tracking' },
   'admin/messages': { page: 'admin-dashboard', tab: 'messages' },
+  'admin/screenshots': { page: 'admin-dashboard', tab: 'screenshots' },
   'admin/profile': { page: 'admin-dashboard', tab: 'profile' },
   // Team
   'team': { page: 'team-dashboard', tab: 'project' },
@@ -50,6 +51,7 @@ const HASH_ROUTES: Record<string, AppRoute> = {
   'team/tasks': { page: 'team-dashboard', tab: 'task' },
   'team/time': { page: 'team-dashboard', tab: 'time-tracking' },
   'team/messages': { page: 'team-dashboard', tab: 'messages' },
+  'team/screenshots': { page: 'team-dashboard', tab: 'screenshots' },
   'team/profile': { page: 'team-dashboard', tab: 'profile' },
   // Client
   'client': { page: 'client-dashboard', tab: 'project' },
@@ -71,7 +73,7 @@ function routeToHash(route: AppRoute): string {
   const tabMap: Record<string, string> = {
     overview: 'overview', users: 'users', onboarding: 'onboarding',
     project: 'projects', 'task-dashboard': 'tasks', 'task-view': 'kanban',
-    'time-tracking': 'time', messages: 'messages', profile: 'profile', task: 'tasks',
+    'time-tracking': 'time', messages: 'messages', screenshots: 'screenshots', profile: 'profile', task: 'tasks',
   }
   const tab = tabMap[route.tab] || route.tab
   return `#/${page}/${tab}`

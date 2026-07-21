@@ -7,6 +7,8 @@ import LoginPage from '@/features/login-page'
 import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile, AdminTimeTracking } from '@/features/admin-dashboard'
 import { TeamProjects, TeamTasks, TeamMessages, TeamProfile, TeamTimeTracking } from '@/features/team-dashboard'
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
+import { TeamScreenshots } from '@/features/screenshot-capture'
+import { AdminScreenshotReport } from '@/features/screenshot-report'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const emptySubscribe = () => () => {}
@@ -28,6 +30,7 @@ function AdminDashboard() {
         {route.tab === 'task-view' && <TeamTasks />}
         {route.tab === 'time-tracking' && <AdminTimeTracking />}
         {route.tab === 'messages' && <AdminMessages />}
+        {route.tab === 'screenshots' && <AdminScreenshotReport />}
         {route.tab === 'profile' && <AdminProfile />}
       </motion.div>
     </AnimatePresence>
@@ -44,6 +47,7 @@ function TeamDashboard() {
         {route.tab === 'task' && <TeamTasks />}
         {route.tab === 'time-tracking' && <TeamTimeTracking />}
         {route.tab === 'messages' && <TeamMessages />}
+        {route.tab === 'screenshots' && <TeamScreenshots />}
         {route.tab === 'profile' && <TeamProfile />}
       </motion.div>
     </AnimatePresence>

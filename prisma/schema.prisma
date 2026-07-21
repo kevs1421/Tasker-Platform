@@ -34,6 +34,27 @@ model User {
   reviewedOnboardings Onboarding[]   @relation("OnboardingReviewer")
   clientOnboardingForms OnboardingForm[]  @relation("ClientOnboardingForms")
   timeEntries      TimeEntry[]
+  screenshots      Screenshot[]
+}
+
+model Screenshot {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String?
+  taskId      String?
+  title       String?
+  description String?
+  filePath    String
+  fileSize    Int      @default(0)
+  mimeType    String   @default("image/png")
+  createdAt   DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Project {
@@ -54,6 +75,7 @@ model Project {
   clientProjects  ClientProject[]
   onboardingForms OnboardingForm[]
   timeEntries     TimeEntry[]
+  screenshots     Screenshot[]
 }
 
 model ProjectMember {
@@ -99,6 +121,7 @@ model Task {
   comments    Comment[]
   subtasks    Subtask[]
   timeEntries TimeEntry[]
+  screenshots Screenshot[]
 }
 
 model TaskAssignment {

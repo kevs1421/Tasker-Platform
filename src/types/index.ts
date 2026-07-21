@@ -86,11 +86,27 @@ export interface DashboardStats {
   totalClients: number; thisWeekCompleted: number; totalMessages: number;
 }
 
+export interface Screenshot {
+  id: string
+  userId: string
+  projectId?: string | null
+  taskId?: string | null
+  title?: string | null
+  description?: string | null
+  filePath: string
+  fileSize: number
+  mimeType: string
+  createdAt: string
+  user?: { id: string; name: string; email: string; role: string; avatar?: string | null }
+  project?: { id: string; name: string; color?: string } | null
+  task?: { id: string; title: string; status?: string } | null
+}
+
 export type Role = 'admin' | 'team' | 'training' | 'client'
 
 // SPA route types
 export type AppRoute =
   | { page: 'login' }
-  | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'time-tracking' | 'messages' | 'profile' }
-  | { page: 'team-dashboard'; tab: 'project' | 'task' | 'time-tracking' | 'messages' | 'profile' }
+  | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'time-tracking' | 'messages' | 'screenshots' | 'profile' }
+  | { page: 'team-dashboard'; tab: 'project' | 'task' | 'time-tracking' | 'messages' | 'screenshots' | 'profile' }
   | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'messages' | 'profile' }

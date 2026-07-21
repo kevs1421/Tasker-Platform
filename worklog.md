@@ -1086,3 +1086,29 @@ Stage Summary:
 - Can be assigned to projects by admin
 - Shows sky-blue badge in UI
 - All restrictions enforced on both frontend and backend
+---
+Task ID: 10
+Agent: main
+Task: Add screenshot capture (admin, team, training) and screenshot report (admin only)
+
+Work Log:
+- Added `Screenshot` model to Prisma schema with relations to User, Project, Task
+- Pushed schema to SQLite database (prisma db push)
+- Created `POST /api/screenshots` API route with file upload, role-based blocking (client denied), image type validation, 20MB limit
+- Created `GET /api/screenshots` API route with admin mode (sees all) and user mode (sees own only)
+- Created `DELETE /api/screenshots/[id]` API route with owner/admin delete permissions
+- Created `src/features/screenshot-capture.tsx` — TeamScreenshots component with upload dialog, grid view, search, preview, delete
+- Created `src/features/screenshot-report.tsx` — AdminScreenshotReport component with stats cards, grid/list view, filters (role, user, search), sorting, preview, delete
+- Added `Screenshot` type and updated `AppRoute` type in `src/types/index.ts`
+- Added "Screenshot Report" nav item to admin sidebar and "Screenshots" nav item to team/training sidebar in `app-shell.tsx`
+- Updated hash routes in `auth.ts` for `admin/screenshots` and `team/screenshots`
+- Updated `page.tsx` to render AdminScreenshotReport for admin and TeamScreenshots for team/training
+- Client sidebar confirmed: NO screenshots navigation item
+
+Stage Summary:
+- Screenshot capture is available to admin, team, and training roles (NOT client)
+- Admin sees "Screenshot Report" with all screenshots from all users, stats, filtering, sorting
+- Team/Training see "Screenshots" with their own uploads only, with upload capability
+- API blocks client role from uploading (403 Forbidden)
+- All lint checks pass (0 errors, 0 warnings)
+- Browser verified: admin sees report page, team sees capture page, training sees capture page, client does NOT see screenshots

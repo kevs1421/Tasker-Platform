@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -437,6 +437,7 @@ function getNavItems(role: string): NavItem[] {
     { id: 'task-view', label: 'Task', icon: Kanban, route: { page: 'admin-dashboard', tab: 'task-view' } },
     { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'admin-dashboard', tab: 'time-tracking' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
+    { id: 'screenshots', label: 'Screenshot Report', icon: Camera, route: { page: 'admin-dashboard', tab: 'screenshots' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
   ]
   if (role === 'team' || role === 'training') return [
@@ -444,6 +445,7 @@ function getNavItems(role: string): NavItem[] {
     { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
     { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
+    { id: 'screenshots', label: 'Screenshots', icon: Camera, route: { page: 'team-dashboard', tab: 'screenshots' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
   ]
   return [ // client
