@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  Camera, Upload, Trash2, X, Image as ImageIcon, FileText,
-  Loader2, Search, FolderKanban, ListTodo, Filter, Eye, Download,
+  Camera, Upload, Trash2, X, Eye,
+  Loader2, Search,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import type { Screenshot, Project, Task } from '@/types'
-import { formatRelativeTime, getInitials, getRoleBadgeClasses } from '@/features/route-guard'
+import type { Screenshot } from '@/types'
+import { formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'

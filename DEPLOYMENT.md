@@ -1034,7 +1034,32 @@ The following issues were identified during the final system review and resolved
 | Files created | — | 2 |
 | Browser-tested dashboards | — | 3 (Admin, Team, Client) |
 
-### 13.5 Known Limitations (Deferred)
+### 13.5 Additional Fixes (Session 2 — Screenshot & Task Switch)
+
+| # | Issue | File(s) | Resolution |
+|---|-------|---------|------------|
+| S1 | `set()` used outside Zustand `create` closure — browser back/forward crashes | `stores/auth.ts:168` | Changed to `useAuthStore.setState()` |
+| S2 | ~8,000 lines of dead code: entire `src/components/dashboard/` (9 files), `team-my-tasks.tsx`, `use-toast.ts`, `toaster.tsx`, 23 unused shadcn/ui components | Multiple | Deleted all dead files |
+| S3 | Duplicate API routes: `/api/auth/login` duplicates `/api/login`, `/api/route.ts` returns unused `Hello World` | `api/auth/`, `api/route.ts` | Deleted duplicate/dead routes |
+| S4 | Unused imports in active files | `app-shell.tsx`, `screenshot-capture.tsx` | Removed `FileText`, `FolderKanban`, `ListTodo`, `CameraOff`, `Settings2`, `Project`, `Task`, `getInitials`, `getRoleBadgeClasses`, `formatDate`, unused `intervalMinutes` |
+| S5 | Screenshot Monitoring controls in Clock In modal | `app-shell.tsx` | Removed entire Auto Screenshot section from the Clock In dialog — now runs in background per admin settings |
+| S6 | Sidebar and Time Tracking page not synced | `app-shell.tsx`, `team-dashboard.tsx`, `stores/time-tracking.ts` | Created shared `useTimeTrackingStore` and `useScreenshotStore`; both sidebar and time-tracking page read/write from same store |
+| S7 | No way to switch tasks without stopping timer | `app-shell.tsx`, `screenshot-capture.ts` | Added `updateContext()` to `ScreenshotSessionManager`; added "Switch Task" button and dialog to sidebar widget |
+| S8 | Switching task didn't capture screenshot for new context | `lib/screenshot-capture.ts` | `updateContext()` immediately captures a screenshot when project/task changes |
+| S9 | Duplicate `deleting` state in TeamTimeTracking | `team-dashboard.tsx` | Removed duplicate `useState` |
+
+### 13.6 Code Quality Metrics (Session 2)
+
+| Metric | Value |
+|--------|-------|
+| Dead files deleted | 36 files (~8,200 lines) |
+| Unused UI components deleted | 23 files (~3,200 lines) |
+| New files created | 1 (`stores/time-tracking.ts`) |
+| ESLint errors | 0 |
+| ESLint warnings | 0 |
+| Dev server 200 OK | ✓ |
+
+### 13.6 Known Limitations (Deferred)
 
 The following items were identified but intentionally deferred as they require architectural changes:
 
@@ -1058,6 +1083,10 @@ The following items were identified but intentionally deferred as they require a
 - [x] Time entry export scoped to requesting user
 - [x] All unused code, imports, and dead files removed
 - [x] Lint passes with 0 errors, 0 warnings
+- [x] Shared time-tracking store syncs sidebar and time tracking page
+- [x] Auto-screenshot runs in background (admin-controlled, not in Clock In modal)
+- [x] Switch Task feature: change project/task without stopping timer
+- [x] Screenshot immediately captured on task switch
 - [x] Deployment documentation complete
 - [ ] Add server-side authentication middleware (deferred to v1.1)
 - [ ] Upgrade password hashing to bcrypt (deferred to v1.1)

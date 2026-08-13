@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, Settings2, RefreshCw } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, RefreshCw, ArrowRightLeft } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -76,7 +76,6 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     isCapturing,
     captureCount,
     nextCaptureInMs,
-    intervalMinutes,
     setIsCapturing,
     setCaptureCount,
     setNextCaptureInMs,
@@ -96,8 +95,119 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [loadingTasks, setLoadingTasks] = useState(false)
 
+  // Switch task dialog state
+  const [switchOpen, setSwitchOpen] = useState(false)
+  const [switchProjects, setSwitchProjects] = useState<Project[]>([])
+  const [switchProjectId, setSwitchProjectId] = useState('')
+  const [switchTasks, setSwitchTasks] = useState<Task[]>([])
+  const [switchTaskId, setSwitchTaskId] = useState('')
+  const [switching, setSwitching] = useState(false)
+  const [loadingSwitchTasks, setLoadingSwitchTasks] = useState(false)
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Open switch-task dialog
+  const handleOpenSwitch = async () => {
+    if (!activeSession) return
+    setSwitchOpen(true)
+    setSwitchProjectId(activeSession.projectId || '')
+    setSwitchTaskId(activeSession.task?.id || '')
+    setSwitchTasks([])
+    setLoadingSwitchTasks(false)
+    try {
+      const res = await fetch('/api/projects')
+      if (res.ok) {
+        const data = await res.json()
+        setSwitchProjects(data.projects ?? [])
+      }
+    } catch {
+      // silent
+    }
+    // If current project is set, pre-load its tasks
+    if (activeSession.projectId) {
+      setLoadingSwitchTasks(true)
+      try {
+        const res = await fetch(`/api/projects/${activeSession.projectId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSwitchTasks(data.project?.tasks ?? [])
+        }
+      } catch {
+        // silent
+      } finally {
+        setLoadingSwitchTasks(false)
+      }
+    }
+  }
+
+  // Handle switch-task project change
+  const handleSwitchProjectChange = async (projectId: string) => {
+    setSwitchProjectId(projectId)
+    setSwitchTaskId('')
+    setSwitchTasks([])
+    if (!projectId) return
+    setLoadingSwitchTasks(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSwitchTasks(data.project?.tasks ?? [])
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingSwitchTasks(false)
+    }
+  }
+
+  // Execute task switch — update the time entry, screenshot context, and store
+  const handleSwitchTask = async () => {
+    if (!activeSession) return
+    setSwitching(true)
+    try {
+      const body: Record<string, unknown> = { action: 'switch_task' }
+      if (switchProjectId) body.projectId = switchProjectId
+      if (switchTaskId) body.taskId = switchTaskId
+
+      const res = await fetch(`/api/time-entries/${activeSession.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to switch task')
+      }
+      const data = await res.json()
+      const updated = data.timeEntry
+      if (updated) {
+        const session: ActiveTimeSession = {
+          id: updated.id,
+          timeIn: updated.timeIn,
+          projectId: updated.projectId,
+          project: updated.project,
+          task: updated.task,
+          description: updated.description,
+        }
+        setActiveSession(session)
+
+        // Update screenshot session context and capture immediately
+        screenshotSession.updateContext({
+          projectId: switchProjectId || undefined,
+          taskId: switchTaskId || undefined,
+        })
+      }
+      setSwitchOpen(false)
+      toast.success('Switched task — timer continues', {
+        description: switchTaskId ? 'Screenshot captured for new task' : undefined,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to switch task')
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   // Fetch screenshot config on mount (for interval)
   useEffect(() => {
@@ -429,6 +539,65 @@ function TimeInOutWidget({ userId }: { userId: string }) {
             Out
           </Button>
         </div>
+        {/* Switch Task button */}
+        <button
+          onClick={handleOpenSwitch}
+          className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30 px-3 py-1.5 flex items-center justify-center gap-1.5 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors cursor-pointer"
+        >
+          <ArrowRightLeft className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          <span className="text-[11px] font-medium text-blue-700 dark:text-blue-300">Switch Task</span>
+        </button>
+
+        {/* Switch Task Dialog */}
+        <Dialog open={switchOpen} onOpenChange={(open) => { setSwitchOpen(open) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+                Switch Task
+              </DialogTitle>
+              <DialogDescription>Change your project or task. Your timer will continue without interruption.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-sm">Project</Label>
+                <Select value={switchProjectId} onValueChange={handleSwitchProjectChange}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {switchProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {switchProjectId && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Task</Label>
+                  <Select value={switchTaskId} onValueChange={setSwitchTaskId} disabled={loadingSwitchTasks}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder={loadingSwitchTasks ? 'Loading…' : 'Select task'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {switchTasks.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSwitchOpen(false)} className="h-9">Cancel</Button>
+              <Button onClick={handleSwitchTask} disabled={switching} className="h-9 bg-blue-600 hover:bg-blue-700 text-white">
+                {switching && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" />
+                Switch
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     )
   }

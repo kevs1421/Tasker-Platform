@@ -186,6 +186,19 @@ export class ScreenshotSessionManager {
   }
 
   /**
+   * Update project/task context without stopping the session.
+   * Called when user switches tasks while remaining timed in.
+   * Immediately captures a screenshot for the new context.
+   */
+  updateContext(options: { projectId?: string; taskId?: string }) {
+    this.projectId = options.projectId || ''
+    this.taskId = options.taskId || ''
+    if (this.isRunning) {
+      this.capture()
+    }
+  }
+
+  /**
    * Check if session is running
    */
   getIsRunning() {

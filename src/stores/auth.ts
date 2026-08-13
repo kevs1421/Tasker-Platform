@@ -165,7 +165,7 @@ if (typeof window !== 'undefined') {
     if (!hash || hash === '#') return
     const parsed = parseHash(hash)
     if (parsed && parsed.page !== 'login') {
-      set({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+      useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
     }
   })
 }

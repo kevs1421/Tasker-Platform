@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth'
+import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { Project, Task, Comment, User } from '@/types'
 import {
   getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
@@ -1895,6 +1896,7 @@ type DateFilter = 'today' | 'week' | 'month' | 'all' | 'custom'
 
 export function TeamTimeTracking() {
   const { user } = useAuthStore()
+  const { activeSession } = useTimeTrackingStore()
 
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -1946,6 +1948,28 @@ export function TeamTimeTracking() {
         return { dateFrom: '2020-01-01', dateTo: '2099-12-31' }
     }
   }, [])
+
+  // ── Sync active entry from shared store (sidebar ↔ time tracking page) ──
+  useEffect(() => {
+    if (activeSession) {
+      setActiveEntry({
+        id: activeSession.id,
+        userId: user?.id || '',
+        projectId: activeSession.projectId,
+        project: activeSession.project,
+        task: activeSession.task,
+        description: activeSession.description,
+        timeIn: activeSession.timeIn,
+        status: 'timed_in',
+        date: new Date(activeSession.timeIn).toISOString().slice(0, 10),
+        duration: 0,
+        createdAt: activeSession.timeIn,
+        updatedAt: activeSession.timeIn,
+      } as TimeEntry)
+    } else {
+      setActiveEntry(null)
+    }
+  }, [activeSession, user?.id])
 
   // ── Fetch entries ──
   const fetchEntries = useCallback(async (filter: DateFilter, from?: Date, to?: Date) => {
@@ -2150,6 +2174,7 @@ export function TeamTimeTracking() {
       })
       if (!res.ok) throw new Error()
       toast.success('Clocked out successfully!')
+      useTimeTrackingStore.getState().setActiveSession(null)
       setActiveEntry(null)
       setElapsed('00:00:00')
       await fetchEntries(dateFilter, customDateFrom, customDateTo)

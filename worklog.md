@@ -1148,3 +1148,39 @@ Stage Summary:
 - "Capture Now" button for manual trigger
 - Auto-captured screenshots tagged with purple "Auto" badge in report
 - Timer start/stop automatically controls auto-capture lifecycle
+
+---
+Task ID: final-review-session-2
+Agent: Main Orchestrator
+Task: Final System Review — Code Cleanup, Screenshot Removal from Modal, Task Switching, Sync
+
+Work Log:
+- Ran comprehensive Explore agent audit across all 60+ source files
+- Fixed auth.ts hashchange bug: `set()` was referenced outside Zustand create closure → changed to `useAuthStore.setState()`
+- Cleaned unused imports from app-shell.tsx (removed FileText, FolderKanban, ListTodo, CameraOff, Settings2, unused intervalMinutes)
+- Cleaned unused imports from screenshot-capture.tsx (removed FileText, FolderKanban, ListTodo, Filter, Download, ImageIcon, Project, Task types, getInitials, getRoleBadgeClasses)
+- Deleted 9 dead files in src/components/dashboard/ (~4,200 lines): AdminDashboard, AppHeader, AppSidebar, ClientDashboard, CreateTaskModal, LoginPage, TaskCard, TaskDetail, TeamDashboard
+- Deleted src/features/team-my-tasks.tsx (381 lines, never imported)
+- Deleted src/hooks/use-toast.ts (193 lines, project uses sonner)
+- Deleted src/components/ui/toaster.tsx (34 lines, unused)
+- Deleted 23 unused shadcn/ui components (~3,200 lines): accordion, aspect-ratio, breadcrumb, carousel, chart, collapsible, command, context-menu, drawer, form, hover-card, input-otp, menubar, navigation-menu, pagination, radio-group, resizable, sidebar, slider, sonner, toggle, toggle-group, toast
+- Deleted src/hooks/ directory (use-mobile.ts was unused)
+- Deleted duplicate API routes: src/app/api/auth/ (login + register duplicates), src/app/api/route.ts (dead Hello World endpoint)
+- Added `updateContext()` method to ScreenshotSessionManager in screenshot-capture.ts — updates projectId/taskId without stopping session, immediately captures screenshot
+- Added Switch Task UI to sidebar widget in app-shell.tsx: blue "Switch Task" button below timer when active, dialog with project/task selectors, calls PATCH with switch_task action
+- Added shared time-tracking store (stores/time-tracking.ts) with useTimeTrackingStore and useScreenshotStore
+- Synced TeamTimeTracking in team-dashboard.tsx to read from shared store via useEffect on activeSession
+- Updated TeamTimeTracking Time Out handler to also clear shared store
+- Removed entire Auto Screenshot Monitoring section from Clock In modal (was user-configurable, now admin-only background)
+- Updated DEPLOYMENT.md with Session 2 resolved issues (S1-S9) and updated checklist
+- Final lint: 0 errors, 0 warnings
+- Final server: 200 OK, no compilation errors
+
+Stage Summary:
+- 36 files deleted (~8,200 lines of dead code removed)
+- 23 unused UI components deleted (~3,200 lines)
+- 1 new store file created (stores/time-tracking.ts)
+- 3 files significantly modified (app-shell.tsx, team-dashboard.tsx, auth.ts)
+- 1 lib file modified (screenshot-capture.ts)
+- Deployment doc updated with 9 new resolved issues
+- System is clean, linting passes, and server returns 200
