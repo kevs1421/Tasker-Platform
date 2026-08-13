@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
       subtasks: subtasks.map((s) => ({
         ...s,
         createdAt: s.createdAt.toISOString(),
-        updatedAt: s.updatedAt.toISOString(),
       })),
     })
   } catch { return NextResponse.json({ error: 'Failed' }, { status: 500 }) }

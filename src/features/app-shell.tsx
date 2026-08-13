@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, RefreshCw, ArrowRightLeft } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, RefreshCw, ArrowRightLeft, ListTodo } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
@@ -828,7 +828,7 @@ export function AppSidebar() {
   const navItems = getNavItems(user.role)
   const showTimeWidget = user.role === 'admin' || user.role === 'team' || user.role === 'training'
 
-  const isCurrentTab = (item: NavItem) => route.page === item.route.page && route.tab === item.route.tab
+  const isCurrentTab = (item: NavItem) => 'tab' in route && route.page === item.route.page && route.tab === item.route.tab
 
   const sidebarContent = (
     <div className="flex flex-col h-full">

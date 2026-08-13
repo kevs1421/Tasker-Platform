@@ -147,7 +147,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   setRoute: (route) => {
     const prev = get().route
-    if (prev.page === route.page && prev.tab === route.tab) return
+    if ('tab' in prev && 'tab' in route && prev.page === route.page && prev.tab === route.tab) return
     window.location.hash = routeToHash(route)
     set({ route, selectedProjectId: null, selectedTaskId: null })
   },

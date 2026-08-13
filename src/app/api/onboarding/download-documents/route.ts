@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     const safeName = `${submission.form.title} - ${submission.client.name} - Documents.zip`
       .replace(/[/\\?%*:|"<>]/g, '-')
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(Buffer.from(zipBuffer), {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(safeName)}"`,

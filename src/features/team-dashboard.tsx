@@ -1109,7 +1109,7 @@ export function TeamTasks() {
                                       <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
                                       <div className="space-y-0.5 max-h-48 overflow-y-auto">
                                         {assignableUsers.map((u) => {
-                                          const isAssigned = assignees.some((a) => a.userId === u.id)
+                                          const isAssigned = assignees.some((a) => a.id === u.id)
                                           const isLoading = assigneeLoading === u.id
                                           return (
                                             <button
@@ -1233,7 +1233,7 @@ export function TeamTasks() {
                             <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
                             <div className="space-y-0.5 max-h-48 overflow-y-auto">
                               {assignableUsers.map((u) => {
-                                const isAssigned = assignees.some((a) => a.userId === u.id)
+                                const isAssigned = assignees.some((a) => a.id === u.id)
                                 const isLoading = assigneeLoading === u.id
                                 return (
                                   <button
@@ -1920,7 +1920,7 @@ export function TeamTimeTracking() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const elapsedRef = useRef<ReturnType<typeof setInterval>>()
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Date range helpers ──
   const getDateRange = useCallback((filter: DateFilter, customFrom?: Date, customTo?: Date) => {

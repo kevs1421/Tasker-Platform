@@ -1,7 +1,7 @@
-import { Request, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { userId, taskId, assignedBy } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })

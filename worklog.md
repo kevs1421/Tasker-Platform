@@ -1184,3 +1184,30 @@ Stage Summary:
 - 1 lib file modified (screenshot-capture.ts)
 - Deployment doc updated with 9 new resolved issues
 - System is clean, linting passes, and server returns 200
+---
+Task ID: fix-login-errors
+Agent: main
+Task: Fix all TypeScript errors preventing login and dashboard rendering
+
+Work Log:
+- Found and fixed missing `ListTodo` import in app-shell.tsx (used in admin nav but never imported)
+- Fixed `AppRoute` type union: `{ page: login }` had no `tab` property, causing TS errors in auth.ts setRoute and app-shell.tsx isCurrentTab
+- Fixed auth.ts setRoute to use `tab in route` guard before accessing .tab
+- Fixed app-shell.tsx isCurrentTab to use `tab in route` guard
+- Fixed team-dashboard.tsx: assignees mapped to User[] but accessed with .userId (should be .id) on lines 1112 and 1236
+- Fixed auto-screenshot.tsx: useRef needed initial null value, and ImageCapture.grabFrame() needed proper type cast
+- Fixed admin-dashboard.tsx: added ProjectMember and Comment type imports, renamed Comment to CommentType to avoid DOM type collision
+- Fixed dashboard/stats route: userStats typed as null but assigned object literal
+- Fixed dashboard/activity route: used Prisma.ActivityLogWhereInput and manual user join (no user relation on ActivityLog model)
+- Fixed message-groups/[id] route: removed invalid skipDuplicates option
+- Fixed tasks/assignments route: imported NextRequest instead of non-existent Request
+- Fixed tasks/subtasks route: removed .updatedAt access (Subtask model has no updatedAt)
+- Fixed onboarding/download-documents route: wrapped Buffer for NextResponse compatibility
+
+Stage Summary:
+- All src/ TypeScript errors resolved (0 errors remaining, only examples/skills have pre-existing errors)
+- Login API verified: admin, team, client logins all return 200 with correct user data
+- Wrong password returns 401, missing fields returns 400
+- Dev server compiles and serves login page without runtime errors
+- Dev log shows clean 200 responses with no errors
+

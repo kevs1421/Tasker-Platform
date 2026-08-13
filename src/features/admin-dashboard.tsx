@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User } from '@/types'
+import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 
@@ -1645,7 +1645,7 @@ export function AdminTasks() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [comments, setComments] = useState<Comment[]>([])
+  const [comments, setComments] = useState<CommentType[]>([])
   const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
   const [assigneeOpen, setAssigneeOpen] = useState(false)
 

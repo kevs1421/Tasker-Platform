@@ -48,8 +48,8 @@ export function useAutoScreenshot() {
   const [countdown, setCountdown] = useState(0)
   const [captureCount, setCaptureCount] = useState(0)
 
-  const intervalRef = useRef<ReturnType<typeof setInterval>>()
-  const countdownRef = useRef<ReturnType<typeof setInterval>>()
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isRunningRef = useRef(false)
 
   // Fetch config
@@ -106,7 +106,7 @@ export function useAutoScreenshot() {
 
       // Get the video track
       const track = stream.getVideoTracks()[0]
-      const imageCapture = new ImageCapture(track)
+      const imageCapture = new ImageCapture(track) as unknown as { grabFrame(): Promise<ImageBitmap> }
       const bitmap = await imageCapture.grabFrame()
 
       // Stop the stream immediately
@@ -200,8 +200,8 @@ export function useAutoScreenshot() {
     setCountdown(0)
     if (intervalRef.current) clearInterval(intervalRef.current)
     if (countdownRef.current) clearInterval(countdownRef.current)
-    intervalRef.current = undefined
-    countdownRef.current = undefined
+    intervalRef.current = null
+    countdownRef.current = null
   }, [])
 
   // Cleanup on unmount

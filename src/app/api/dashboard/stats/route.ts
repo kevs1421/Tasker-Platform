@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const todoTasks = await db.task.count({ where: { status: 'todo' } })
 
-    let userStats = null
+    let userStats: { assigned: number; completed: number; inProgress: number; overdue: number } | null = null
     if (userId) {
       const userTasks = await db.taskAssignment.findMany({
         where: { userId },

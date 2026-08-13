@@ -113,7 +113,7 @@ export type Role = 'admin' | 'team' | 'training' | 'client'
 
 // SPA route types
 export type AppRoute =
-  | { page: 'login' }
+  | { page: 'login'; tab?: never }
   | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'time-tracking' | 'messages' | 'screenshots' | 'profile' }
   | { page: 'team-dashboard'; tab: 'project' | 'task' | 'time-tracking' | 'messages' | 'screenshots' | 'profile' }
   | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'messages' | 'profile' }

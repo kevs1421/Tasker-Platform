@@ -54,7 +54,6 @@ export async function PATCH(
     if (addMemberIds && addMemberIds.length > 0) {
       await db.groupMember.createMany({
         data: addMemberIds.map((userId) => ({ groupId: id, userId, role: 'member' })),
-        skipDuplicates: true,
       })
     }
 
