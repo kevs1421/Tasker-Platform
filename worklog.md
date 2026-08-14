@@ -1211,3 +1211,22 @@ Stage Summary:
 - Dev server compiles and serves login page without runtime errors
 - Dev log shows clean 200 responses with no errors
 
+---
+Task ID: remove-mock-data
+Agent: main
+Task: Remove all demo/mock data that does not belong to the system
+
+Work Log:
+- Deleted db/seed.sql (old SQL dump with 250 lines of mock data)
+- Rewrote prisma/seed.ts to only create one admin account (admin@yberdigitals.com)
+- Deleted db/custom.db and re-pushed schema for clean database
+- Removed Section 12 (Demo Accounts) from DEPLOYMENT.md
+- Replaced with Section 12 (Initial Admin Setup) explaining admin-only seed
+- Updated production readiness checklist item
+
+Stage Summary:
+- Database now starts with exactly 1 user (admin) and 0 of everything else
+- No more fake users, projects, tasks, comments, messages, or activity logs
+- All other users must be created by admin through the Users dashboard
+- Admin login: admin@yberdigitals.com / admin123 (should be changed after first login)
+

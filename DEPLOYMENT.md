@@ -19,7 +19,7 @@
 9. [Monitoring & Maintenance](#9-monitoring--maintenance)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Architecture Overview](#11-architecture-overview)
-12. [Demo Accounts](#12-demo-accounts)
+12. [Initial Admin Setup](#12-initial-admin-setup)
 13. [Final System Review — Resolved Issues](#13-final-system-review--resolved-issues)
 14. [Production Readiness Checklist](#14-production-readiness-checklist)
 
@@ -947,29 +947,16 @@ Each mini service would run as an independent process and communicate with the m
 
 ---
 
-## 12. Demo Accounts
+## 12. Initial Admin Setup
 
-The following accounts are created by the database seed script (`prisma/seed.ts`).
+The seed script (`prisma/seed.ts`) creates a single admin account on first run:
 
-> **Warning:** These accounts use simple passwords and should be removed or changed before production deployment.
+- **Email:** `admin@yberdigitals.com`
+- **Password:** `admin123`
 
-| Role | Email | Password | Name | Notes |
-|---|---|---|---|---|
-| **Admin** | `admin@taskflow.com` | `admin123` | Alex Morgan | Full access to all features |
-| **Team** | `sarah@taskflow.com` | `team123` | Sarah Chen | Assigned to multiple projects |
-| **Team** | `mike@taskflow.com` | `team123` | Mike Johnson | Assigned to multiple projects |
-| **Team** | `emma@taskflow.com` | `team123` | Emma Wilson | Assigned to multiple projects |
-| **Client** | `john@client.com` | `client123` | John Smith | 2 projects (Website Redesign, Mobile App Dev) |
-| **Client** | `lisa@client.com` | `client123` | Lisa Davis | 1 project (Marketing Campaign) |
+> **Important:** Change the admin password immediately after first login via the Profile page.
 
-### Quick Login Credentials Reference
-
-```
-Admin:   admin@taskflow.com  / admin123
-Team:    sarah@taskflow.com  / team123
-Client:  john@client.com     / client123
-         lisa@client.com     / client123
-```
+All other users (team members, clients) should be created by the admin through the **Users** tab in the admin dashboard. The admin can assign roles (`team`, `training`, `client`) and manage their accounts from there.
 
 ---
 
@@ -1092,7 +1079,7 @@ The following items were identified but intentionally deferred as they require a
 - [ ] Upgrade password hashing to bcrypt (deferred to v1.1)
 - [ ] Enable TypeScript strict build checks (deferred to v1.1)
 - [ ] Enable React strict mode (deferred to v1.1)
-- [ ] Change demo account passwords before production deployment
+- [x] Remove all demo/mock data from seed and database
 - [ ] Configure production database backups
 - [ ] Set up monitoring and alerting
 
