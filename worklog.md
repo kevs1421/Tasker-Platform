@@ -1267,3 +1267,26 @@ Stage Summary:
 - Login returns a bearer token; logout invalidates the server session
 - Frontend stores token in localStorage and sends it via Authorization header
 - Session tokens expire after 7 days
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Remove Time In button from main content, keep only sidebar. Fix 'Failed to create time entry' error.
+
+Work Log:
+- Analyzed uploaded screenshot showing the admin time tracking page with the green 'Time In' button
+- Identified the button in admin-dashboard.tsx (AdminTimeTracking component) and team-dashboard.tsx (TeamTimeTracking component)
+- Confirmed sidebar already has a 'Time In' button with a clock-in dialog (app-shell.tsx TimeInOutWidget)
+- Removed the green 'Time In' button card from AdminTimeTracking, keeping only the active timer display (Time Out button + elapsed time) when a timer is active
+- Removed the Clock In Dialog from AdminTimeTracking (sidebar handles it)
+- Removed the green 'Time In' button and its dialog from TeamTimeTracking, keeping only the active timer card when timer is running
+- Updated empty state message from 'Click Time In' to 'Use the sidebar Time In button'
+- Fixed 'Failed to create time entry' error: Added input sanitization in time-entries POST API to treat empty strings as null (prevents potential Prisma foreign key errors)
+- Added console.error logging to time-entries POST catch block for debugging
+- Fixed all 'throw new Error()' patterns in team-dashboard.tsx to read error messages from API response
+
+Stage Summary:
+- Only the sidebar 'Time In' button now starts timers (both admin and team dashboards)
+- Main content area shows active timer status (Time Out button + elapsed time) only when a timer is running
+- API properly sanitizes empty string inputs for projectId, taskId, description
+- Better error messages now propagate from API to frontend

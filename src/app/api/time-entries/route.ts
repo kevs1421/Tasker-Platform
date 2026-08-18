@@ -61,6 +61,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { userId, projectId, taskId, description, date, action } = body
 
+    // Normalize: treat empty strings as null/undefined
+    const cleanProjectId = projectId && typeof projectId === 'string' && projectId.trim() ? projectId : null
+    const cleanTaskId = taskId && typeof taskId === 'string' && taskId.trim() ? taskId : null
+    const cleanDescription = description && typeof description === 'string' && description.trim() ? description.trim() : null
+
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
     }
@@ -78,9 +83,9 @@ export async function POST(request: NextRequest) {
       const entry = await db.timeEntry.create({
         data: {
           userId,
-          projectId: projectId || null,
-          taskId: taskId || null,
-          description: description || null,
+          projectId: cleanProjectId,
+          taskId: cleanTaskId,
+          description: cleanDescription,
           date: today,
           timeIn: new Date().toISOString(),
           status: 'timed_in',
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
         include: {
           user: { select: { id: true, name: true, avatar: true, role: true } },
           project: { select: { id: true, name: true, color: true } },
-          task: { select: { id: true, title: true } },
+          task: { select: { id: true, title: true, status: true } },
         },
       })
 
@@ -128,7 +133,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action. Use "time_in" or "manual".' }, { status: 400 })
-  } catch {
+  } catch (error) {
+    console.error('Failed to create time entry:', error)
     return NextResponse.json({ error: 'Failed to create time entry' }, { status: 500 })
   }
 }

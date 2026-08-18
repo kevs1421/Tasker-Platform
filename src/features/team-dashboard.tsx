@@ -725,7 +725,7 @@ export function TeamTasks() {
     setDeleting(true)
     try {
       const res = await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to delete task') }
       toast.success('Task deleted')
       setDetailOpen(false)
       setDetailTask(null)
@@ -2114,7 +2114,7 @@ export function TeamTimeTracking() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to clock in') }
       toast.success('Clocked in successfully!')
       setShowTimeInDialog(false)
       const projectId = selectedProjectId
@@ -2172,7 +2172,7 @@ export function TeamTimeTracking() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'time_out' }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to clock out') }
       toast.success('Clocked out successfully!')
       useTimeTrackingStore.getState().setActiveSession(null)
       setActiveEntry(null)
@@ -2192,7 +2192,7 @@ export function TeamTimeTracking() {
     setDeleting(true)
     try {
       const res = await fetch(`/api/time-entries/${deleteId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to delete entry') }
       toast.success('Entry deleted')
       setDeleteId(null)
       await fetchEntries(dateFilter, customDateFrom, customDateTo)
@@ -2266,120 +2266,35 @@ export function TeamTimeTracking() {
         </div>
       </div>
 
-      {/* Big Time In / Time Out Button */}
-      <Card className="p-6">
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
-          {!activeEntry ? (
-            <>
-              <Button
-                size="lg"
-                className="h-16 w-full max-w-xs bg-emerald-600 text-lg font-semibold text-white hover:bg-emerald-700 sm:w-auto sm:px-12"
-                onClick={() => setShowTimeInDialog(true)}
-              >
-                <Play className="mr-2 h-6 w-6" />
-                Time In
-              </Button>
-              <p className="text-sm text-muted-foreground">Start tracking your work hours</p>
-            </>
-          ) : (
-            <>
-              <Button
-                size="lg"
-                className="h-16 w-full max-w-xs bg-red-600 text-lg font-semibold text-white hover:bg-red-700 sm:w-auto sm:px-12"
-                onClick={handleTimeOut}
-                disabled={timeOutLoading}
-              >
-                {timeOutLoading ? (
-                  <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-                ) : (
-                  <Square className="mr-2 h-5 w-5" />
-                )}
-                Time Out
-              </Button>
-              <div className="flex items-center gap-2">
+      {/* Active Timer Display (Time In is via sidebar) */}
+      {activeEntry ? (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <Button
+              size="lg"
+              className="h-14 gap-3 bg-red-600 text-white hover:bg-red-700 shrink-0"
+              onClick={handleTimeOut}
+              disabled={timeOutLoading}
+            >
+              {timeOutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
+              <span className="text-base font-semibold">Time Out</span>
+            </Button>
+            <div className="flex flex-col items-center sm:items-start">
+              <span className="text-xs text-muted-foreground">You are currently clocked in</span>
+              <div className="flex items-center gap-2 mt-0.5">
                 <Timer className="h-5 w-5 text-amber-600" />
                 <span className="font-mono text-2xl font-bold text-amber-700">{elapsed}</span>
               </div>
-            </>
-          )}
-        </div>
-      </Card>
-
-      {/* Time In Dialog */}
-      <Dialog open={showTimeInDialog} onOpenChange={(open) => { if (!open) setShowTimeInDialog(false) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5 text-emerald-600" />
-              Clock In
-            </DialogTitle>
-            <DialogDescription>
-              Optionally select a project, task, and add a description.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Project (optional)</Label>
-              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: p.color || '#6b7280' }}
-                        />
-                        {p.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {tasks.length > 0 && (
-              <div className="space-y-2">
-                <Label>Task (optional)</Label>
-                <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a task" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tasks.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Description (optional)</Label>
-              <Input
-                placeholder="What are you working on?"
-                value={timeInDescription}
-                onChange={(e) => setTimeInDescription(e.target.value)}
-              />
+              {activeEntry.project && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: activeEntry.project.color }} />
+                  <span className="text-xs text-muted-foreground">{activeEntry.project.name}</span>
+                </div>
+              )}
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTimeInDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={handleTimeIn}
-              disabled={timeInLoading}
-            >
-              {timeInLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-              Start Timer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </Card>
+      ) : null}
 
       {/* Summary Stats Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -2532,7 +2447,7 @@ export function TeamTimeTracking() {
             <h3 className="text-lg font-medium text-foreground">No time entries yet</h3>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {dateFilter === 'today'
-                ? "You haven't tracked any time today. Click \"Time In\" to get started."
+                ? "Use the sidebar \"Time In\" button to start tracking your time."
                 : `No entries found for ${filterButtons.find((f) => f.key === dateFilter)?.label.toLowerCase() || 'this period'}.`}
             </p>
           </motion.div>
