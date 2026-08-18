@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, authHeaders } from '@/stores/auth'
 import type { ScreenshotConfig } from '@/types'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
@@ -77,7 +77,7 @@ export function useAutoScreenshot() {
     try {
       const res = await fetch('/api/screenshot-config', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ userId: user.id, ...updates }),
       })
       if (res.ok) {

@@ -699,7 +699,7 @@ export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesP
 // CLIENT PROFILE
 // ═══════════════════════════════════════════════════════════════════
 export function ClientProfile() {
-  const { user, login } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
@@ -751,7 +751,7 @@ export function ClientProfile() {
       toast.success('Profile updated successfully')
       // Update user in store
       if (data.user && user) {
-        login({ ...user, name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+        updateUser({ name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to update profile'

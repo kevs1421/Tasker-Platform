@@ -3,6 +3,7 @@ import type { User, AppRoute } from '@/types'
 
 // ─── localStorage persistence key ───────────────────────
 const STORAGE_KEY = 'taskflow-auth'
+const TOKEN_KEY = 'taskflow-token'
 
 function loadPersistedUser(): User | null {
   if (typeof window === 'undefined') return null
@@ -17,6 +18,11 @@ function loadPersistedUser(): User | null {
   }
 }
 
+function loadPersistedToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(TOKEN_KEY)
+}
+
 function persistUser(user: User | null) {
   if (typeof window === 'undefined') return
   try {
@@ -28,6 +34,39 @@ function persistUser(user: User | null) {
   } catch {
     // localStorage unavailable (e.g. private browsing quota)
   }
+}
+
+function persistToken(token: string | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token)
+    } else {
+      localStorage.removeItem(TOKEN_KEY)
+    }
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+/**
+ * Get the stored auth token (for use in fetch calls)
+ */
+export function getAuthToken(): string | null {
+  return loadPersistedToken()
+}
+
+/**
+ * Create an authenticated Headers object with the Authorization bearer token.
+ * Optionally merge with additional headers.
+ */
+export function authHeaders(extra?: Record<string, string>): HeadersInit {
+  const token = getAuthToken()
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  }
+  return headers
 }
 
 // ─── Hash-based tab routing ─────────────────────────────
@@ -89,7 +128,8 @@ interface AuthState {
   sidebarOpen: boolean
   _hydrated: boolean
 
-  login: (user: User) => void
+  login: (user: User, token: string) => void
+  updateUser: (user: Partial<User>) => void
   logout: () => void
   setRoute: (route: AppRoute) => void
   setSelectedProjectId: (id: string | null) => void
@@ -134,15 +174,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  login: (user) => {
+  login: (user, token) => {
     const route = getDefaultRoute(user.role)
     window.location.hash = routeToHash(route)
     persistUser(user)
+    persistToken(token)
     set({ user, route, selectedProjectId: null, selectedTaskId: null, _hydrated: true })
   },
+  updateUser: (updates) => {
+    const current = get().user
+    if (!current) return
+    const updated = { ...current, ...updates }
+    persistUser(updated)
+    set({ user: updated })
+  },
   logout: () => {
+    // Call logout API to invalidate the server session
+    const token = loadPersistedToken()
+    if (token) {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {}) // fire-and-forget
+    }
     window.location.hash = ''
     persistUser(null)
+    persistToken(null)
     set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false })
   },
   setRoute: (route) => {

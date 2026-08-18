@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth'
+import { createSession } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,8 +14,11 @@ export async function POST(request: NextRequest) {
     if (user.status === 'inactive')
       return NextResponse.json({ error: 'Account is inactive' }, { status: 403 })
 
+    // Create a server-side session and return the token
+    const token = await createSession(user.id)
+
     const { password: _, ...safeUser } = user
-    return NextResponse.json({ user: safeUser })
+    return NextResponse.json({ user: safeUser, token })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, getAuthUser, AuthError } from '@/lib/session'
 
-// GET /api/screenshot-config?userId=xxx
-// Returns the admin-configured global settings, or per-user overrides
+// GET /api/screenshot-config
+// Returns the admin-configured global settings, or per-user defaults
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
+    const user = await getAuthUser(request)
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    }
-
-    // Get user role
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    })
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    // Only admin can read config
-    if (user.role !== 'admin') {
-      // Non-admin users just get a minimal response for client-side use
+    // Non-admin users get minimal defaults for client-side use
+    if (!user || user.role !== 'admin') {
       return NextResponse.json({
         autoEnabled: true,
         intervalMinutes: 5,
@@ -44,6 +30,9 @@ export async function GET(request: NextRequest) {
       isAdmin: true,
     })
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     const msg = error instanceof Error ? error.message : 'Failed to fetch config'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
@@ -53,21 +42,11 @@ export async function GET(request: NextRequest) {
 // Admin-only: update global screenshot settings
 export async function PUT(request: NextRequest) {
   try {
+    // Verify admin via session
+    await requireAdmin(request)
+
     const body = await request.json()
-    const { userId, autoEnabled, intervalMinutes } = body
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    }
-
-    // Verify admin
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    })
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Only admins can modify screenshot settings' }, { status: 403 })
-    }
+    const { autoEnabled, intervalMinutes } = body
 
     // Upsert global config using sentinel ID
     const config = await db.screenshotConfig.upsert({
@@ -85,6 +64,9 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ config })
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     const msg = error instanceof Error ? error.message : 'Failed to update config'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, authHeaders } from '@/stores/auth'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -2198,7 +2198,7 @@ export function AdminUsers() {
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           name: newUser.name,
           email: newUser.email,
@@ -2206,7 +2206,6 @@ export function AdminUsers() {
           role: newUser.role,
           phone: newUser.phone || undefined,
           company: newUser.company || undefined,
-          adminUserId: adminUser?.id,
         })
       })
       const data = await res.json()
@@ -2324,10 +2323,9 @@ export function AdminUsers() {
     try {
       const res = await fetch(`/api/users/${resetTarget.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           newPassword: resetPassword,
-          adminUserId: adminUser?.id,
         })
       })
       const data = await res.json()
@@ -2344,7 +2342,7 @@ export function AdminUsers() {
   async function handleDeleteUser(u: User) {
     setDeletingId(u.id)
     try {
-      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || 'Failed')
@@ -2828,7 +2826,7 @@ export function AdminUsers() {
 // ─── AdminProfile ──────────────────────────────────────────────────────────────
 
 export function AdminProfile() {
-  const { user, login } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState({
@@ -2899,7 +2897,7 @@ export function AdminProfile() {
       toast.success('Profile updated successfully')
       // Update store user
       if (data.user && user) {
-        login({ ...user, ...data.user, password: (user as unknown as Record<string, unknown>).password as string })
+        updateUser(data.user)
       }
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
     } catch (e: unknown) {

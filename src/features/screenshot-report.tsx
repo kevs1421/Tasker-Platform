@@ -9,7 +9,7 @@ import {
   ArrowUpDown, Zap, Settings2, Save, Clock, Shield,
   ChevronDown, ChevronUp, X,
 } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, authHeaders } from '@/stores/auth'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -127,7 +127,7 @@ export function AdminScreenshotReport() {
     try {
       const res = await fetch('/api/screenshot-config', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           userId: user.id,
           autoEnabled: configEnabled,
