@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const inReviewTasks = await db.task.count({ where: { status: 'in_review' } })
     const totalProjects = await db.project.count()
     const activeProjects = await db.project.count({ where: { status: 'active' } })
-    const totalMembers = await db.user.count({ where: { role: { in: ['admin', 'team'] } } })
+    const totalMembers = await db.user.count({ where: { role: { in: ['admin', 'team', 'training'] } } })
     const totalClients = await db.user.count({ where: { role: 'client' } })
 
     const now = new Date()

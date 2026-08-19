@@ -43,7 +43,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save, FileArchive, FileDown, Square
+  KeyRound, Download, Save, FileArchive, FileDown, Square, GraduationCap
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -1180,7 +1180,7 @@ export function AdminProjects() {
     fetch('/api/users')
       .then(r => r.json())
       .then(d => {
-        const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team') && u.status === 'active')
+        const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team' || u.role === 'training') && u.status === 'active')
         setActiveUsers(users)
       })
       .catch(() => {})
@@ -2178,6 +2178,7 @@ export function AdminUsers() {
 
   const adminCount = users.filter(u => u.role === 'admin').length
   const teamCount = users.filter(u => u.role === 'team').length
+  const trainingCount = users.filter(u => u.role === 'training').length
   const clientCount = users.filter(u => u.role === 'client').length
 
   async function handleAddUser(e: React.FormEvent) {
@@ -2385,10 +2386,11 @@ export function AdminUsers() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Admins', count: adminCount, icon: Shield, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
           { label: 'Team Members', count: teamCount, icon: UserCog, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+          { label: 'Training', count: trainingCount, icon: GraduationCap, color: 'text-sky-600', bg: 'bg-sky-100 dark:bg-sky-900/30' },
           { label: 'Clients', count: clientCount, icon: Briefcase, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-900/30' },
         ].map((c) => (
           <Card key={c.label}>
@@ -2485,6 +2487,7 @@ export function AdminUsers() {
                           <SelectContent>
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="team">Team</SelectItem>
+                            <SelectItem value="training">Training</SelectItem>
                             <SelectItem value="client">Client</SelectItem>
                           </SelectContent>
                         </Select>

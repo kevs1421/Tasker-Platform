@@ -11,7 +11,7 @@ export async function GET() {
     const overdueTasks = await db.task.count({ where: { dueDate: { lt: new Date() }, status: { notIn: ['done'] } } })
     const totalProjects = await db.project.count()
     const activeProjects = await db.project.count({ where: { status: 'active' } })
-    const totalMembers = await db.user.count({ where: { role: { in: ['admin', 'team'] } } })
+    const totalMembers = await db.user.count({ where: { role: { in: ['admin', 'team', 'training'] } } })
     const totalClients = await db.user.count({ where: { role: 'client' } })
     const totalMessages = await db.message.count()
     const weekAgo = new Date(Date.now() - 7 * 86400000)
