@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore, authHeaders } from '@/stores/auth'
+import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -42,9 +43,8 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save, FileArchive, FileDown, Play, Square
+  KeyRound, Download, Save, FileArchive, FileDown, Square
 } from 'lucide-react'
-import { useAutoScreenshot, AutoScreenshotPanel } from '@/features/auto-screenshot'
 
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -3110,15 +3110,8 @@ export function AdminTimeTracking() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
-  // Admin's own timer state
-  const [myActiveEntry, setMyActiveEntry] = useState<LocalTimeEntry | null>(null)
-  const [clockInOpen, setClockInOpen] = useState(false)
-  const [clockInProjectId, setClockInProjectId] = useState('')
-  const [clockInTaskId, setClockInTaskId] = useState('')
-  const [clockInDesc, setClockInDesc] = useState('')
-  const [clockInTasks, setClockInTasks] = useState<{ id: string; title: string }[]>([])
-  const [clockingIn, setClockingIn] = useState(false)
-  const [clockingOut, setClockingOut] = useState(false)
+  // Admin's own timer display (synced from sidebar shared store)
+  const { activeSession } = useTimeTrackingStore()
 
   // Filter state
   const [selectedUserId, setSelectedUserId] = useState<string>('all')
@@ -3129,9 +3122,6 @@ export function AdminTimeTracking() {
 
   // Live timer tick
   const [timerTick, setTimerTick] = useState(0)
-
-  // Auto screenshot hook
-  const autoScreenshot = useAutoScreenshot()
 
   // Fetch team users and projects
   useEffect(() => {
@@ -3183,16 +3173,16 @@ export function AdminTimeTracking() {
     fetchEntries()
   }, [fetchEntries])
 
-  // Live timer interval
+  // Live timer interval (also ticks when admin has own active session)
   useEffect(() => {
     const activeTimers = timeEntries.filter((e) => e.status === 'timed_in')
-    if (activeTimers.length === 0) return
+    if (activeTimers.length === 0 && !activeSession) return
 
     const interval = setInterval(() => {
       setTimerTick((t) => t + 1)
     }, 1000)
     return () => clearInterval(interval)
-  }, [timeEntries])
+  }, [timeEntries, activeSession])
 
   // Derived data
   const activeEntries = timeEntries.filter((e) => e.status === 'timed_in')
@@ -3208,8 +3198,8 @@ export function AdminTimeTracking() {
     .filter((e) => weekFrom && e.date >= weekFrom)
     .reduce((sum, e) => sum + e.duration, 0)
 
-  // Also count truly active timers (timed_in) for the stat
-  const activeTimerCount = activeEntries.length
+  // Also count truly active timers (timed_in) for the stat (includes admin's own)
+  const activeTimerCount = activeEntries.length + (activeSession ? 1 : 0)
 
   // Sorted entries (date desc)
   const sortedEntries = [...timeEntries].sort((a, b) => {
@@ -3257,100 +3247,15 @@ export function AdminTimeTracking() {
     }
   }
 
-  // Admin's own timer functions
-  const fetchMyActiveTimer = useCallback(async () => {
-    if (!currentUser) return
-    try {
-      const res = await fetch(`/api/time-entries?userId=${currentUser.id}&active=true`)
-      if (res.ok) {
-        const data = await res.json()
-        setMyActiveEntry(data.timeEntries?.[0] ?? null)
-      }
-    } catch { /* silent */ }
-  }, [currentUser])
-
-  useEffect(() => { fetchMyActiveTimer() }, [fetchMyActiveTimer])
-
-  // Fetch tasks when project is selected in clock-in dialog
-  useEffect(() => {
-    if (!clockInProjectId) { setClockInTasks([]); setClockInTaskId(''); return }
-    async function fetchTasks() {
-      try {
-        const res = await fetch(`/api/projects/${clockInProjectId}`)
-        if (res.ok) {
-          const data = await res.json()
-          setClockInTasks((data.project?.tasks ?? []).map((t: { id: string; title: string }) => ({ id: t.id, title: t.title })))
-        }
-      } catch { /* silent */ }
-    }
-    fetchTasks()
-  }, [clockInProjectId])
-
-  async function handleAdminClockIn() {
-    if (!currentUser) return
-    setClockingIn(true)
-    try {
-      const res = await fetch('/api/time-entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          projectId: clockInProjectId || undefined,
-          taskId: clockInTaskId || undefined,
-          description: clockInDesc || undefined,
-          action: 'time_in',
-        }),
-      })
-      if (res.ok) {
-        toast.success('Clocked in successfully!')
-        setClockInOpen(false)
-        setClockInProjectId('')
-        setClockInTaskId('')
-        setClockInDesc('')
-        setClockInTasks([])
-        fetchMyActiveTimer()
-        fetchEntries()
-        // Auto-start screenshot capture if enabled in config
-        if (autoScreenshot.config?.autoEnabled) {
-          autoScreenshot.startAutoCapture(autoScreenshot.config.intervalMinutes)
-        }
-      } else {
-        const data = await res.json()
-        toast.error(data.error || 'Failed to clock in')
-      }
-    } catch {
-      toast.error('Failed to clock in')
-    } finally {
-      setClockingIn(false)
-    }
-  }
-
-  async function handleAdminClockOut() {
-    if (!myActiveEntry) return
-    setClockingOut(true)
-    try {
-      const res = await fetch(`/api/time-entries/${myActiveEntry.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'time_out' }),
-      })
-      if (res.ok) {
-        toast.success('Clocked out successfully!')
-        setMyActiveEntry(null)
-        fetchEntries()
-        // Stop auto screenshot capture
-        if (autoScreenshot.isRunning) {
-          autoScreenshot.stopAutoCapture()
-        }
-      } else {
-        toast.error('Failed to clock out')
-      }
-    } catch {
-      toast.error('Failed to clock out')
-    } finally {
-      setClockingOut(false)
-    }
-  }
+  // Format live elapsed time from activeSession
+  const formatElapsedFromSession = useCallback((timeIn: string) => {
+    const elapsed = Date.now() - new Date(timeIn).getTime()
+    const totalSeconds = Math.floor(elapsed / 1000)
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }, [])
 
   // Download report handler
   async function handleDownloadReport() {
@@ -3386,8 +3291,11 @@ export function AdminTimeTracking() {
     }
   }
 
-  // Suppress unused variable lint (timerTick is used for re-render trigger)
+  // Suppress unused variable lint (timerTick forces re-render for live timer)
   void timerTick
+
+  // My active timer entry derived from shared store
+  const myActiveEntry = activeSession
 
   return (
     <motion.div
@@ -3414,47 +3322,39 @@ export function AdminTimeTracking() {
         </Button>
       </div>
 
-      {/* Admin's Own Timer Status */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, delay: 0.02 }}
-      >
-        {myActiveEntry ? (
+      {/* Admin's Own Timer Status (read-only, managed by sidebar) */}
+      {myActiveEntry && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.02 }}
+        >
           <Card className="p-4">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-14 gap-3 text-red-600 border-red-200 bg-red-50 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50 dark:text-red-400 dark:hover:text-red-300 shrink-0"
-                onClick={handleAdminClockOut}
-                disabled={clockingOut}
-              >
-                {clockingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
-                <span className="text-base font-semibold">Time Out</span>
-              </Button>
-              <div className="flex flex-col items-center sm:items-start">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30 shrink-0">
+                <Clock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="flex flex-col items-start">
                 <span className="text-xs text-muted-foreground">You are currently clocked in</span>
                 <span className="text-2xl font-mono font-bold text-amber-600 dark:text-amber-400">
-                  {myActiveEntry.timeIn ? formatLiveTimer(myActiveEntry.timeIn) : '00:00:00'}
+                  {myActiveEntry.timeIn ? formatElapsedFromSession(myActiveEntry.timeIn) : '00:00:00'}
                 </span>
-                {myActiveEntry.project && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: myActiveEntry.project.color }} />
-                    <span className="text-xs text-muted-foreground">{myActiveEntry.project.name}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  {myActiveEntry.project && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: myActiveEntry.project.color || '#f59e0b' }} />
+                      <span className="text-xs text-muted-foreground">{myActiveEntry.project.name}</span>
+                    </div>
+                  )}
+                  {myActiveEntry.task && (
+                    <span className="text-xs text-muted-foreground">· {myActiveEntry.task.title}</span>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
-        ) : null}
-      </motion.div>
-
-      {/* Auto Screenshot Panel */}
-      <AutoScreenshotPanel
-        isTimerActive={!!myActiveEntry}
-        autoHook={autoScreenshot}
-      />
+        </motion.div>
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

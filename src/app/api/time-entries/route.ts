@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action. Use "time_in" or "manual".' }, { status: 400 })
   } catch (error) {
     console.error('Failed to create time entry:', error)
-    return NextResponse.json({ error: 'Failed to create time entry' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: `Failed to create time entry: ${message}` }, { status: 500 })
   }
 }

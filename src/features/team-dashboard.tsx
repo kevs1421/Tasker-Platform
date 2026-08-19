@@ -64,11 +64,10 @@ import {
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Lock, Shield,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
-  Save, RotateCcw, Play, Square, Timer,
+  Save, RotateCcw, Timer,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { screenshotSession } from '@/lib/screenshot-capture'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -1907,16 +1906,6 @@ export function TeamTimeTracking() {
   const [customDateFrom, setCustomDateFrom] = useState<Date>()
   const [customDateTo, setCustomDateTo] = useState<Date>()
 
-  const [showTimeInDialog, setShowTimeInDialog] = useState(false)
-  const [timeInLoading, setTimeInLoading] = useState(false)
-  const [timeOutLoading, setTimeOutLoading] = useState(false)
-
-  const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState('')
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [selectedTaskId, setSelectedTaskId] = useState('')
-  const [timeInDescription, setTimeInDescription] = useState('')
-
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -1987,19 +1976,6 @@ export function TeamTimeTracking() {
     }
   }, [user, getDateRange])
 
-  // ── Fetch active entry ──
-  const fetchActiveEntry = useCallback(async () => {
-    if (!user) return
-    try {
-      const res = await fetch(`/api/time-entries?userId=${user.id}&active=true`)
-      const data = await res.json()
-      const active = (data.timeEntries || []).find((e: TimeEntry) => e.status === 'timed_in') || null
-      setActiveEntry(active)
-    } catch {
-      // silent
-    }
-  }, [user])
-
   // ── Summary stats ──
   const [summary, setSummary] = useState({ today: 0, week: 0, month: 0 })
 
@@ -2035,47 +2011,10 @@ export function TeamTimeTracking() {
     }
   }, [user])
 
-  // ── Fetch projects ──
-  const fetchProjects = useCallback(async () => {
-    try {
-      const res = await fetch('/api/projects')
-      const data = await res.json()
-      const allProjects = data.projects || []
-      const myProjects = allProjects.filter((p: Project & { members: Array<{ userId: string }> }) =>
-        p.members?.some((m: { userId: string }) => m.userId === user?.id)
-      )
-      setProjects(myProjects)
-    } catch {
-      // silent
-    }
-  }, [user])
-
-  // ── Fetch tasks when project changes ──
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setTasks([])
-      setSelectedTaskId('')
-      return
-    }
-    const fetchTasks = async () => {
-      try {
-        const res = await fetch(`/api/projects/${selectedProjectId}`)
-        const data = await res.json()
-        setTasks(data.tasks || [])
-      } catch {
-        setTasks([])
-      }
-      setSelectedTaskId('')
-    }
-    fetchTasks()
-  }, [selectedProjectId])
-
   // ── Initial load ──
   useEffect(() => {
     fetchEntries(dateFilter)
-    fetchActiveEntry()
     fetchSummary()
-    fetchProjects()
   }, [])
 
   // ── Re-fetch on filter change ──
@@ -2096,96 +2035,6 @@ export function TeamTimeTracking() {
     }
   }, [activeEntry])
 
-  // ── Time In handler ──
-  const handleTimeIn = async () => {
-    if (!user) return
-    setTimeInLoading(true)
-    try {
-      const body: Record<string, unknown> = {
-        userId: user.id,
-        action: 'time_in',
-      }
-      if (selectedProjectId) body.projectId = selectedProjectId
-      if (selectedTaskId) body.taskId = selectedTaskId
-      if (timeInDescription.trim()) body.description = timeInDescription.trim()
-
-      const res = await fetch('/api/time-entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to clock in') }
-      toast.success('Clocked in successfully!')
-      setShowTimeInDialog(false)
-      const projectId = selectedProjectId
-      const taskId = selectedTaskId
-      setSelectedProjectId('')
-      setSelectedTaskId('')
-      setTimeInDescription('')
-      await fetchActiveEntry()
-      await fetchEntries(dateFilter, customDateFrom, customDateTo)
-      await fetchSummary()
-
-      // Start screenshot monitoring session (non-blocking)
-      if (user.role !== 'client') {
-        try {
-          const configRes = await fetch(`/api/screenshot-config?userId=${user.id}`)
-          if (configRes.ok) {
-            const config = await configRes.json()
-            if (config.autoEnabled) {
-              screenshotSession.start({
-                userId: user.id,
-                userRole: user.role,
-                projectId: projectId || undefined,
-                taskId: taskId || undefined,
-                intervalMinutes: config.intervalMinutes || 5,
-                quality: 0.6,
-              })
-              toast.info('Screenshot monitoring started', {
-                description: `Every ${config.intervalMinutes || 5} min`,
-                duration: 3000,
-              })
-            }
-          }
-        } catch {
-          // Silent — screenshot is optional
-        }
-      }
-    } catch {
-      toast.error('Failed to clock in')
-    } finally {
-      setTimeInLoading(false)
-    }
-  }
-
-  // ── Time Out handler ──
-  const handleTimeOut = async () => {
-    if (!activeEntry) return
-    setTimeOutLoading(true)
-
-    // Stop screenshot monitoring immediately
-    screenshotSession.stop()
-
-    try {
-      const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'time_out' }),
-      })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to clock out') }
-      toast.success('Clocked out successfully!')
-      useTimeTrackingStore.getState().setActiveSession(null)
-      setActiveEntry(null)
-      setElapsed('00:00:00')
-      await fetchEntries(dateFilter, customDateFrom, customDateTo)
-      await fetchSummary()
-    } catch {
-      toast.error('Failed to clock out')
-    } finally {
-      setTimeOutLoading(false)
-    }
-  }
-
   // ── Delete handler ──
   const handleDelete = async () => {
     if (!deleteId) return
@@ -2197,7 +2046,6 @@ export function TeamTimeTracking() {
       setDeleteId(null)
       await fetchEntries(dateFilter, customDateFrom, customDateTo)
       await fetchSummary()
-      await fetchActiveEntry()
     } catch {
       toast.error('Failed to delete entry')
     } finally {
@@ -2266,32 +2114,29 @@ export function TeamTimeTracking() {
         </div>
       </div>
 
-      {/* Active Timer Display (Time In is via sidebar) */}
+      {/* Active Timer Display (read-only, managed by sidebar) */}
       {activeEntry ? (
         <Card className="p-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <Button
-              size="lg"
-              className="h-14 gap-3 bg-red-600 text-white hover:bg-red-700 shrink-0"
-              onClick={handleTimeOut}
-              disabled={timeOutLoading}
-            >
-              {timeOutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
-              <span className="text-base font-semibold">Time Out</span>
-            </Button>
-            <div className="flex flex-col items-center sm:items-start">
-              <span className="text-xs text-muted-foreground">You are currently clocked in</span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <Timer className="h-5 w-5 text-amber-600" />
-                <span className="font-mono text-2xl font-bold text-amber-700">{elapsed}</span>
-              </div>
-              {activeEntry.project && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: activeEntry.project.color }} />
-                  <span className="text-xs text-muted-foreground">{activeEntry.project.name}</span>
-                </div>
-              )}
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30 shrink-0">
+              <Timer className="h-5 w-5 text-amber-600" />
             </div>
+            <div className="flex flex-col items-start">
+              <span className="text-xs text-muted-foreground">You are currently clocked in</span>
+              <span className="font-mono text-2xl font-bold text-amber-700 dark:text-amber-400">{elapsed}</span>
+              <div className="flex items-center gap-2 mt-0.5">
+                {activeEntry.project && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: activeEntry.project.color }} />
+                    <span className="text-xs text-muted-foreground">{activeEntry.project.name}</span>
+                  </div>
+                )}
+                {activeEntry.task && (
+                  <span className="text-xs text-muted-foreground">· {activeEntry.task.title}</span>
+                )}
+              </div>
+            </div>
+            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 ml-auto shrink-0">Active</Badge>
           </div>
         </Card>
       ) : null}

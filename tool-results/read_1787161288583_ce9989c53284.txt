@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback, useRef } from 'react'
+     4→import { useAuthStore } from '@/stores/auth'
+     5→import { useTimeTrackingStore } from '@/stores/time-tracking'
+     6→import type { Project, Task, Comment, User } from '@/types'
+     7→import {
+     8→  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
+     9→  formatDate, formatRelativeTime,
+    10→} from '@/features/route-guard'
+    11→
+    12→// shadcn/ui
+    13→import { Button } from '@/components/ui/button'
+    14→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { Textarea } from '@/components/ui/textarea'
+    19→import { Progress } from '@/components/ui/progress'
+    20→import { Skeleton } from '@/components/ui/skeleton'
+    21→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    22→import { Separator } from '@/components/ui/separator'
+    23→import { ScrollArea } from '@/components/ui/scroll-area'
+    24→import { Calendar } from '@/components/ui/calendar'
+    25→import {
+    26→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+    27→  DialogFooter, DialogDescription,
+    28→} from '@/components/ui/dialog'
+    29→import {
+    30→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    31→} from '@/components/ui/dropdown-menu'
+    32→import {
+    33→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    34→} from '@/components/ui/select'
+    35→import {
+    36→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    37→} from '@/components/ui/table'
+    38→import {
+    39→  Popover, PopoverContent, PopoverTrigger,
+    40→} from '@/components/ui/popover'
+    41→import {
+    42→  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+    43→} from '@/components/ui/tooltip'
+    44→import {
+    45→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    46→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    47→  AlertDialogTrigger,
+    48→} from '@/components/ui/alert-dialog'
+    49→
+    50→// date-fns
+    51→import { format, isPast, isToday, parseISO } from 'date-fns'
+    52→
+    53→// toast
+    54→import { toast } from 'sonner'
+    55→
+    56→// framer-motion
+    57→import { motion, AnimatePresence } from 'framer-motion'
+    58→
+    59→// lucide-react
+    60→import {
+    61→  Plus, Trash2, LayoutGrid, List, CheckCircle2,
+    62→  Send, CalendarIcon, Tag, Users, FolderKanban,
+    63→  Clock, Circle,
+    64→  X, Loader2, Check, FileText, Pencil, Phone, Building2,
+    65→  Lock, Shield,
+    66→  MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
+    67→  Save, RotateCcw, Play, Square, Timer,
+    68→} from 'lucide-react'
+    69→
+    70→import { cn } from '@/lib/utils'
+    71→import { screenshotSession } from '@/lib/screenshot-capture'
+    72→
+    73→// ─── Helpers ────────────────────────────────────────────────
+    74→
+    75→const STATUS_COLUMNS = [
+    76→  { key: 'todo' as const, label: 'To Do', color: 'bg-slate-400', bgColor: 'bg-slate-50 dark:bg-slate-900/40', headerBg: 'bg-slate-100 dark:bg-slate-800/60' },
+    77→  { key: 'in_progress' as const, label: 'In Progress', color: 'bg-amber-500', bgColor: 'bg-amber-50/50 dark:bg-amber-900/20', headerBg: 'bg-amber-100 dark:bg-amber-900/40' },
+    78→  { key: 'in_review' as const, label: 'In Review', color: 'bg-purple-500', bgColor: 'bg-purple-50/50 dark:bg-purple-900/20', headerBg: 'bg-purple-100 dark:bg-purple-900/40' },
+    79→  { key: 'done' as const, label: 'Done', color: 'bg-emerald-500', bgColor: 'bg-emerald-50/50 dark:bg-emerald-900/20', headerBg: 'bg-emerald-100 dark:bg-emerald-900/40' },
+    80→]
+    81→
+    82→// ─── Shared Sub-components ──────────────────────────────────
+    83→
+    84→function LoadingCard() {
+    85→  return (
+    86→    <Card className="p-4">
+    87→      <Skeleton className="h-4 w-3/4 mb-3" />
+    88→      <Skeleton className="h-3 w-full mb-2" />
+    89→      <Skeleton className="h-2 w-full mb-3" />
+    90→      <div className="flex justify-between">
+    91→        <Skeleton className="h-3 w-20" />
+    92→        <Skeleton className="h-3 w-16" />
+    93→      </div>
+    94→    </Card>
+    95→  )
+    96→}
+    97→
+    98→function AvatarStack({ users, max = 3 }: { users: (User | undefined)[]; max?: number }) {
+    99→  const visible = users.slice(0, max)
+   100→  const extra = users.length - max
+   101→  return (
+   102→    <div className="flex -space-x-2">
+   103→      {visible.map((u, i) =>
+   104→        u ? (
+   105→          <Avatar key={u.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/50" style={{ zIndex: visible.length - i }}>
+   106→            <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+   107→              {getInitials(u.name)}
+   108→            </AvatarFallback>
+   109→          </Avatar>
+   110→        ) : null
+   111→      )}
+   112→      {extra > 0 && (
+   113→        <div className="h-6 w-6 rounded-full bg-slate-200 dark:bg-slate-700 border-2 border-background flex items-center justify-center text-[10px] font-medium text-slate-600 dark:text-slate-300" style={{ zIndex: 0 }}>
+   114→          +{extra}
+   115→        </div>
+   116→      )}
+   117→    </div>
+   118→  )
+   119→}
+   120→
+   121→function MemberAvatar({ user, size = 'md' }: { user: User | undefined; size?: 'sm' | 'md' }) {
+   122→  const sizeClasses = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm'
+   123→  if (!user) return null
+   124→  return (
+   125→    <Avatar className={sizeClasses}>
+   126→      <AvatarFallback className={cn('bg-slate-200 dark:bg-slate-700 font-medium')}>
+   127→        {getInitials(user.name)}
+   128→      </AvatarFallback>
+   129→    </Avatar>
+   130→  )
+   131→}
+   132→
+   133→function EmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
+   134→  return (
+   135→    <motion.div
+   136→      initial={{ opacity: 0, y: 10 }}
+   137→      animate={{ opacity: 1, y: 0 }}
+   138→      className="flex flex-col items-center justify-center py-16 text-center"
+   139→    >
+   140→      <div className="h-14 w-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+   141→        <Icon className="h-7 w-7 text-slate-400" />
+   142→      </div>
+   143→      <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
+   144→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+   145→    </motion.div>
+   146→  )
+   147→}
+   148→
+   149→// ─── TeamProjects ───────────────────────────────────────────
+   150→
+   151→export function TeamProjects() {
+   152→  const { user, setSelectedProjectId } = useAuthStore()
+   153→  const isTraining = user?.role === 'training'
+   154→  const [projects, setProjects] = useState<Project[]>([])
+   155→  const [loading, setLoading] = useState(true)
+   156→  const [expandedId, setExpandedId] = useState<string | null>(null)
+   157→  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
+   158→  const [expandedLoading, setExpandedLoading] = useState(false)
+   159→  const [taskFilter, setTaskFilter] = useState<string>('all')
+   160→  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+   161→  const [createTaskLoading, setCreateTaskLoading] = useState(false)
+   162→  const [createTaskProjectId, setCreateTaskProjectId] = useState<string>('')
+   163→  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
+   164→
+   165→  // Create task form
+   166→  const [taskTitle, setTaskTitle] = useState('')
+   167→  const [taskDesc, setTaskDesc] = useState('')
+   168→  const [taskStatus, setTaskStatus] = useState<'todo' | 'in_progress' | 'in_review' | 'done'>('todo')
+   169→  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
+   170→  const [taskDueDate, setTaskDueDate] = useState<Date>()
+   171→  const [taskTags, setTaskTags] = useState('')
+   172→  const [taskAssignee, setTaskAssignee] = useState<string>('')
+   173→  const [taskCalendarOpen, setTaskCalendarOpen] = useState(false)
+   174→
+   175→  const fetchProjects = useCallback(async () => {
+   176→    try {
+   177→      const res = await fetch('/api/projects')
+   178→      const data = await res.json()
+   179→      const filtered = (data.projects || []).filter((p: Project) =>
+   180→        p.members?.some((m) => m.userId === user?.id)
+   181→      )
+   182→      setProjects(filtered)
+   183→    } catch {
+   184→      toast.error('Failed to load projects')
+   185→    } finally {
+   186→      setLoading(false)
+   187→    }
+   188→  }, [user])
+   189→
+   190→  useEffect(() => { fetchProjects() }, [fetchProjects])
+   191→
+   192→  // Fetch all active admin + team users for assignee picker
+   193→  useEffect(() => {
+   194→    fetch('/api/users')
+   195→      .then(r => r.json())
+   196→      .then(d => {
+   197→        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
+   198→        setAllTeamUsers(members)
+   199→      })
+   200→      .catch(() => {})
+   201→  }, [])
+   202→
+   203→  const handleExpand = async (projectId: string) => {
+   204→    if (expandedId === projectId) {
+   205→      setExpandedId(null)
+   206→      setExpandedTasks([])
+   207→      return
+   208→    }
+   209→    setExpandedId(projectId)
+   210→    setTaskFilter('all')
+   211→    setExpandedLoading(true)
+   212→    try {
+   213→      const res = await fetch(`/api/projects/${projectId}`)
+   214→      const data = await res.json()
+   215→      setExpandedTasks(data.project?.tasks || [])
+   216→    } catch {
+   217→      toast.error('Failed to load tasks')
+   218→    } finally {
+   219→      setExpandedLoading(false)
+   220→    }
+   221→  }
+   222→
+   223→  const handleCreateTask = async () => {
+   224→    if (!taskTitle.trim()) { toast.error('Task title is required'); return }
+   225→    if (!user?.id) { toast.error('Not authenticated'); return }
+   226→    setCreateTaskLoading(true)
+   227→    try {
+   228→      const res = await fetch('/api/tasks', {
+   229→        method: 'POST',
+   230→        headers: { 'Content-Type': 'application/json' },
+   231→        body: JSON.stringify({
+   232→          title: taskTitle, description: taskDesc || null, status: taskStatus,
+   233→          priority: taskPriority, projectId: createTaskProjectId,
+   234→          dueDate: taskDueDate ? taskDueDate.toISOString() : null,
+   235→          tags: taskTags,
+   236→          createdById: user.id,
+   237→          assigneeIds: taskAssignee ? [taskAssignee] : [],
+   238→        }),
+   239→      })
+   240→      if (!res.ok) {
+   241→        const d = await res.json()
+   242→        throw new Error(d.error || 'Failed to create task')
+   243→      }
+   244→      toast.success('Task created')
+   245→      setCreateTaskOpen(false)
+   246→      setTaskTitle(''); setTaskDesc(''); setTaskStatus('todo')
+   247→      setTaskPriority('medium'); setTaskDueDate(undefined)
+   248→      setTaskTags(''); setTaskAssignee('')
+   249→      // Always refresh the expanded project view
+   250→      handleExpand(createTaskProjectId)
+   251→    } catch (e: unknown) {
+   252→      toast.error(e instanceof Error ? e.message : 'Failed to create task')
+   253→    } finally {
+   254→      setCreateTaskLoading(false)
+   255→    }
+   256→  }
+   257→
+   258→  const openCreateTaskForProject = (projectId: string) => {
+   259→    setCreateTaskProjectId(projectId)
+   260→    setCreateTaskOpen(true)
+   261→  }
+   262→
+   263→  const getProjectTaskStats = (projectId: string) => {
+   264→    if (expandedId !== projectId) return null
+   265→    const total = expandedTasks.length
+   266→    const done = expandedTasks.filter((t) => t.status === 'done').length
+   267→    return { total, done }
+   268→  }
+   269→
+   270→  const filteredTasks = taskFilter === 'all'
+   271→    ? expandedTasks
+   272→    : expandedTasks.filter((t) => t.status === taskFilter)
+   273→
+   274→  if (loading) {
+   275→    return (
+   276→      <div>
+   277→        <div className="flex items-center justify-between mb-6">
+   278→          <Skeleton className="h-8 w-48" />
+   279→          <Skeleton className="h-10 w-36" />
+   280→        </div>
+   281→        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   282→          {Array.from({ length: 6 }).map((_, i) => <LoadingCard key={i} />)}
+   283→        </div>
+   284→      </div>
+   285→    )
+   286→  }
+   287→
+   288→  return (
+   289→    <div className="space-y-6">
+   290→      {/* Header */}
+   291→      <div className="flex items-center justify-between">
+   292→        <div>
+   293→          <h1 className="text-2xl font-bold tracking-tight">Team Projects</h1>
+   294→          <p className="text-sm text-muted-foreground mt-1">
+   295→            {projects.length} project{projects.length !== 1 ? 's' : ''} you are assigned to
+   296→          </p>
+   297→        </div>
+   298→      </div>
+   299→
+   300→      {/* Project Grid */}
+   301→      {projects.length === 0 ? (
+   302→        <EmptyState
+   303→          icon={FolderKanban}
+   304→          title="No projects yet"
+   305→          description="You haven't been assigned to any projects yet. An admin will assign projects to you."
+   306→        />
+   307→      ) : (
+   308→        <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   309→          <AnimatePresence>
+   310→            {projects.map((project, idx) => {
+   311→              const totalTasks = project._count?.tasks || 0
+   312→              const members = project.members || []
+   313→              const memberUsers = members.map((m) => m.user).filter(Boolean) as User[]
+   314→              const pConfig = getPriorityConfig(project.priority)
+   315→              const isExpanded = expandedId === project.id
+   316→              const stats = getProjectTaskStats(project.id)
+   317→
+   318→              return (
+   319→                <motion.div
+   320→                  key={project.id}
+   321→                  initial={{ opacity: 0, y: 20 }}
+   322→                  animate={{ opacity: 1, y: 0 }}
+   323→                  transition={{ delay: idx * 0.05 }}
+   324→                >
+   325→                  <Card
+   326→                    className={cn(
+   327→                      'overflow-hidden cursor-pointer transition-all hover:shadow-md',
+   328→                      isExpanded && 'ring-1 ring-primary/20 shadow-md',
+   329→                    )}
+   330→                    onClick={() => handleExpand(project.id)}
+   331→                  >
+   332→                    <div className="flex">
+   333→                      <div className="w-1.5 shrink-0" style={{ backgroundColor: project.color }} />
+   334→                      <CardContent className="flex-1 p-4">
+   335→                        <div className="flex items-start justify-between mb-2">
+   336→                          <h3 className="font-semibold text-sm leading-tight line-clamp-1">{project.name}</h3>
+   337→                          <Badge className={cn('text-[10px] px-1.5 py-0 ml-2 shrink-0', pConfig.color)}>
+   338→                            {pConfig.label}
+   339→                          </Badge>
+   340→                        </div>
+   341→                        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 min-h-[2rem]">
+   342→                          {project.description || 'No description'}
+   343→                        </p>
+   344→                        <Progress
+   345→                          value={stats ? (stats.total > 0 ? (stats.done / stats.total) * 100 : 0) : 0}
+   346→                          className="h-1.5 mb-3"
+   347→                        />
+   348→                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+   349→                          <div className="flex items-center gap-3">
+   350→                            <span className="flex items-center gap-1">
+   351→                              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+   352→                              {stats ? `${stats.done}/${stats.total}` : totalTasks}
+   353→                            </span>
+   354→                            <span className="flex items-center gap-1">
+   355→                              <Users className="h-3 w-3" />
+   356→                              {members.length}
+   357→                            </span>
+   358→                          </div>
+   359→                          {project.dueDate && (
+   360→                            <span className={cn(
+   361→                              isPast(parseISO(project.dueDate)) && !isToday(parseISO(project.dueDate))
+   362→                                ? 'text-red-500' : '',
+   363→                            )}>
+   364→                              {formatDate(project.dueDate)}
+   365→                            </span>
+   366→                          )}
+   367→                        </div>
+   368→                        {memberUsers.length > 0 && (
+   369→                          <div className="mt-3">
+   370→                            <AvatarStack users={memberUsers} max={4} />
+   371→                          </div>
+   372→                        )}
+   373→                      </CardContent>
+   374→                    </div>
+   375→                  </Card>
+   376→
+   377→                  {/* Expanded Task List */}
+   378→                  <AnimatePresence>
+   379→                    {isExpanded && (
+   380→                      <motion.div
+   381→                        initial={{ opacity: 0, height: 0 }}
+   382→                        animate={{ opacity: 1, height: 'auto' }}
+   383→                        exit={{ opacity: 0, height: 0 }}
+   384→                        transition={{ duration: 0.2 }}
+   385→                        className="overflow-hidden"
+   386→                        onClick={(e) => e.stopPropagation()}
+   387→                      >
+   388→                        <Card className="mt-3 p-4 space-y-4">
+   389→                          <div className="flex items-center justify-between">
+   390→                            <div className="flex items-center gap-2">
+   391→                              <div className="flex gap-1">
+   392→                                {['all', 'todo', 'in_progress', 'in_review', 'done'].map((s) => (
+   393→                                  <Button
+   394→                                    key={s}
+   395→                                    variant={taskFilter === s ? 'default' : 'ghost'}
+   396→                                    size="sm"
+   397→                                    className="h-7 text-xs px-2"
+   398→                                    onClick={() => setTaskFilter(s)}
+   399→                                  >
+   400→                                    {s === 'all' ? 'All' : getStatusConfig(s).label}
+   401→                                  </Button>
+   402→                                ))}
+   403→                              </div>
+   404→                            </div>
+   405→                            {!isTraining && (
+   406→                            <Button size="sm" className="h-8 text-xs gap-1" onClick={() => openCreateTaskForProject(project.id)}>
+   407→                              <Plus className="h-3 w-3" /> Add Task
+   408→                            </Button>
+   409→                            )}
+   410→                          </div>
+   411→                          {expandedLoading ? (
+   412→                            <div className="space-y-2">
+   413→                              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+   414→                            </div>
+   415→                          ) : filteredTasks.length === 0 ? (
+   416→                            <p className="text-xs text-muted-foreground text-center py-4">No tasks found</p>
+   417→                          ) : (
+   418→                            <ScrollArea className="max-h-64">
+   419→                              <div className="space-y-2">
+   420→                                {filteredTasks.map((task) => {
+   421→                                  const sConfig = getStatusConfig(task.status)
+   422→                                  const pConf = getPriorityConfig(task.priority)
+   423→                                  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+   424→                                  return (
+   425→                                    <div
+   426→                                      key={task.id}
+   427→                                      className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors group cursor-pointer"
+   428→                                      onClick={() => setSelectedProjectId(project.id)}
+   429→                                    >
+   430→                                      <div className={cn('h-2 w-2 rounded-full shrink-0', sConfig.dotColor)} />
+   431→                                      <div className="flex-1 min-w-0">
+   432→                                        <p className="text-sm font-medium truncate">{task.title}</p>
+   433→                                        <div className="flex items-center gap-2 mt-0.5">
+   434→                                          <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>{pConf.label}</Badge>
+   435→                                          {task.dueDate && (
+   436→                                            <span className={cn('text-[10px] text-muted-foreground', isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) ? 'text-red-500' : '')}>
+   437→                                              {formatDate(task.dueDate)}
+   438→                                            </span>
+   439→                                          )}
+   440→                                        </div>
+   441→                                      </div>
+   442→                                      <AvatarStack users={assignees} max={2} />
+   443→                                    </div>
+   444→                                  )
+   445→                                })}
+   446→                              </div>
+   447→                            </ScrollArea>
+   448→                          )}
+   449→                        </Card>
+   450→                      </motion.div>
+   451→                    )}
+   452→                  </AnimatePresence>
+   453→                </motion.div>
+   454→              )
+   455→            })}
+   456→          </AnimatePresence>
+   457→        </motion.div>
+   458→      )}
+   459→
+   460→      {/* Create Task Dialog */}
+   461→      <Dialog open={createTaskOpen} onOpenChange={setCreateTaskOpen}>
+   462→        <DialogContent className="sm:max-w-lg">
+   463→          <DialogHeader>
+   464→            <DialogTitle>Create New Task</DialogTitle>
+   465→            <DialogDescription>Add a task to the project.</DialogDescription>
+   466→          </DialogHeader>
+   467→          <div className="space-y-4 py-2">
+   468→            <div className="space-y-2">
+   469→              <Label>Title</Label>
+   470→              <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+   471→            </div>
+   472→            <div className="space-y-2">
+   473→              <Label>Description</Label>
+   474→              <Textarea placeholder="Describe the task..." value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} rows={2} />
+   475→            </div>
+   476→            <div className="grid grid-cols-2 gap-4">
+   477→              <div className="space-y-2">
+   478→                <Label>Status</Label>
+   479→                <Select value={taskStatus} onValueChange={(v) => setTaskStatus(v as typeof taskStatus)}>
+   480→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   481→                  <SelectContent>
+   482→                    <SelectItem value="todo">To Do</SelectItem>
+   483→                    <SelectItem value="in_progress">In Progress</SelectItem>
+   484→                    <SelectItem value="in_review">In Review</SelectItem>
+   485→                    <SelectItem value="done">Done</SelectItem>
+   486→                  </SelectContent>
+   487→                </Select>
+   488→              </div>
+   489→              <div className="space-y-2">
+   490→                <Label>Priority</Label>
+   491→                <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as typeof taskPriority)}>
+   492→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   493→                  <SelectContent>
+   494→                    <SelectItem value="low">Low</SelectItem>
+   495→                    <SelectItem value="medium">Medium</SelectItem>
+   496→                    <SelectItem value="high">High</SelectItem>
+   497→                    <SelectItem value="urgent">Urgent</SelectItem>
+   498→                  </SelectContent>
+   499→                </Select>
+   500→              </div>
+   501→            </div>
+   502→            <div className="grid grid-cols-2 gap-4">
+   503→              <div className="space-y-2">
+   504→                <Label>Due Date</Label>
+   505→                <Popover open={taskCalendarOpen} onOpenChange={setTaskCalendarOpen}>
+   506→                  <PopoverTrigger asChild>
+   507→                    <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
+   508→                      <CalendarIcon className="h-4 w-4" />
+   509→                      {taskDueDate ? format(taskDueDate, 'PPP') : 'Pick a date'}
+   510→                    </Button>
+   511→                  </PopoverTrigger>
+   512→                  <PopoverContent className="w-auto p-0" align="start">
+   513→                    <Calendar mode="single" selected={taskDueDate} onSelect={(d) => { setTaskDueDate(d); setTaskCalendarOpen(false) }} />
+   514→                  </PopoverContent>
+   515→                </Popover>
+   516→              </div>
+   517→              <div className="space-y-2">
+   518→                <Label>Assignee</Label>
+   519→                <Select value={taskAssignee} onValueChange={setTaskAssignee}>
+   520→                  <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+   521→                  <SelectContent>
+   522→                    {allTeamUsers.length === 0 && <SelectItem value="_none" disabled>No members available</SelectItem>}
+   523→                    {allTeamUsers.map((u) => (
+   524→                      <SelectItem key={u.id} value={u.id}>
+   525→                        <span className="flex items-center gap-2">
+   526→                          <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   527→                            {getInitials(u.name)}
+   528→                          </span>
+   529→                          <span>{u.name}</span>
+   530→                          <span className="text-muted-foreground text-xs capitalize">({u.role})</span>
+   531→                        </span>
+   532→                      </SelectItem>
+   533→                    ))}
+   534→                  </SelectContent>
+   535→                </Select>
+   536→              </div>
+   537→            </div>
+   538→            <div className="space-y-2">
+   539→              <Label>Tags (comma separated)</Label>
+   540→              <Input placeholder="design, frontend, urgent" value={taskTags} onChange={(e) => setTaskTags(e.target.value)} />
+   541→            </div>
+   542→          </div>
+   543→          <DialogFooter>
+   544→            <Button variant="outline" onClick={() => setCreateTaskOpen(false)}>Cancel</Button>
+   545→            <Button onClick={handleCreateTask} disabled={createTaskLoading} className="gap-2">
+   546→              {createTaskLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+   547→              Create Task
+   548→            </Button>
+   549→          </DialogFooter>
+   550→        </DialogContent>
+   551→      </Dialog>
+   552→    </div>
+   553→  )
+   554→}
+   555→
+   556→// ─── TeamTasks ──────────────────────────────────────────────
+   557→
+   558→export function TeamTasks() {
+   559→  const { user, setSelectedTaskId, setSelectedProjectId } = useAuthStore()
+   560→  const isTraining = user?.role === 'training'
+   561→  const [projects, setProjects] = useState<Project[]>([])
+   562→  const [selectedProject, setSelectedProject] = useState<string>('')
+   563→  const [tasks, setTasks] = useState<Task[]>([])
+   564→  const [loading, setLoading] = useState(true)
+   565→  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
+   566→  const [detailTask, setDetailTask] = useState<Task | null>(null)
+   567→  const [detailOpen, setDetailOpen] = useState(false)
+   568→  const [createOpen, setCreateOpen] = useState(false)
+   569→  const [createLoading, setCreateLoading] = useState(false)
+   570→
+   571→  // Create task form
+   572→  const [cTitle, setCTitle] = useState('')
+   573→  const [cDesc, setCDesc] = useState('')
+   574→  const [cStatus, setCStatus] = useState<'todo' | 'in_progress' | 'in_review' | 'done'>('todo')
+   575→  const [cPriority, setCPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
+   576→  const [cDueDate, setCDueDate] = useState<Date>()
+   577→  const [cTags, setCTags] = useState('')
+   578→  const [cAssignee, setCAssignee] = useState<string>('')
+   579→  const [cCalendarOpen, setCCalendarOpen] = useState(false)
+   580→
+   581→  // All active admin + team users for assignee pickers
+   582→  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
+   583→
+   584→  // Detail task comments
+   585→  const [comments, setComments] = useState<Comment[]>([])
+   586→  const [newComment, setNewComment] = useState('')
+   587→  const [commentLoading, setCommentLoading] = useState(false)
+   588→
+   589→  // Detail edit
+   590→  const [editStatus, setEditStatus] = useState<string>('')
+   591→  const [editPriority, setEditPriority] = useState<string>('')
+   592→  const [editDueDate, setEditDueDate] = useState<Date>()
+   593→  const [editCalendarOpen, setEditCalendarOpen] = useState(false)
+   594→  const [editTitle, setEditTitle] = useState('')
+   595→  const [editDesc, setEditDesc] = useState('')
+   596→  const [isEditingTitle, setIsEditingTitle] = useState(false)
+   597→  const [updating, setUpdating] = useState(false)
+   598→  const [deleting, setDeleting] = useState(false)
+   599→
+   600→  // Check if there are unsaved changes
+   601→  const hasChanges = detailTask
+   602→    ? editTitle.trim() !== detailTask.title
+   603→      || editDesc !== (detailTask.description || '')
+   604→      || editStatus !== detailTask.status
+   605→      || editPriority !== detailTask.priority
+   606→      || (editDueDate ? editDueDate.toISOString() : null) !== (detailTask.dueDate || null)
+   607→    : false
+   608→
+   609→  // Inline assignee management on task cards
+   610→  const [assigneePopoverTaskId, setAssigneePopoverTaskId] = useState<string | null>(null)
+   611→  const [assigneeLoading, setAssigneeLoading] = useState<string | null>(null)
+   612→
+   613→  const fetchProjects = useCallback(async () => {
+   614→    try {
+   615→      const res = await fetch('/api/projects')
+   616→      const data = await res.json()
+   617→      const filtered = (data.projects || []).filter((p: Project) =>
+   618→        p.members?.some((m) => m.userId === user?.id)
+   619→      )
+   620→      setProjects(filtered)
+   621→      if (filtered.length > 0 && !selectedProject) {
+   622→        setSelectedProject(filtered[0].id)
+   623→      }
+   624→    } catch {
+   625→      toast.error('Failed to load projects')
+   626→    }
+   627→  }, [user, selectedProject])
+   628→
+   629→  const fetchTasks = useCallback(async () => {
+   630→    if (!selectedProject) return
+   631→    setLoading(true)
+   632→    try {
+   633→      const res = await fetch(`/api/tasks?projectId=${selectedProject}`)
+   634→      const data = await res.json()
+   635→      setTasks(data.tasks || [])
+   636→    } catch {
+   637→      toast.error('Failed to load tasks')
+   638→    } finally {
+   639→      setLoading(false)
+   640→    }
+   641→  }, [selectedProject])
+   642→
+   643→  useEffect(() => { fetchProjects() }, [fetchProjects])
+   644→  useEffect(() => { fetchTasks() }, [fetchTasks])
+   645→
+   646→  // Fetch all active admin + team users for assignee pickers
+   647→  useEffect(() => {
+   648→    fetch('/api/users')
+   649→      .then(r => r.json())
+   650→      .then(d => {
+   651→        const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
+   652→        setAllTeamUsers(members)
+   653→      })
+   654→      .catch(() => {})
+   655→  }, [])
+   656→
+   657→  const openDetail = async (task: Task) => {
+   658→    setDetailTask(task)
+   659→    setEditStatus(task.status)
+   660→    setEditPriority(task.priority)
+   661→    setEditDueDate(task.dueDate ? parseISO(task.dueDate) : undefined)
+   662→    setEditTitle(task.title)
+   663→    setEditDesc(task.description || '')
+   664→    setIsEditingTitle(false)
+   665→    setDetailOpen(true)
+   666→    setSelectedTaskId(task.id)
+   667→    setSelectedProjectId(task.projectId)
+   668→
+   669→    try {
+   670→      const cmRes = await fetch(`/api/comments?taskId=${task.id}`)
+   671→      const cmData = await cmRes.json()
+   672→      setComments(cmData.comments || [])
+   673→    } catch {
+   674→      // Comments may not exist
+   675→    }
+   676→  }
+   677→
+   678→  const handleSaveTask = async () => {
+   679→    if (!detailTask) return
+   680→    setUpdating(true)
+   681→    try {
+   682→      const updates: Record<string, unknown> = {}
+   683→      if (editTitle.trim() !== detailTask.title) updates.title = editTitle.trim()
+   684→      if (editDesc !== (detailTask.description || '')) updates.description = editDesc || null
+   685→      if (editStatus !== detailTask.status) updates.status = editStatus
+   686→      if (editPriority !== detailTask.priority) updates.priority = editPriority
+   687→      const newDueDate = editDueDate ? editDueDate.toISOString() : null
+   688→      if (newDueDate !== (detailTask.dueDate || null)) updates.dueDate = newDueDate
+   689→
+   690→      if (Object.keys(updates).length === 0) { setUpdating(false); return }
+   691→
+   692→      const res = await fetch(`/api/tasks/${detailTask.id}`, {
+   693→        method: 'PATCH',
+   694→        headers: { 'Content-Type': 'application/json' },
+   695→        body: JSON.stringify(updates),
+   696→      })
+   697→      if (!res.ok) {
+   698→        toast.error('Failed to save')
+   699→        return
+   700→      }
+   701→      const data = await res.json()
+   702→      const updatedTask = data.task || { ...detailTask, ...updates }
+   703→      setDetailTask(updatedTask as Task)
+   704→      fetchTasks()
+   705→      toast.success('Task saved successfully')
+   706→    } catch {
+   707→      toast.error('Failed to save task')
+   708→    } finally {
+   709→      setUpdating(false)
+   710→    }
+   711→  }
+   712→
+   713→  const handleDiscardChanges = () => {
+   714→    if (!detailTask) return
+   715→    setEditTitle(detailTask.title)
+   716→    setEditDesc(detailTask.description || '')
+   717→    setEditStatus(detailTask.status)
+   718→    setEditPriority(detailTask.priority)
+   719→    setEditDueDate(detailTask.dueDate ? parseISO(detailTask.dueDate) : undefined)
+   720→    setIsEditingTitle(false)
+   721→  }
+   722→
+   723→  const handleDeleteTask = async () => {
+   724→    if (!detailTask) return
+   725→    setDeleting(true)
+   726→    try {
+   727→      const res = await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
+   728→      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to delete task') }
+   729→      toast.success('Task deleted')
+   730→      setDetailOpen(false)
+   731→      setDetailTask(null)
+   732→      fetchTasks()
+   733→    } catch {
+   734→      toast.error('Failed to delete task')
+   735→    } finally {
+   736→      setDeleting(false)
+   737→    }
+   738→  }
+   739→
+   740→  const handleAddComment = async () => {
+   741→    if (!detailTask || !newComment.trim() || !user) return
+   742→    setCommentLoading(true)
+   743→    try {
+   744→      await fetch('/api/comments', {
+   745→        method: 'POST',
+   746→        headers: { 'Content-Type': 'application/json' },
+   747→        body: JSON.stringify({ content: newComment, taskId: detailTask.id, userId: user.id }),
+   748→      })
+   749→      setNewComment('')
+   750→      const res = await fetch(`/api/comments?taskId=${detailTask.id}`)
+   751→      const data = await res.json()
+   752→      setComments(data.comments || [])
+   753→      fetchTasks()
+   754→    } catch {
+   755→      toast.error('Failed to add comment')
+   756→    } finally {
+   757→      setCommentLoading(false)
+   758→    }
+   759→  }
+   760→
+   761→  const handleCreateTask = async () => {
+   762→    if (!cTitle.trim() || !selectedProject || !user) return
+   763→    setCreateLoading(true)
+   764→    try {
+   765→      const res = await fetch('/api/tasks', {
+   766→        method: 'POST',
+   767→        headers: { 'Content-Type': 'application/json' },
+   768→        body: JSON.stringify({
+   769→          title: cTitle, description: cDesc || null, status: cStatus,
+   770→          priority: cPriority, projectId: selectedProject,
+   771→          dueDate: cDueDate ? cDueDate.toISOString() : null,
+   772→          tags: cTags, createdById: user.id,
+   773→          assigneeIds: cAssignee ? [cAssignee] : [],
+   774→        }),
+   775→      })
+   776→      if (!res.ok) {
+   777→        const d = await res.json()
+   778→        throw new Error(d.error || 'Failed to create task')
+   779→      }
+   780→      toast.success('Task created')
+   781→      setCreateOpen(false)
+   782→      setCTitle(''); setCDesc(''); setCStatus('todo')
+   783→      setCPriority('medium'); setCDueDate(undefined); setCTags(''); setCAssignee('')
+   784→      fetchTasks()
+   785→    } catch (e: unknown) {
+   786→      toast.error(e instanceof Error ? e.message : 'Failed to create task')
+   787→    } finally {
+   788→      setCreateLoading(false)
+   789→    }
+   790→  }
+   791→
+   792→  const handleCommentKeyDown = (e: React.KeyboardEvent) => {
+   793→    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+   794→      e.preventDefault()
+   795→      handleAddComment()
+   796→    }
+   797→  }
+   798→
+   799→  // Inline assignee management
+   800→  const handleToggleAssignee = async (task: Task, userId: string) => {
+   801→    if (!user) return
+   802→    const isAssigned = task.assignees?.some((a) => a.userId === userId)
+   803→    setAssigneeLoading(userId)
+   804→    try {
+   805→      if (isAssigned) {
+   806→        await fetch('/api/tasks/assignments', {
+   807→          method: 'DELETE',
+   808→          headers: { 'Content-Type': 'application/json' },
+   809→          body: JSON.stringify({ userId, taskId: task.id }),
+   810→        })
+   811→        toast.success('Assignee removed')
+   812→      } else {
+   813→        const res = await fetch('/api/tasks/assignments', {
+   814→          method: 'POST',
+   815→          headers: { 'Content-Type': 'application/json' },
+   816→          body: JSON.stringify({ userId, taskId: task.id, assignedBy: user.id }),
+   817→        })
+   818→        if (!res.ok) {
+   819→          const d = await res.json()
+   820→          if (res.status === 409) return // Already assigned, silent
+   821→          throw new Error(d.error)
+   822→        }
+   823→        toast.success('Assignee added')
+   824→      }
+   825→      fetchTasks()
+   826→      // If detail dialog is open for this task, refresh it
+   827→      if (detailTask && detailTask.id === task.id) {
+   828→        openDetail({ ...task, assignees: isAssigned
+   829→          ? task.assignees?.filter((a) => a.userId !== userId)
+   830→          : [...(task.assignees || []), { id: '', taskId: task.id, userId, assignedAt: new Date().toISOString(), user: allTeamUsers.find((u) => u.id === userId) }]
+   831→        })
+   832→      }
+   833→    } catch (e: unknown) {
+   834→      toast.error(e instanceof Error ? e.message : 'Failed to update assignee')
+   835→    } finally {
+   836→      setAssigneeLoading(null)
+   837→    }
+   838→  }
+   839→
+   840→  const currentProject = projects.find((p) => p.id === selectedProject)
+   841→
+   842→  // Use all active admin + team users for assignee pickers
+   843→  const assignableUsers = allTeamUsers
+   844→
+   845→  if (loading && projects.length === 0) {
+   846→    return (
+   847→      <div className="space-y-6">
+   848→        <div className="flex items-center justify-between">
+   849→          <Skeleton className="h-8 w-48" />
+   850→        </div>
+   851→        <div className="grid grid-cols-4 gap-4">
+   852→          {Array.from({ length: 4 }).map((_, i) => (
+   853→            <div key={i} className="space-y-3">
+   854→              <Skeleton className="h-8 w-24" />
+   855→              {Array.from({ length: 3 }).map((_, j) => <Skeleton key={j} className="h-28 w-full rounded-lg" />)}
+   856→            </div>
+   857→          ))}
+   858→        </div>
+   859→      </div>
+   860→    )
+   861→  }
+   862→
+   863→  // No projects empty state
+   864→  if (!loading && projects.length === 0) {
+   865→    return (
+   866→      <EmptyState
+   867→        icon={FolderKanban}
+   868→        title="No projects yet"
+   869→        description="You haven't been assigned to any projects yet. An admin will assign projects to you."
+   870→      />
+   871→    )
+   872→  }
+   873→
+   874→  return (
+   875→    <div className="space-y-6">
+   876→      {/* Header */}
+   877→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+   878→        <div className="flex items-center gap-3">
+   879→          <Select value={selectedProject} onValueChange={setSelectedProject}>
+   880→            <SelectTrigger className="w-[220px]">
+   881→              <SelectValue placeholder="Select project" />
+   882→            </SelectTrigger>
+   883→            <SelectContent>
+   884→              {projects.map((p) => (
+   885→                <SelectItem key={p.id} value={p.id}>
+   886→                  <div className="flex items-center gap-2">
+   887→                    <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+   888→                    {p.name}
+   889→                  </div>
+   890→                </SelectItem>
+   891→              ))}
+   892→            </SelectContent>
+   893→          </Select>
+   894→          {currentProject && (
+   895→            <Badge variant="outline" className="text-xs">
+   896→              {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+   897→            </Badge>
+   898→          )}
+   899→        </div>
+   900→        <div className="flex items-center gap-2">
+   901→          <div className="flex items-center bg-muted rounded-lg p-0.5">
+   902→            <Button
+   903→              variant={viewMode === 'board' ? 'default' : 'ghost'}
+   904→              size="sm"
+   905→              className="h-8 gap-1.5"
+   906→              onClick={() => setViewMode('board')}
+   907→            >
+   908→              <LayoutGrid className="h-3.5 w-3.5" /> Board
+   909→            </Button>
+   910→            <Button
+   911→              variant={viewMode === 'list' ? 'default' : 'ghost'}
+   912→              size="sm"
+   913→              className="h-8 gap-1.5"
+   914→              onClick={() => setViewMode('list')}
+   915→            >
+   916→              <List className="h-3.5 w-3.5" /> List
+   917→            </Button>
+   918→          </div>
+   919→          {!isTraining && (
+   920→          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   921→            <DialogTrigger asChild>
+   922→              <Button className="gap-2">
+   923→                <Plus className="h-4 w-4" /> Create Task
+   924→              </Button>
+   925→            </DialogTrigger>
+   926→            <DialogContent className="sm:max-w-lg">
+   927→              <DialogHeader>
+   928→                <DialogTitle>Create New Task</DialogTitle>
+   929→                <DialogDescription>Add a task to {currentProject?.name || 'the project'}.</DialogDescription>
+   930→              </DialogHeader>
+   931→              <div className="space-y-4 py-2">
+   932→                <div className="space-y-2">
+   933→                  <Label>Title</Label>
+   934→                  <Input placeholder="Task title" value={cTitle} onChange={(e) => setCTitle(e.target.value)} />
+   935→                </div>
+   936→                <div className="space-y-2">
+   937→                  <Label>Description</Label>
+   938→                  <Textarea placeholder="Describe the task..." value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={2} />
+   939→                </div>
+   940→                <div className="grid grid-cols-2 gap-4">
+   941→                  <div className="space-y-2">
+   942→                    <Label>Status</Label>
+   943→                    <Select value={cStatus} onValueChange={(v) => setCStatus(v as typeof cStatus)}>
+   944→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   945→                      <SelectContent>
+   946→                        <SelectItem value="todo">To Do</SelectItem>
+   947→                        <SelectItem value="in_progress">In Progress</SelectItem>
+   948→                        <SelectItem value="in_review">In Review</SelectItem>
+   949→                        <SelectItem value="done">Done</SelectItem>
+   950→                      </SelectContent>
+   951→                    </Select>
+   952→                  </div>
+   953→                  <div className="space-y-2">
+   954→                    <Label>Priority</Label>
+   955→                    <Select value={cPriority} onValueChange={(v) => setCPriority(v as typeof cPriority)}>
+   956→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   957→                      <SelectContent>
+   958→                        <SelectItem value="low">Low</SelectItem>
+   959→                        <SelectItem value="medium">Medium</SelectItem>
+   960→                        <SelectItem value="high">High</SelectItem>
+   961→                        <SelectItem value="urgent">Urgent</SelectItem>
+   962→                      </SelectContent>
+   963→                    </Select>
+   964→                  </div>
+   965→                </div>
+   966→                <div className="grid grid-cols-2 gap-4">
+   967→                  <div className="space-y-2">
+   968→                    <Label>Due Date</Label>
+   969→                    <Popover open={cCalendarOpen} onOpenChange={setCCalendarOpen}>
+   970→                      <PopoverTrigger asChild>
+   971→                        <Button variant="outline" className="w-full justify-start text-left font-normal gap-2">
+   972→                          <CalendarIcon className="h-4 w-4" />
+   973→                          {cDueDate ? format(cDueDate, 'PPP') : 'Pick a date'}
+   974→                        </Button>
+   975→                      </PopoverTrigger>
+   976→                      <PopoverContent className="w-auto p-0" align="start">
+   977→                        <Calendar mode="single" selected={cDueDate} onSelect={(d) => { setCDueDate(d); setCCalendarOpen(false) }} />
+   978→                      </PopoverContent>
+   979→                    </Popover>
+   980→                  </div>
+   981→                  <div className="space-y-2">
+   982→                    <Label>Assignee</Label>
+   983→                    <Select value={cAssignee} onValueChange={setCAssignee}>
+   984→                      <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+   985→                      <SelectContent>
+   986→                        {assignableUsers.length === 0 && <SelectItem value="_none" disabled>No members available</SelectItem>}
+   987→                        {assignableUsers.map((u) => (
+   988→                          <SelectItem key={u.id} value={u.id}>
+   989→                            <span className="flex items-center gap-2">
+   990→                              <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   991→                                {getInitials(u.name)}
+   992→                              </span>
+   993→                              <span>{u.name}</span>
+   994→                              <span className="text-muted-foreground text-xs capitalize">({u.role})</span>
+   995→                            </span>
+   996→                          </SelectItem>
+   997→                        ))}
+   998→                      </SelectContent>
+   999→                    </Select>
+  1000→                  </div>
+  1001→                </div>
+  1002→                <div className="space-y-2">
+  1003→                  <Label>Tags (comma separated)</Label>
+  1004→                  <Input placeholder="design, frontend, urgent" value={cTags} onChange={(e) => setCTags(e.target.value)} />
+  1005→                </div>
+  1006→              </div>
+  1007→              <DialogFooter>
+  1008→                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+  1009→                <Button onClick={handleCreateTask} disabled={createLoading} className="gap-2">
+  1010→                  {createLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+  1011→                  Create Task
+  1012→                </Button>
+  1013→              </DialogFooter>
+  1014→            </DialogContent>
+  1015→          </Dialog>
+  1016→          )}
+  1017→        </div>
+  1018→      </div>
+  1019→
+  1020→      {/* Board View */}
+  1021→      {viewMode === 'board' ? (
+  1022→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1023→          {STATUS_COLUMNS.map((col) => {
+  1024→            const colTasks = tasks.filter((t) => t.status === col.key)
+  1025→            return (
+  1026→              <div key={col.key} className="space-y-3">
+  1027→                <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
+  1028→                  <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
+  1029→                  <span className="text-sm font-semibold">{col.label}</span>
+  1030→                  <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center">
+  1031→                    {colTasks.length}
+  1032→                  </Badge>
+  1033→                </div>
+  1034→                <ScrollArea className="max-h-[calc(100vh-280px)]">
+  1035→                  <div className="space-y-2 pb-2">
+  1036→                    {colTasks.length === 0 ? (
+  1037→                      <div className="text-center py-8 text-xs text-muted-foreground">No tasks</div>
+  1038→                    ) : (
+  1039→                      colTasks.map((task, idx) => {
+  1040→                        const pConf = getPriorityConfig(task.priority)
+  1041→                        const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+  1042→                        const tags = task.tags ? task.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
+  1043→                        const commentCount = task._count?.comments || 0
+  1044→
+  1045→                        return (
+  1046→                          <motion.div
+  1047→                            key={task.id}
+  1048→                            initial={{ opacity: 0, y: 10 }}
+  1049→                            animate={{ opacity: 1, y: 0 }}
+  1050→                            transition={{ delay: idx * 0.03 }}
+  1051→                          >
+  1052→                            <Card
+  1053→                              className="p-3 cursor-pointer hover:shadow-md transition-all border-border/50 hover:border-border"
+  1054→                              onClick={() => openDetail(task)}
+  1055→                            >
+  1056→                              <div className="space-y-2.5">
+  1057→                                {/* Tags */}
+  1058→                                {tags.length > 0 && (
+  1059→                                  <div className="flex flex-wrap gap-1">
+  1060→                                    {tags.slice(0, 3).map((tag) => (
+  1061→                                      <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-500">
+  1062→                                        {tag}
+  1063→                                      </Badge>
+  1064→                                    ))}
+  1065→                                    {tags.length > 3 && (
+  1066→                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-400">
+  1067→                                        +{tags.length - 3}
+  1068→                                      </Badge>
+  1069→                                    )}
+  1070→                                  </div>
+  1071→                                )}
+  1072→
+  1073→                                {/* Title */}
+  1074→                                <h4 className="text-sm font-medium leading-tight">{task.title}</h4>
+  1075→
+  1076→                                {/* Meta row */}
+  1077→                                <div className="flex items-center justify-between">
+  1078→                                  <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>
+  1079→                                    {pConf.label}
+  1080→                                  </Badge>
+  1081→                                  {task.dueDate && (
+  1082→                                    <span className={cn(
+  1083→                                      'text-[10px] flex items-center gap-1',
+  1084→                                      isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
+  1085→                                        ? 'text-red-500' : 'text-muted-foreground',
+  1086→                                    )}>
+  1087→                                      <CalendarIcon className="h-3 w-3" />
+  1088→                                      {format(parseISO(task.dueDate), 'MMM d')}
+  1089→                                    </span>
+  1090→                                  )}
+  1091→                                </div>
+  1092→
+  1093→                                {/* Bottom row: Assignees + Comments */}
+  1094→                                <div className="flex items-center justify-between pt-1">
+  1095→                                  <Popover
+  1096→                                    open={assigneePopoverTaskId === task.id}
+  1097→                                    onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
+  1098→                                  >
+  1099→                                    <PopoverTrigger asChild>
+  1100→                                      <button
+  1101→                                        className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+  1102→                                        onClick={(e) => e.stopPropagation()}
+  1103→                                      >
+  1104→                                        <AvatarStack users={assignees} max={2} />
+  1105→                                        <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+  1106→                                      </button>
+  1107→                                    </PopoverTrigger>
+  1108→                                    <PopoverContent className="w-56 p-2" align="start" side="bottom">
+  1109→                                      <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+  1110→                                      <div className="space-y-0.5 max-h-48 overflow-y-auto">
+  1111→                                        {assignableUsers.map((u) => {
+  1112→                                          const isAssigned = assignees.some((a) => a.id === u.id)
+  1113→                                          const isLoading = assigneeLoading === u.id
+  1114→                                          return (
+  1115→                                            <button
+  1116→                                              key={u.id}
+  1117→                                              className={cn(
+  1118→                                                'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+  1119→                                                isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+  1120→                                              )}
+  1121→                                              onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, u.id) }}
+  1122→                                              disabled={isLoading}
+  1123→                                            >
+  1124→                                              <Avatar className="h-6 w-6">
+  1125→                                                <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+  1126→                                                  {getInitials(u.name)}
+  1127→                                                </AvatarFallback>
+  1128→                                              </Avatar>
+  1129→                                              <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+  1130→                                              <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
+  1131→                                              {isLoading ? (
+  1132→                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+  1133→                                              ) : isAssigned ? (
+  1134→                                                <Check className="h-3.5 w-3.5 text-primary" />
+  1135→                                              ) : (
+  1136→                                                <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+  1137→                                              )}
+  1138→                                            </button>
+  1139→                                          )
+  1140→                                        })}
+  1141→                                      </div>
+  1142→                                    </PopoverContent>
+  1143→                                  </Popover>
+  1144→                                  <div className="flex items-center gap-2">
+  1145→                                    {commentCount > 0 && (
+  1146→                                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+  1147→                                        <MessageCircle className="h-3 w-3" />
+  1148→                                        {commentCount}
+  1149→                                      </div>
+  1150→                                    )}
+  1151→                                  </div>
+  1152→                                </div>
+  1153→                              </div>
+  1154→                            </Card>
+  1155→                          </motion.div>
+  1156→                        )
+  1157→                      })
+  1158→                    )}
+  1159→                  </div>
+  1160→                </ScrollArea>
+  1161→              </div>
+  1162→            )
+  1163→          })}
+  1164→        </div>
+  1165→      ) : (
+  1166→        /* List View */
+  1167→        <Card>
+  1168→          <Table>
+  1169→            <TableHeader>
+  1170→              <TableRow>
+  1171→                <TableHead className="w-[40%]">Title</TableHead>
+  1172→                <TableHead>Status</TableHead>
+  1173→                <TableHead>Priority</TableHead>
+  1174→                <TableHead>Assignees</TableHead>
+  1175→                <TableHead>Due Date</TableHead>
+  1176→                <TableHead className="w-[100px]">Project</TableHead>
+  1177→              </TableRow>
+  1178→            </TableHeader>
+  1179→            <TableBody>
+  1180→              {tasks.length === 0 ? (
+  1181→                <TableRow>
+  1182→                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+  1183→                    No tasks found
+  1184→                  </TableCell>
+  1185→                </TableRow>
+  1186→              ) : (
+  1187→                tasks.map((task) => {
+  1188→                  const sConf = getStatusConfig(task.status)
+  1189→                  const pConf = getPriorityConfig(task.priority)
+  1190→                  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+  1191→                  return (
+  1192→                    <TableRow
+  1193→                      key={task.id}
+  1194→                      className="cursor-pointer hover:bg-muted/50"
+  1195→                      onClick={() => openDetail(task)}
+  1196→                    >
+  1197→                      <TableCell>
+  1198→                        <div className="flex items-center gap-2">
+  1199→                          <div className={cn('h-2 w-2 rounded-full shrink-0', sConf.dotColor)} />
+  1200→                          <div>
+  1201→                            <p className="text-sm font-medium">{task.title}</p>
+  1202→                            {task.tags && (
+  1203→                              <div className="flex gap-1 mt-1">
+  1204→                                {task.tags.split(',').slice(0, 2).map((t) => (
+  1205→                                  <Badge key={t} variant="outline" className="text-[10px] px-1 py-0 h-4">{t.trim()}</Badge>
+  1206→                                ))}
+  1207→                              </div>
+  1208→                            )}
+  1209→                          </div>
+  1210→                        </div>
+  1211→                      </TableCell>
+  1212→                      <TableCell>
+  1213→                        <Badge className={cn('text-[10px]', sConf.color)}>{sConf.label}</Badge>
+  1214→                      </TableCell>
+  1215→                      <TableCell>
+  1216→                        <Badge className={cn('text-[10px]', pConf.color)}>{pConf.label}</Badge>
+  1217→                      </TableCell>
+  1218→                      <TableCell>
+  1219→                        <Popover
+  1220→                          open={assigneePopoverTaskId === task.id}
+  1221→                          onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
+  1222→                        >
+  1223→                          <PopoverTrigger asChild>
+  1224→                            <button
+  1225→                              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+  1226→                              onClick={(e) => e.stopPropagation()}
+  1227→                            >
+  1228→                              <AvatarStack users={assignees} max={2} />
+  1229→                              <UserPlus className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+  1230→                            </button>
+  1231→                          </PopoverTrigger>
+  1232→                          <PopoverContent className="w-56 p-2" align="start" side="bottom">
+  1233→                            <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+  1234→                            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+  1235→                              {assignableUsers.map((u) => {
+  1236→                                const isAssigned = assignees.some((a) => a.id === u.id)
+  1237→                                const isLoading = assigneeLoading === u.id
+  1238→                                return (
+  1239→                                  <button
+  1240→                                    key={u.id}
+  1241→                                    className={cn(
+  1242→                                      'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+  1243→                                      isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+  1244→                                    )}
+  1245→                                    onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, u.id) }}
+  1246→                                    disabled={isLoading}
+  1247→                                  >
+  1248→                                    <Avatar className="h-6 w-6">
+  1249→                                      <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+  1250→                                        {getInitials(u.name)}
+  1251→                                      </AvatarFallback>
+  1252→                                    </Avatar>
+  1253→                                    <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+  1254→                                    <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
+  1255→                                    {isLoading ? (
+  1256→                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+  1257→                                    ) : isAssigned ? (
+  1258→                                      <Check className="h-3.5 w-3.5 text-primary" />
+  1259→                                    ) : (
+  1260→                                      <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+  1261→                                    )}
+  1262→                                  </button>
+  1263→                                )
+  1264→                              })}
+  1265→                            </div>
+  1266→                          </PopoverContent>
+  1267→                        </Popover>
+  1268→                      </TableCell>
+  1269→                      <TableCell>
+  1270→                        {task.dueDate ? (
+  1271→                          <span className={cn(
+  1272→                            'text-xs',
+  1273→                            isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
+  1274→                              ? 'text-red-500 font-medium' : 'text-muted-foreground',
+  1275→                          )}>
+  1276→                            {formatDate(task.dueDate)}
+  1277→                          </span>
+  1278→                        ) : (
+  1279→                          <span className="text-xs text-muted-foreground">—</span>
+  1280→                        )}
+  1281→                      </TableCell>
+  1282→                      <TableCell>
+  1283→                        {task.project && (
+  1284→                          <div className="flex items-center gap-1.5">
+  1285→                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: task.project.color }} />
+  1286→                            <span className="text-xs truncate max-w-[80px]">{task.project.name}</span>
+  1287→                          </div>
+  1288→                        )}
+  1289→                      </TableCell>
+  1290→                    </TableRow>
+  1291→                  )
+  1292→                })
+  1293→              )}
+  1294→            </TableBody>
+  1295→          </Table>
+  1296→        </Card>
+  1297→      )}
+  1298→
+  1299→      {/* Task Detail Dialog */}
+  1300→      <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setComments([]) } }}>
+  1301→        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+  1302→          {detailTask && (
+  1303→            <>
+  1304→              <DialogHeader>
+  1305→                <div className="flex items-center gap-3">
+  1306→                  <div className={cn('h-3 w-3 rounded-full', getStatusConfig(detailTask.status).dotColor)} />
+  1307→                  {isEditingTitle ? (
+  1308→                    <Input
+  1309→                      value={editTitle}
+  1310→                      onChange={(e) => setEditTitle(e.target.value)}
+  1311→                      onKeyDown={(e) => {
+  1312→                        if (e.key === 'Enter') {
+  1313→                          e.preventDefault()
+  1314→                          setIsEditingTitle(false)
+  1315→                        }
+  1316→                        if (e.key === 'Escape') {
+  1317→                          setEditTitle(detailTask.title)
+  1318→                          setIsEditingTitle(false)
+  1319→                        }
+  1320→                      }}
+  1321→                      onBlur={() => setIsEditingTitle(false)}
+  1322→                      className="text-lg font-semibold h-auto py-0"
+  1323→                      autoFocus
+  1324→                    />
+  1325→                  ) : (
+  1326→                    <DialogTitle
+  1327→                      className={cn('group text-lg', !isTraining && 'cursor-pointer hover:bg-muted rounded px-1 -mx-1 py-0.5 transition-colors')}
+  1328→                      onClick={() => !isTraining && setIsEditingTitle(true)}
+  1329→                    >
+  1330→                      {editTitle}
+  1331→                      {!isTraining && <Pencil className="h-3.5 w-3. inline-block ml-2 text-muted-foreground opacity-0 group-hover:opacity-100" />}
+  1332→                    </DialogTitle>
+  1333→                  )}
+  1334→                </div>
+  1335→                <DialogDescription className="sr-only">Task details</DialogDescription>
+  1336→              </DialogHeader>
+  1337→
+  1338→              <div className="space-y-6">
+  1339→                {/* Status / Priority / Due Date */}
+  1340→                <div className="grid grid-cols-3 gap-4">
+  1341→                  <div className="space-y-1.5">
+  1342→                    <Label className="text-xs text-muted-foreground">Status</Label>
+  1343→                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v)}>
+  1344→                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1345→                      <SelectContent>
+  1346→                        <SelectItem value="todo">To Do</SelectItem>
+  1347→                        <SelectItem value="in_progress">In Progress</SelectItem>
+  1348→                        <SelectItem value="in_review">In Review</SelectItem>
+  1349→                        <SelectItem value="done">Done</SelectItem>
+  1350→                      </SelectContent>
+  1351→                    </Select>
+  1352→                  </div>
+  1353→                  <div className="space-y-1.5">
+  1354→                    <Label className="text-xs text-muted-foreground">Priority</Label>
+  1355→                    <Select value={editPriority} onValueChange={(v) => setEditPriority(v)}>
+  1356→                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1357→                      <SelectContent>
+  1358→                        <SelectItem value="low">Low</SelectItem>
+  1359→                        <SelectItem value="medium">Medium</SelectItem>
+  1360→                        <SelectItem value="high">High</SelectItem>
+  1361→                        <SelectItem value="urgent">Urgent</SelectItem>
+  1362→                      </SelectContent>
+  1363→                    </Select>
+  1364→                  </div>
+  1365→                  <div className="space-y-1.5">
+  1366→                    <Label className="text-xs text-muted-foreground">Due Date</Label>
+  1367→                    <Popover open={editCalendarOpen} onOpenChange={setEditCalendarOpen}>
+  1368→                      <PopoverTrigger asChild>
+  1369→                        <Button variant="outline" className="h-9 w-full justify-start text-left font-normal gap-2 text-sm">
+  1370→                          <CalendarIcon className="h-3.5 w-3.5" />
+  1371→                          {editDueDate ? format(editDueDate, 'PPP') : 'Set date'}
+  1372→                        </Button>
+  1373→                      </PopoverTrigger>
+  1374→                      <PopoverContent className="w-auto p-0" align="start">
+  1375→                        <Calendar
+  1376→                          mode="single"
+  1377→                          selected={editDueDate}
+  1378→                          onSelect={(d) => { setEditDueDate(d); setEditCalendarOpen(false) }}
+  1379→                        />
+  1380→                      </PopoverContent>
+  1381→                    </Popover>
+  1382→                  </div>
+  1383→                </div>
+  1384→
+  1385→                {/* Description (editable) */}
+  1386→                <div className="space-y-1.5">
+  1387→                  <Label className="text-xs text-muted-foreground">Description</Label>
+  1388→                  <Textarea
+  1389→                    placeholder="Add a description..."
+  1390→                    value={editDesc}
+  1391→                    onChange={(e) => setEditDesc(e.target.value)}
+  1392→                    className="text-sm min-h-[60px] resize-none"
+  1393→                    rows={2}
+  1394→                  />
+  1395→                </div>
+  1396→
+  1397→                {/* Tags */}
+  1398→                {detailTask.tags && (
+  1399→                  <div className="space-y-1.5">
+  1400→                    <Label className="text-xs text-muted-foreground">Tags</Label>
+  1401→                    <div className="flex flex-wrap gap-1.5">
+  1402→                      {detailTask.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag) => (
+  1403→                        <Badge key={tag} variant="outline" className="text-xs">
+  1404→                          <Hash className="h-3 w-3 mr-1" />{tag}
+  1405→                        </Badge>
+  1406→                      ))}
+  1407→                    </div>
+  1408→                  </div>
+  1409→                )}
+  1410→
+  1411→                {/* Assignees */}
+  1412→                <div className="space-y-1.5">
+  1413→                  <div className="flex items-center justify-between">
+  1414→                    <Label className="text-xs text-muted-foreground">Assignees</Label>
+  1415→                    <span className="text-[10px] text-muted-foreground">{detailTask.assignees?.length || 0} assigned</span>
+  1416→                  </div>
+  1417→                  <div className="space-y-1.5">
+  1418→                    {/* Current assignees as removable chips */}
+  1419→                    {detailTask.assignees && detailTask.assignees.length > 0 ? (
+  1420→                      <div className="space-y-2">
+  1421→                        <div className="flex flex-wrap gap-1.5">
+  1422→                          {detailTask.assignees.map((a) => (
+  1423→                            <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1 group">
+  1424→                              <MemberAvatar user={a.user} size="sm" />
+  1425→                              <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
+  1426→                              <button
+  1427→                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
+  1428→                                onClick={() => handleToggleAssignee(detailTask, a.userId)}
+  1429→                              >
+  1430→                                <X className="h-3 w-3" />
+  1431→                              </button>
+  1432→                            </div>
+  1433→                          ))}
+  1434→                        </div>
+  1435→                        {/* Assignment History */}
+  1436→                        <div className="space-y-1 pl-0.5">
+  1437→                          {detailTask.assignees.map((a) => (
+  1438→                            <div key={a.id || a.userId} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+  1439→                              <span className="w-14 shrink-0 truncate font-medium text-foreground/70">{a.user?.name || 'Unknown'}</span>
+  1440→                              <span>assigned {a.assignedAt ? formatRelativeTime(a.assignedAt) : '—'}</span>
+  1441→                            </div>
+  1442→                          ))}
+  1443→                        </div>
+  1444→                      </div>
+  1445→                    ) : (
+  1446→                      <p className="text-xs text-muted-foreground">No one assigned yet</p>
+  1447→                    )}
+  1448→                    {/* Add assignee button */}
+  1449→                    <Popover>
+  1450→                      <PopoverTrigger asChild>
+  1451→                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+  1452→                          <UserPlus className="h-3 w-3" /> Add Assignee
+  1453→                        </Button>
+  1454→                      </PopoverTrigger>
+  1455→                      <PopoverContent className="w-56 p-2" align="start">
+  1456→                        <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+  1457→                        <div className="space-y-0.5 max-h-48 overflow-y-auto">
+  1458→                          {assignableUsers.map((u) => {
+  1459→                            const isAssigned = detailTask.assignees?.some((a) => a.userId === u.id)
+  1460→                            const isLoading = assigneeLoading === u.id
+  1461→                            return (
+  1462→                              <button
+  1463→                                key={u.id}
+  1464→                                className={cn(
+  1465→                                  'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+  1466→                                  isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+  1467→                                )}
+  1468→                                onClick={() => handleToggleAssignee(detailTask, u.id)}
+  1469→                                disabled={isLoading}
+  1470→                              >
+  1471→                                <Avatar className="h-6 w-6">
+  1472→                                  <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+  1473→                                    {getInitials(u.name)}
+  1474→                                  </AvatarFallback>
+  1475→                                </Avatar>
+  1476→                                <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+  1477→                                <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
+  1478→                                {isLoading ? (
+  1479→                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+  1480→                                ) : isAssigned ? (
+  1481→                                  <Check className="h-3.5 w-3.5 text-primary" />
+  1482→                                ) : (
+  1483→                                  <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+  1484→                                )}
+  1485→                              </button>
+  1486→                            )
+  1487→                          })}
+  1488→                        </div>
+  1489→                      </PopoverContent>
+  1490→                    </Popover>
+  1491→                  </div>
+  1492→
+  1493→                </div>
+  1494→
+  1495→                <Separator />
+  1496→
+  1497→                {/* Comments */}
+  1498→                <div className="space-y-3">
+  1499→                  <Label className="text-sm font-semibold flex items-center gap-2">
+  1500→                    <MessageCircle className="h-4 w-4" /> Comments
+  1501→                    {comments.length > 0 && (
+  1502→                      <Badge variant="secondary" className="text-xs h-5">{comments.length}</Badge>
+  1503→                    )}
+  1504→                  </Label>
+  1505→                  <ScrollArea className="max-h-48">
+  1506→                    <div className="space-y-3">
+  1507→                      {comments.map((c) => (
+  1508→                        <div key={c.id} className="flex gap-2.5">
+  1509→                          <MemberAvatar user={c.user} size="sm" />
+  1510→                          <div className="flex-1">
+  1511→                            <div className="flex items-center gap-2 mb-0.5">
+  1512→                              <span className="text-xs font-semibold">{c.user?.name || 'Unknown'}</span>
+  1513→                              <span className="text-[10px] text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
+  1514→                            </div>
+  1515→                            <p className="text-sm text-foreground/80 bg-muted/50 rounded-lg p-2.5">{c.content}</p>
+  1516→                          </div>
+  1517→                        </div>
+  1518→                      ))}
+  1519→                      {comments.length === 0 && (
+  1520→                        <p className="text-xs text-muted-foreground text-center py-4">No comments yet</p>
+  1521→                      )}
+  1522→                    </div>
+  1523→                  </ScrollArea>
+  1524→                  {!isTraining && (
+  1525→                  <div className="flex gap-2">
+  1526→                    <Textarea
+  1527→                      placeholder="Write a comment... (Ctrl+Enter to send)"
+  1528→                      value={newComment}
+  1529→                      onChange={(e) => setNewComment(e.target.value)}
+  1530→                      onKeyDown={handleCommentKeyDown}
+  1531→                      className="min-h-[60px] text-sm resize-none"
+  1532→                      rows={2}
+  1533→                    />
+  1534→                    <Button
+  1535→                      size="sm"
+  1536→                      className="h-auto self-end px-3"
+  1537→                      onClick={handleAddComment}
+  1538→                      disabled={commentLoading || !newComment.trim()}
+  1539→                    >
+  1540→                      {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+  1541→                    </Button>
+  1542→                  </div>
+  1543→                  )}
+  1544→                </div>
+  1545→
+  1546→                <Separator />
+  1547→
+  1548→                {/* Action buttons: Save, Discard, Delete */}
+  1549→                {!isTraining && (
+  1550→                <div className="flex items-center justify-between">
+  1551→                  <div className="flex items-center gap-2">
+  1552→                    {hasChanges && (
+  1553→                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+  1554→                        <AlertCircle className="h-3 w-3" /> Unsaved changes
+  1555→                      </span>
+  1556→                    )}
+  1557→                  </div>
+  1558→                  <div className="flex items-center gap-2">
+  1559→                    {hasChanges && (
+  1560→                      <Button
+  1561→                        variant="outline"
+  1562→                        size="sm"
+  1563→                        className="gap-1.5"
+  1564→                        onClick={handleDiscardChanges}
+  1565→                        disabled={updating}
+  1566→                      >
+  1567→                        <RotateCcw className="h-3.5 w-3.5" />
+  1568→                        Discard
+  1569→                      </Button>
+  1570→                    )}
+  1571→                    <Button
+  1572→                      size="sm"
+  1573→                      className="gap-1.5"
+  1574→                      onClick={handleSaveTask}
+  1575→                      disabled={updating || !hasChanges}
+  1576→                    >
+  1577→                      {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+  1578→                      Save Changes
+  1579→                    </Button>
+  1580→                    <AlertDialog>
+  1581→                      <AlertDialogTrigger asChild>
+  1582→                        <Button variant="destructive" size="sm" className="gap-2" disabled={deleting}>
+  1583→                          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+  1584→                          Delete
+  1585→                        </Button>
+  1586→                      </AlertDialogTrigger>
+  1587→                      <AlertDialogContent>
+  1588→                        <AlertDialogHeader>
+  1589→                          <AlertDialogTitle>Delete Task</AlertDialogTitle>
+  1590→                          <AlertDialogDescription>
+  1591→                            Are you sure you want to delete &quot;{detailTask.title}&quot;? This action cannot be undone.
+  1592→                          </AlertDialogDescription>
+  1593→                        </AlertDialogHeader>
+  1594→                        <AlertDialogFooter>
+  1595→                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1596→                          <AlertDialogAction onClick={handleDeleteTask} className="bg-destructive text-white hover:bg-destructive/90">
+  1597→                            Delete
+  1598→                          </AlertDialogAction>
+  1599→                        </AlertDialogFooter>
+  1600→                      </AlertDialogContent>
+  1601→                    </AlertDialog>
+  1602→                  </div>
+  1603→                </div>
+  1604→                )}
+  1605→              </div>
+  1606→            </>
+  1607→          )}
+  1608→        </DialogContent>
+  1609→      </Dialog>
+  1610→    </div>
+  1611→  )
+  1612→}
+  1613→
+  1614→// ─── TeamMessages ───────────────────────────────────────────
+  1615→export { MessagesPanel as TeamMessages } from '@/components/messages/MessagesPanel'
+  1616→
+  1617→// ─── TeamProfile ────────────────────────────────────────────
+  1618→
+  1619→export function TeamProfile() {
+  1620→  const { user } = useAuthStore()
+  1621→  const [profile, setProfile] = useState<User | null>(null)
+  1622→  const [loading, setLoading] = useState(true)
+  1623→  const [saving, setSaving] = useState(false)
+  1624→  const [passwordSaving, setPasswordSaving] = useState(false)
+  1625→
+  1626→  // Profile form
+  1627→  const [name, setName] = useState('')
+  1628→  const [email, setEmail] = useState('')
+  1629→  const [phone, setPhone] = useState('')
+  1630→  const [company, setCompany] = useState('')
+  1631→
+  1632→  // Password form
+  1633→  const [currentPassword, setCurrentPassword] = useState('')
+  1634→  const [newPassword, setNewPassword] = useState('')
+  1635→  const [confirmPassword, setConfirmPassword] = useState('')
+  1636→
+  1637→  const fetchProfile = useCallback(async () => {
+  1638→    if (!user) return
+  1639→    setLoading(true)
+  1640→    try {
+  1641→      const res = await fetch(`/api/user/profile?userId=${user.id}`)
+  1642→      const data = await res.json()
+  1643→      const u = data.user || user
+  1644→      setProfile(u)
+  1645→      setName(u.name)
+  1646→      setEmail(u.email)
+  1647→      setPhone(u.phone || '')
+  1648→      setCompany(u.company || '')
+  1649→    } catch {
+  1650→      toast.error('Failed to load profile')
+  1651→    } finally {
+  1652→      setLoading(false)
+  1653→    }
+  1654→  }, [user])
+  1655→
+  1656→  useEffect(() => { fetchProfile() }, [fetchProfile])
+  1657→
+  1658→  const handleSaveProfile = async () => {
+  1659→    if (!name.trim() || !email.trim()) {
+  1660→      toast.error('Name and email are required')
+  1661→      return
+  1662→    }
+  1663→    setSaving(true)
+  1664→    try {
+  1665→      const res = await fetch('/api/user/profile', {
+  1666→        method: 'PATCH',
+  1667→        headers: { 'Content-Type': 'application/json' },
+  1668→        body: JSON.stringify({ userId: user?.id, name, email, phone: phone || null, company: company || null }),
+  1669→      })
+  1670→      if (!res.ok) {
+  1671→        toast.error('Failed to save')
+  1672→        return
+  1673→      }
+  1674→      const data = await res.json()
+  1675→      setProfile(data.user || profile)
+  1676→      toast.success('Profile updated')
+  1677→    } catch {
+  1678→      toast.error('Failed to update profile')
+  1679→    } finally {
+  1680→      setSaving(false)
+  1681→    }
+  1682→  }
+  1683→
+  1684→  const handleChangePassword = async () => {
+  1685→    if (!currentPassword || !newPassword || !confirmPassword) {
+  1686→      toast.error('All password fields are required')
+  1687→      return
+  1688→    }
+  1689→    if (newPassword !== confirmPassword) {
+  1690→      toast.error('New passwords do not match')
+  1691→      return
+  1692→    }
+  1693→    if (newPassword.length < 8) {
+  1694→      toast.error('Password must be at least 8 characters')
+  1695→      return
+  1696→    }
+  1697→    setPasswordSaving(true)
+  1698→    try {
+  1699→      const res = await fetch('/api/user/profile', {
+  1700→        method: 'PATCH',
+  1701→        headers: { 'Content-Type': 'application/json' },
+  1702→        body: JSON.stringify({ userId: user?.id, currentPassword, newPassword }),
+  1703→      })
+  1704→      if (!res.ok) {
+  1705→        toast.error('Failed to save')
+  1706→        return
+  1707→      }
+  1708→      toast.success('Password changed')
+  1709→      setCurrentPassword('')
+  1710→      setNewPassword('')
+  1711→      setConfirmPassword('')
+  1712→    } catch {
+  1713→      toast.error('Failed to change password')
+  1714→    } finally {
+  1715→      setPasswordSaving(false)
+  1716→    }
+  1717→  }
+  1718→
+  1719→  if (loading) {
+  1720→    return (
+  1721→      <div className="space-y-6 max-w-2xl">
+  1722→        <Skeleton className="h-8 w-48" />
+  1723→        <Card className="p-6 space-y-4">
+  1724→          {Array.from({ length: 4 }).map((_, i) => (
+  1725→            <div key={i} className="space-y-1.5">
+  1726→              <Skeleton className="h-3 w-20" />
+  1727→              <Skeleton className="h-9 w-full" />
+  1728→            </div>
+  1729→          ))}
+  1730→        </Card>
+  1731→      </div>
+  1732→    )
+  1733→  }
+  1734→
+  1735→  const displayUser = profile || user
+  1736→
+  1737→  return (
+  1738→    <div className="space-y-6 max-w-2xl">
+  1739→      <div>
+  1740→        <h1 className="text-2xl font-bold tracking-tight">Profile Settings</h1>
+  1741→        <p className="text-sm text-muted-foreground mt-1">Manage your account information and preferences</p>
+  1742→      </div>
+  1743→
+  1744→      {/* Profile Header Card */}
+  1745→      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+  1746→        <Card className="p-6">
+  1747→          <div className="flex items-start gap-5">
+  1748→            <Avatar className="h-20 w-20">
+  1749→              <AvatarFallback className="text-xl bg-slate-200 dark:bg-slate-700 font-semibold">
+  1750→                {displayUser ? getInitials(displayUser.name) : '??'}
+  1751→              </AvatarFallback>
+  1752→            </Avatar>
+  1753→            <div className="flex-1 space-y-3">
+  1754→              <div>
+  1755→                <h2 className="text-lg font-semibold">{displayUser?.name}</h2>
+  1756→                <p className="text-sm text-muted-foreground">{displayUser?.email}</p>
+  1757→              </div>
+  1758→              <div className="flex flex-wrap gap-2">
+  1759→                <Badge className={getRoleBadgeClasses(displayUser?.role || 'team')}>
+  1760→                  <Shield className="h-3 w-3 mr-1" />
+  1761→                  Team Member
+  1762→                </Badge>
+  1763→                {displayUser?.createdAt && (
+  1764→                  <Badge variant="outline" className="text-xs">
+  1765→                    <CalendarIcon className="h-3 w-3 mr-1" />
+  1766→                    Member since {formatDate(displayUser.createdAt)}
+  1767→                  </Badge>
+  1768→                )}
+  1769→                {displayUser?._count?.assignedTasks !== undefined && (
+  1770→                  <Badge variant="outline" className="text-xs">
+  1771→                    <FileText className="h-3 w-3 mr-1" />
+  1772→                    {displayUser._count.assignedTasks} assigned tasks
+  1773→                  </Badge>
+  1774→                )}
+  1775→              </div>
+  1776→            </div>
+  1777→          </div>
+  1778→        </Card>
+  1779→      </motion.div>
+  1780→
+  1781→      {/* Edit Profile */}
+  1782→      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+  1783→        <Card className="p-6">
+  1784→          <CardHeader className="p-0 mb-5">
+  1785→            <CardTitle className="text-base flex items-center gap-2">
+  1786→              <Pencil className="h-4 w-4" /> Edit Profile
+  1787→            </CardTitle>
+  1788→          </CardHeader>
+  1789→          <CardContent className="p-0 space-y-4">
+  1790→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1791→              <div className="space-y-2">
+  1792→                <Label htmlFor="profile-name">Full Name</Label>
+  1793→                <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
+  1794→              </div>
+  1795→              <div className="space-y-2">
+  1796→                <Label htmlFor="profile-email">Email</Label>
+  1797→                <Input id="profile-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
+  1798→              </div>
+  1799→            </div>
+  1800→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1801→              <div className="space-y-2">
+  1802→                <Label htmlFor="profile-phone" className="flex items-center gap-1.5">
+  1803→                  <Phone className="h-3.5 w-3.5" /> Phone
+  1804→                </Label>
+  1805→                <Input id="profile-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+  1806→              </div>
+  1807→              <div className="space-y-2">
+  1808→                <Label htmlFor="profile-company" className="flex items-center gap-1.5">
+  1809→                  <Building2 className="h-3.5 w-3.5" /> Company
+  1810→                </Label>
+  1811→                <Input id="profile-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
+  1812→              </div>
+  1813→            </div>
+  1814→            <div className="flex justify-end pt-2">
+  1815→              <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+  1816→                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+  1817→                Save Changes
+  1818→              </Button>
+  1819→            </div>
+  1820→          </CardContent>
+  1821→        </Card>
+  1822→      </motion.div>
+  1823→
+  1824→      {/* Change Password */}
+  1825→      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+  1826→        <Card className="p-6">
+  1827→          <CardHeader className="p-0 mb-5">
+  1828→            <CardTitle className="text-base flex items-center gap-2">
+  1829→              <Lock className="h-4 w-4" /> Change Password
+  1830→            </CardTitle>
+  1831→          </CardHeader>
+  1832→          <CardContent className="p-0 space-y-4">
+  1833→            <div className="space-y-2">
+  1834→              <Label htmlFor="current-pw">Current Password</Label>
+  1835→              <Input id="current-pw" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" />
+  1836→            </div>
+  1837→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1838→              <div className="space-y-2">
+  1839→                <Label htmlFor="new-pw">New Password</Label>
+  1840→                <Input id="new-pw" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" />
+  1841→              </div>
+  1842→              <div className="space-y-2">
+  1843→                <Label htmlFor="confirm-pw">Confirm New Password</Label>
+  1844→                <Input id="confirm-pw" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter new password" />
+  1845→              </div>
+  1846→            </div>
+  1847→            <div className="flex justify-end pt-2">
+  1848→              <Button onClick={handleChangePassword} disabled={passwordSaving} variant="outline" className="gap-2">
+  1849→                {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+  1850→                Update Password
+  1851→              </Button>
+  1852→            </div>
+  1853→          </CardContent>
+  1854→        </Card>
+  1855→      </motion.div>
+  1856→    </div>
+  1857→  )
+  1858→}
+  1859→
+  1860→// ─── Time Tracking Component ──────────────────────────────────
+  1861→
+  1862→function formatDuration(minutes: number): string {
+  1863→  const h = Math.floor(minutes / 60)
+  1864→  const m = minutes % 60
+  1865→  if (h === 0) return `${m}m`
+  1866→  if (m === 0) return `${h}h`
+  1867→  return `${h}h ${m}m`
+  1868→}
+  1869→
+  1870→function formatElapsed(startDate: string): string {
+  1871→  const ms = Date.now() - new Date(startDate).getTime()
+  1872→  const totalSec = Math.floor(ms / 1000)
+  1873→  const h = Math.floor(totalSec / 3600)
+  1874→  const m = Math.floor((totalSec % 3600) / 60)
+  1875→  const s = totalSec % 60
+  1876→  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  1877→}
+  1878→
+  1879→type TimeEntry = {
+  1880→  id: string
+  1881→  userId: string
+  1882→  projectId?: string
+  1883→  taskId?: string
+  1884→  description?: string
+  1885→  date: string
+  1886→  timeIn?: string
+  1887→  timeOut?: string
+  1888→  duration: number
+  1889→  status: 'idle' | 'timed_in' | 'completed'
+  1890→  user?: User
+  1891→  project?: Project
+  1892→  task?: Task
+  1893→}
+  1894→
+  1895→type DateFilter = 'today' | 'week' | 'month' | 'all' | 'custom'
+  1896→
+  1897→export function TeamTimeTracking() {
+  1898→  const { user } = useAuthStore()
+  1899→  const { activeSession } = useTimeTrackingStore()
+  1900→
+  1901→  const [entries, setEntries] = useState<TimeEntry[]>([])
+  1902→  const [loading, setLoading] = useState(true)
+  1903→  const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null)
+  1904→  const [elapsed, setElapsed] = useState('00:00:00')
+  1905→
+  1906→  const [dateFilter, setDateFilter] = useState<DateFilter>('today')
+  1907→  const [customDateFrom, setCustomDateFrom] = useState<Date>()
+  1908→  const [customDateTo, setCustomDateTo] = useState<Date>()
+  1909→
+  1910→  const [showTimeInDialog, setShowTimeInDialog] = useState(false)
+  1911→  const [timeInLoading, setTimeInLoading] = useState(false)
+  1912→  const [timeOutLoading, setTimeOutLoading] = useState(false)
+  1913→
+  1914→  const [projects, setProjects] = useState<Project[]>([])
+  1915→  const [selectedProjectId, setSelectedProjectId] = useState('')
+  1916→  const [tasks, setTasks] = useState<Task[]>([])
+  1917→  const [selectedTaskId, setSelectedTaskId] = useState('')
+  1918→  const [timeInDescription, setTimeInDescription] = useState('')
+  1919→
+  1920→  const [deleteId, setDeleteId] = useState<string | null>(null)
+  1921→  const [deleting, setDeleting] = useState(false)
+  1922→
+  1923→  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  1924→
+  1925→  // ── Date range helpers ──
+  1926→  const getDateRange = useCallback((filter: DateFilter, customFrom?: Date, customTo?: Date) => {
+  1927→    const now = new Date()
+  1928→    const today = format(now, 'yyyy-MM-dd')
+  1929→    if (filter === 'custom') {
+  1930→      return {
+  1931→        dateFrom: customFrom ? format(customFrom, 'yyyy-MM-dd') : today,
+  1932→        dateTo: customTo ? format(customTo, 'yyyy-MM-dd') : today,
+  1933→      }
+  1934→    }
+  1935→    switch (filter) {
+  1936→      case 'today':
+  1937→        return { dateFrom: today, dateTo: today }
+  1938→      case 'week': {
+  1939→        const startOfWeek = new Date(now)
+  1940→        startOfWeek.setDate(now.getDate() - now.getDay() + 1)
+  1941→        return { dateFrom: format(startOfWeek, 'yyyy-MM-dd'), dateTo: today }
+  1942→      }
+  1943→      case 'month': {
+  1944→        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  1945→        return { dateFrom: format(startOfMonth, 'yyyy-MM-dd'), dateTo: today }
+  1946→      }
+  1947→      case 'all':
+  1948→        return { dateFrom: '2020-01-01', dateTo: '2099-12-31' }
+  1949→    }
+  1950→  }, [])
+  1951→
+  1952→  // ── Sync active entry from shared store (sidebar ↔ time tracking page) ──
+  1953→  useEffect(() => {
+  1954→    if (activeSession) {
+  1955→      setActiveEntry({
+  1956→        id: activeSession.id,
+  1957→        userId: user?.id || '',
+  1958→        projectId: activeSession.projectId,
+  1959→        project: activeSession.project,
+  1960→        task: activeSession.task,
+  1961→        description: activeSession.description,
+  1962→        timeIn: activeSession.timeIn,
+  1963→        status: 'timed_in',
+  1964→        date: new Date(activeSession.timeIn).toISOString().slice(0, 10),
+  1965→        duration: 0,
+  1966→        createdAt: activeSession.timeIn,
+  1967→        updatedAt: activeSession.timeIn,
+  1968→      } as TimeEntry)
+  1969→    } else {
+  1970→      setActiveEntry(null)
+  1971→    }
+  1972→  }, [activeSession, user?.id])
+  1973→
+  1974→  // ── Fetch entries ──
+  1975→  const fetchEntries = useCallback(async (filter: DateFilter, from?: Date, to?: Date) => {
+  1976→    if (!user) return
+  1977→    setLoading(true)
+  1978→    try {
+  1979→      const { dateFrom, dateTo } = getDateRange(filter, from, to)
+  1980→      const res = await fetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+  1981→      const data = await res.json()
+  1982→      setEntries(data.timeEntries || [])
+  1983→    } catch {
+  1984→      toast.error('Failed to load time entries')
+  1985→    } finally {
+  1986→      setLoading(false)
+  1987→    }
+  1988→  }, [user, getDateRange])
+  1989→
+  1990→  // ── Fetch active entry ──
+  1991→  const fetchActiveEntry = useCallback(async () => {
+  1992→    if (!user) return
+  1993→    try {
+  1994→      const res = await fetch(`/api/time-entries?userId=${user.id}&active=true`)
+  1995→      const data = await res.json()
+  1996→      const active = (data.timeEntries || []).find((e: TimeEntry) => e.status === 'timed_in') || null
+  1997→      setActiveEntry(active)
+  1998→    } catch {
+  1999→      // silent
+  2000→    }
+
+[showing lines 1-2000 of 2573; use offset=2001 with limit to continue reading]

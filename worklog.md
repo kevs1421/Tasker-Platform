@@ -1290,3 +1290,28 @@ Stage Summary:
 - Main content area shows active timer status (Time Out button + elapsed time) only when a timer is running
 - API properly sanitizes empty string inputs for projectId, taskId, description
 - Better error messages now propagate from API to frontend
+
+---
+Task ID: remove-autoscreenshot-timer
+Agent: main
+Task: Remove auto-screenshot from time tracking pages, make timer read-only from sidebar
+
+Work Log:
+- Removed AutoScreenshotPanel and useAutoScreenshot import from admin-dashboard.tsx
+- Removed admin own timer dead code: clockInOpen, clockInProjectId, clockInTaskId, clockInDesc, clockInTasks, clockingIn, clockingOut states
+- Removed handleAdminClockIn and handleAdminClockOut functions from admin-dashboard.tsx
+- Replaced admin timer card with read-only display synced from useTimeTrackingStore shared store
+- Removed screenshotSession import from team-dashboard.tsx
+- Removed handleTimeIn, handleTimeOut, fetchActiveEntry, unused projects state from TeamTimeTracking
+- Removed Time Out button from team time tracking page, replaced with read-only timer display
+- Added activeSession dependency to admin timer tick interval for live updates
+- Improved time-entries API error message to include actual error details
+- Fixed unused imports (Play, Square) from team-dashboard.tsx
+
+Stage Summary:
+- Both admin and team time tracking pages now show read-only timer display (no start/stop buttons)
+- Auto Screenshot panel completely removed from time tracking page
+- Sidebar Time In/Out button is the sole entry point for starting/stopping timers
+- Timer in time tracking page syncs from shared store and ticks live
+- API error messages now include actual error details for easier debugging
+- Lint passes cleanly, browser-verified admin clock-in/out works correctly
