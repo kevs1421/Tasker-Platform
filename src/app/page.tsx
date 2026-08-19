@@ -76,7 +76,7 @@ export default function Home() {
   const hydrated = useAuthStore((s) => s._hydrated)
   const hydrateFromStorage = useAuthStore((s) => s.hydrateFromStorage)
 
-  // Hydrate user from localStorage on first client mount
+  // Hydrate user from localStorage and verify session token on first client mount
   useEffect(() => {
     hydrateFromStorage()
   }, [hydrateFromStorage])

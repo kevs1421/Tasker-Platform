@@ -1315,3 +1315,24 @@ Stage Summary:
 - Timer in time tracking page syncs from shared store and ticks live
 - API error messages now include actual error details for easier debugging
 - Lint passes cleanly, browser-verified admin clock-in/out works correctly
+---
+Task ID: fix-admin-unauthorized
+Agent: main
+Task: Fix admin user creation returning 'Unauthorized' error
+
+Work Log:
+- Diagnosed root cause: browser localStorage had stale auth token (from before session-based auth was introduced) with no matching Session record in the database
+- The frontend sent the invalid token via authHeaders(), server couldn't find session → returned 401
+- Created `/api/auth/verify` endpoint to validate stored tokens against the database
+- Updated `hydrateFromStorage` in auth store to be async and call `/api/auth/verify` on app load
+- If token is invalid/expired, auth state is cleared and user is redirected to login page
+- Added `forceLogout()` method for silent logout (no API call) used by the 401 interceptor
+- Added `authFetch()` wrapper that auto-redirects to login on any 401 response
+- Updated page.tsx to work with async hydrateFromStorage
+- Verified fix end-to-end: login → navigate to Users → click Add User → fill form → Create User succeeds
+
+Stage Summary:
+- Files created: src/app/api/auth/verify/route.ts
+- Files modified: src/stores/auth.ts (async hydrate, authFetch, forceLogout), src/app/page.tsx
+- Root cause: stale tokens in localStorage after session system migration
+- Fix: server-side token validation on app hydration + 401 auto-redirect

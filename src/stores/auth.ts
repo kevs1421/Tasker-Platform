@@ -69,6 +69,26 @@ export function authHeaders(extra?: Record<string, string>): HeadersInit {
   return headers
 }
 
+/**
+ * Auth-aware fetch wrapper. Automatically redirects to login on 401.
+ * Use this instead of raw `fetch` for all authenticated API calls.
+ */
+export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = getAuthToken()
+  const headers = new Headers(init?.headers)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const res = await fetch(input, { ...init, headers })
+  if (res.status === 401) {
+    // Token is invalid or expired — clear auth and force re-login
+    persistUser(null)
+    persistToken(null)
+    useAuthStore.getState().forceLogout()
+  }
+  return res
+}
+
 // ─── Hash-based tab routing ─────────────────────────────
 
 const HASH_ROUTES: Record<string, AppRoute> = {
@@ -131,13 +151,15 @@ interface AuthState {
   login: (user: User, token: string) => void
   updateUser: (user: Partial<User>) => void
   logout: () => void
+  /** Silent logout — clears auth state without calling the API (used when server rejects token) */
+  forceLogout: () => void
   setRoute: (route: AppRoute) => void
   setSelectedProjectId: (id: string | null) => void
   setSelectedTaskId: (id: string | null) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
-  /** Restore user from localStorage (call once on client mount) */
-  hydrateFromStorage: () => void
+  /** Restore user from localStorage and verify the session token with the server */
+  hydrateFromStorage: () => Promise<void>
 }
 
 function getDefaultRoute(role: string): AppRoute {
@@ -155,11 +177,51 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   sidebarOpen: false,
   _hydrated: false,
 
-  hydrateFromStorage: () => {
+  hydrateFromStorage: async () => {
     if (get()._hydrated) return
+
     const persisted = loadPersistedUser()
-    if (persisted) {
-      // Restore the correct tab from the URL hash if it matches the user's role
+    const token = loadPersistedToken()
+
+    // No persisted user at all — go straight to login
+    if (!persisted || !token) {
+      // Clean up any partial state
+      persistUser(null)
+      persistToken(null)
+      set({ _hydrated: true })
+      return
+    }
+
+    // We have a user + token in localStorage. Verify the session is still valid on the server.
+    try {
+      const res = await fetch('/api/auth/verify', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.valid && data.user) {
+          // Session is valid — update user from server (may have role/name changes)
+          const serverUser = data.user as User
+          const hash = typeof window !== 'undefined' ? window.location.hash : ''
+          let route = getDefaultRoute(serverUser.role)
+          if (hash && hash !== '#') {
+            const parsed = parseHash(hash)
+            if (parsed && parsed.page.includes(serverUser.role)) {
+              route = parsed
+            }
+          }
+          persistUser(serverUser)
+          set({ user: serverUser, route, _hydrated: true })
+          return
+        }
+      }
+      // Token invalid/expired or any error — clear and go to login
+      persistUser(null)
+      persistToken(null)
+      set({ user: null, route: { page: 'login' }, _hydrated: true })
+    } catch {
+      // Network error — allow offline use with cached user, but mark hydrated
+      // The authFetch wrapper will catch 401s on the first real API call
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       let route = getDefaultRoute(persisted.role)
       if (hash && hash !== '#') {
@@ -169,8 +231,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
       set({ user: persisted, route, _hydrated: true })
-    } else {
-      set({ _hydrated: true })
     }
   },
 
@@ -197,6 +257,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {}) // fire-and-forget
     }
+    window.location.hash = ''
+    persistUser(null)
+    persistToken(null)
+    set({ user: null, route: { page: 'login' }, selectedProjectId: null, selectedTaskId: null, sidebarOpen: false })
+  },
+  forceLogout: () => {
     window.location.hash = ''
     persistUser(null)
     persistToken(null)
