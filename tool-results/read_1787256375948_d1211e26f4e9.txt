@@ -1,0 +1,803 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { motion } from 'framer-motion'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import {
+     7→     7→  FolderKanban, UserCircle,
+     8→     8→  Calendar, Users, Loader2, FileText, Shield, Lock, Save,
+     9→     9→  Check, Plus,
+    10→    10→  Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
+    11→    11→} from 'lucide-react'
+    12→    12→import { useAuthStore } from '@/stores/auth'
+    13→    13→import type { Project } from '@/types'
+    14→    14→import {
+    15→    15→  getRoleBadgeClasses, getPriorityConfig,
+    16→    16→  formatDate,
+    17→    17→} from '@/features/route-guard'
+    18→    18→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    19→    19→import { Button } from '@/components/ui/button'
+    20→    20→import { Input } from '@/components/ui/input'
+    21→    21→import { Textarea } from '@/components/ui/textarea'
+    22→    22→import { Label } from '@/components/ui/label'
+    23→    23→import { Skeleton } from '@/components/ui/skeleton'
+    24→    24→import {
+    25→    25→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    26→    26→  DialogFooter, DialogDescription,
+    27→    27→} from '@/components/ui/dialog'
+    28→    28→import { isBefore, parseISO } from 'date-fns'
+    29→    29→import { cn } from '@/lib/utils'
+    30→    30→
+    31→    31→
+    32→    32→// ─── Extended project type with task stats ────────────────────
+    33→    33→interface ClientProject extends Project {
+    34→    34→  taskStats?: {
+    35→    35→    todo: number
+    36→    36→    in_progress: number
+    37→    37→    in_review: number
+    38→    38→    done: number
+    39→    39→  }
+    40→    40→  progress?: number
+    41→    41→}
+    42→    42→
+    43→    43→// ─── Animation Variants ──────────────────────────────────────────
+    44→    44→const fadeSlide = {
+    45→    45→  initial: { opacity: 0, y: 12 },
+    46→    46→  animate: { opacity: 1, y: 0 },
+    47→    47→  exit: { opacity: 0, y: -12 },
+    48→    48→  transition: { duration: 0.25 }
+    49→    49→}
+    50→    50→
+    51→    51→// ─── Shared sub-components ───────────────────────────────────────
+    52→    52→
+    53→    53→function PageSkeleton() {
+    54→    54→  return (
+    55→    55→    <div className="space-y-6 p-4 md:p-6">
+    56→    56→      <Skeleton className="h-8 w-64" />
+    57→    57→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    58→    58→        <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+    59→    59→        <Skeleton className="h-80 rounded-xl" />
+    60→    60→      </div>
+    61→    61→      <Skeleton className="h-64 rounded-xl" />
+    62→    62→    </div>
+    63→    63→  )
+    64→    64→}
+    65→    65→
+    66→    66→function PriorityBadge({ priority }: { priority: string }) {
+    67→    67→  const cfg = getPriorityConfig(priority)
+    68→    68→  return (
+    69→    69→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    70→    70→      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor}`} />
+    71→    71→      {cfg.label}
+    72→    72→    </span>
+    73→    73→  )
+    74→    74→}
+    75→    75→
+    76→    76→function EmptyState({ icon: Icon, title, description }: {
+    77→    77→  icon: React.ElementType; title: string; description: string
+    78→    78→}) {
+    79→    79→  return (
+    80→    80→    <motion.div {...fadeSlide} className="flex flex-col items-center justify-center py-16 text-center">
+    81→    81→      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+    82→    82→        <Icon className="w-8 h-8 text-muted-foreground" />
+    83→    83→      </div>
+    84→    84→      <h3 className="text-lg font-semibold mb-1">{title}</h3>
+    85→    85→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+    86→    86→    </motion.div>
+    87→    87→  )
+    88→    88→}
+    89→    89→
+    90→    90→// ═══════════════════════════════════════════════════════════════════
+    91→    91→// CLIENT ONBOARDING (re-exported from wizard component)
+    92→    92→// ═══════════════════════════════════════════════════════════════════
+    93→    93→export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboardingWizard'
+    94→    94→
+    95→    95→// ═══════════════════════════════════════════════════════════════════
+    96→    96→// CLIENT PROJECTS
+    97→    97→// ═══════════════════════════════════════════════════════════════════
+    98→    98→export function ClientProjects() {
+    99→    99→  const { user } = useAuthStore()
+   100→   100→  const [projects, setProjects] = useState<ClientProject[]>([])
+   101→   101→  const [loading, setLoading] = useState(true)
+   102→   102→
+   103→   103→  // Upload files state
+   104→   104→  const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string; projectId: string }>>([])
+   105→   105→  const [uploading, setUploading] = useState(false)
+   106→   106→  const [uploadDragOver, setUploadDragOver] = useState<string | null>(null) // projectId
+   107→   107→  const [uploadDialogProjectId, setUploadDialogProjectId] = useState<string>('')
+   108→   108→  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+   109→   109→  const fileInputRef = useRef<HTMLInputElement>(null)
+   110→   110→
+   111→   111→  // Onboarding creation state
+   112→   112→
+   113→   113→
+   114→   114→  const fetchProjects = useCallback(async () => {
+   115→   115→    if (!user?.id) return
+   116→   116→    try {
+   117→   117→      // Use the client-only endpoint that queries through ClientProject table
+   118→   118→      // This ensures only projects explicitly assigned to this client are returned
+   119→   119→      const res = await fetch(`/api/client/projects?clientId=${user.id}`)
+   120→   120→      const data = await res.json()
+   121→   121→      setProjects(data.projects || [])
+   122→   122→    } catch {
+   123→   123→      toast.error('Failed to load projects')
+   124→   124→    } finally {
+   125→   125→      setLoading(false)
+   126→   126→    }
+   127→   127→  }, [user?.id])
+   128→   128→
+   129→   129→  // Fetch uploaded files from localStorage
+   130→   130→  const fetchUploadedFiles = useCallback(() => {
+   131→   131→    if (!user) return
+   132→   132→    try {
+   133→   133→      const stored = localStorage.getItem(`client-uploads-${user.id}`)
+   134→   134→      if (stored) setUploadedFiles(JSON.parse(stored))
+   135→   135→    } catch { /* ignore */ }
+   136→   136→  }, [user])
+   137→   137→
+   138→   138→  const saveUploadedFiles = useCallback((files: typeof uploadedFiles) => {
+   139→   139→    if (!user) return
+   140→   140→    localStorage.setItem(`client-uploads-${user.id}`, JSON.stringify(files))
+   141→   141→  }, [user])
+   142→   142→
+   143→   143→  useEffect(() => { fetchProjects(); fetchUploadedFiles() }, [fetchProjects, fetchUploadedFiles])
+   144→   144→
+   145→   145→  // File upload handler — always uploads to the project set in uploadDialogProjectId
+   146→   146→  const handleFileUpload = async (files: FileList | null) => {
+   147→   147→    if (!files || files.length === 0) return
+   148→   148→    if (!uploadDialogProjectId) {
+   149→   149→      toast.error('No project selected')
+   150→   150→      return
+   151→   151→    }
+   152→   152→    setUploading(true)
+   153→   153→    const newFiles: typeof uploadedFiles = []
+   154→   154→    for (let i = 0; i < files.length; i++) {
+   155→   155→      const file = files[i]
+   156→   156→      try {
+   157→   157→        const formData = new FormData()
+   158→   158→        formData.append('file', file)
+   159→   159→        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+   160→   160→        if (!res.ok) {
+   161→   161→          const d = await res.json()
+   162→   162→          throw new Error(d.error || 'Upload failed')
+   163→   163→        }
+   164→   164→        const data = await res.json()
+   165→   165→        newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
+   166→   166→      } catch (e: unknown) {
+   167→   167→        toast.error(`${file.name}: ${e instanceof Error ? e.message : 'Upload failed'}`)
+   168→   168→      }
+   169→   169→    }
+   170→   170→    if (newFiles.length > 0) {
+   171→   171→      const updated = [...uploadedFiles, ...newFiles]
+   172→   172→      setUploadedFiles(updated)
+   173→   173→      saveUploadedFiles(updated)
+   174→   174→      toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+   175→   175→    }
+   176→   176→    setUploading(false)
+   177→   177→    if (fileInputRef.current) fileInputRef.current.value = ''
+   178→   178→  }
+   179→   179→
+   180→   180→  const handleDrop = (e: React.DragEvent, projectId: string) => {
+   181→   181→    e.preventDefault()
+   182→   182→    setUploadDragOver(null)
+   183→   183→    setUploadDialogProjectId(projectId)
+   184→   184→    handleFileUpload(e.dataTransfer.files)
+   185→   185→  }
+   186→   186→
+   187→   187→  const openUploadDialog = (projectId: string) => {
+   188→   188→    setUploadDialogProjectId(projectId)
+   189→   189→    setUploadDialogOpen(true)
+   190→   190→  }
+   191→   191→
+   192→   192→  const deleteUploadedFile = (idx: number) => {
+   193→   193→    const updated = uploadedFiles.filter((_, i) => i !== idx)
+   194→   194→    setUploadedFiles(updated)
+   195→   195→    saveUploadedFiles(updated)
+   196→   196→    toast.success('File removed')
+   197→   197→  }
+   198→   198→
+   199→   199→  const getFileIcon = (type: string) => {
+   200→   200→    if (type.startsWith('image/')) return <ImageIcon className="w-4 h-4 text-emerald-600" />
+   201→   201→    if (type.includes('pdf')) return <FileText className="w-4 h-4 text-red-500" />
+   202→   202→    if (type.includes('word') || type.includes('document')) return <FileText className="w-4 h-4 text-blue-500" />
+   203→   203→    if (type.includes('excel') || type.includes('sheet') || type.includes('spreadsheet')) return <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+   204→   204→    return <File className="w-4 h-4 text-muted-foreground" />
+   205→   205→  }
+   206→   206→
+   207→   207→  const formatFileSize = (bytes: number) => {
+   208→   208→    if (bytes < 1024) return `${bytes} B`
+   209→   209→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+   210→   210→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+   211→   211→  }
+   212→   212→
+   213→   213→  if (loading) return <PageSkeleton />
+   214→   214→
+   215→   215→  return (
+   216→   216→    <div className="p-4 md:p-6 space-y-6">
+   217→   217→      {/* Page Header */}
+   218→   218→      <div className="flex items-center gap-3">
+   219→   219→        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+   220→   220→          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+   221→   221→        </div>
+   222→   222→        <div>
+   223→   223→          <h1 className="text-2xl font-bold">My Projects</h1>
+   224→   224→          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+   225→   225→        </div>
+   226→   226→      </div>
+   227→   227→
+   228→   228→      {/* ─── Upload Files Section (hidden input + dialog) ─── */}
+   229→   229→      <input
+   230→   230→        ref={fileInputRef}
+   231→   231→        type="file"
+   232→   232→        multiple
+   233→   233→        accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+   234→   234→        className="hidden"
+   235→   235→        onChange={(e) => { handleFileUpload(e.target.files); setUploadDialogOpen(false) }}
+   236→   236→      />
+   237→   237→      <Dialog open={uploadDialogOpen} onOpenChange={(open) => { if (!open) setUploadDialogOpen(false) }}>
+   238→   238→        <DialogContent className="sm:max-w-md">
+   239→   239→          <DialogHeader>
+   240→   240→            <DialogTitle className="flex items-center gap-2">
+   241→   241→              <Upload className="w-5 h-5 text-primary" />
+   242→   242→              Upload Files
+   243→   243→            </DialogTitle>
+   244→   244→            <DialogDescription>Choose files to upload for this project</DialogDescription>
+   245→   245→          </DialogHeader>
+   246→   246→          <div
+   247→   247→            onDragOver={(e) => { e.preventDefault(); setUploadDragOver('__dialog__') }}
+   248→   248→            onDragLeave={() => setUploadDragOver(null)}
+   249→   249→            onDrop={(e) => {
+   250→   250→              e.preventDefault()
+   251→   251→              setUploadDragOver(null)
+   252→   252→              // Set the project context before handling files
+   253→   253→              const files = e.dataTransfer.files
+   254→   254→              if (files && files.length > 0) {
+   255→   255→                // Use a separate handler for dialog drops
+   256→   256→                void (async () => {
+   257→   257→                  setUploading(true)
+   258→   258→                  const newFiles: typeof uploadedFiles = []
+   259→   259→                  for (let i = 0; i < files.length; i++) {
+   260→   260→                    const file = files[i]
+   261→   261→                    try {
+   262→   262→                      const formData = new FormData()
+   263→   263→                      formData.append('file', file)
+   264→   264→                      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+   265→   265→                      if (!res.ok) {
+   266→   266→                        const d = await res.json()
+   267→   267→                        throw new Error(d.error || 'Upload failed')
+   268→   268→                      }
+   269→   269→                      const data = await res.json()
+   270→   270→                      newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
+   271→   271→                    } catch (err: unknown) {
+   272→   272→                      toast.error(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
+   273→   273→                    }
+   274→   274→                  }
+   275→   275→                  if (newFiles.length > 0) {
+   276→   276→                    const updated = [...uploadedFiles, ...newFiles]
+   277→   277→                    setUploadedFiles(updated)
+   278→   278→                    saveUploadedFiles(updated)
+   279→   279→                    toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+   280→   280→                  }
+   281→   281→                  setUploading(false)
+   282→   282→                })()
+   283→   283→              }
+   284→   284→            }}
+   285→   285→            onClick={() => fileInputRef.current?.click()}
+   286→   286→            className={cn(
+   287→   287→              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+   288→   288→              uploadDragOver === '__dialog__' ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
+   289→   289→            )}
+   290→   290→          >
+   291→   291→            {uploading ? (
+   292→   292→              <div className="flex flex-col items-center gap-2">
+   293→   293→                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+   294→   294→                <p className="text-sm text-muted-foreground">Uploading...</p>
+   295→   295→              </div>
+   296→   296→            ) : (
+   297→   297→              <div className="flex flex-col items-center gap-2">
+   298→   298→                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+   299→   299→                  <Upload className="w-5 h-5 text-muted-foreground" />
+   300→   300→                </div>
+   301→   301→                <div>
+   302→   302→                  <p className="text-sm font-medium">Drop files here or click to browse</p>
+   303→   303→                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG, PDF, DOC, DOCX, XLS, XLSX and more (max 10MB each)</p>
+   304→   304→                </div>
+   305→   305→              </div>
+   306→   306→            )}
+   307→   307→          </div>
+   308→   308→          <DialogFooter>
+   309→   309→            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Close</Button>
+   310→   310→          </DialogFooter>
+   311→   311→        </DialogContent>
+   312→   312→      </Dialog>
+   313→   313→
+   314→   314→      {/* ─── Project Progress Overview ──────────────────────────── */}
+   315→   315→      {projects.length > 0 && (
+   316→   316→        <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   317→   317→          <Card>
+   318→   318→            <CardHeader className="pb-3">
+   319→   319→              <CardTitle className="text-base flex items-center gap-2">
+   320→   320→                <BarChart3 className="w-4 h-4 text-primary" />
+   321→   321→                Project Progress
+   322→   322→              </CardTitle>
+   323→   323→              <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
+   324→   324→            </CardHeader>
+   325→   325→            <CardContent>
+   326→   326→              <div className="space-y-5">
+   327→   327→                {projects.map((project) => {
+   328→   328→                  const todo = project.taskStats?.todo || 0
+   329→   329→                  const inProgress = project.taskStats?.in_progress || 0
+   330→   330→                  const inReview = project.taskStats?.in_review || 0
+   331→   331→                  const completed = project.taskStats?.done || 0
+   332→   332→                  const total = todo + inProgress + inReview + completed
+   333→   333→                  if (total === 0) return null
+   334→   334→
+   335→   335→                  const todoPct = Math.round((todo / total) * 100)
+   336→   336→                  const inProgressPct = Math.round((inProgress / total) * 100)
+   337→   337→                  const inReviewPct = Math.round((inReview / total) * 100)
+   338→   338→                  const completedPct = Math.round((completed / total) * 100)
+   339→   339→
+   340→   340→                  return (
+   341→   341→                    <div key={project.id} className="space-y-2.5">
+   342→   342→                      <div className="flex items-center justify-between">
+   343→   343→                        <div className="flex items-center gap-2">
+   344→   344→                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
+   345→   345→                          <span className="text-sm font-medium">{project.name}</span>
+   346→   346→                        </div>
+   347→   347→                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{completedPct}%</span>
+   348→   348→                      </div>
+   349→   349→                      {/* Stacked progress bar */}
+   350→   350→                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+   351→   351→                        {todo > 0 && (
+   352→   352→                          <div
+   353→   353→                            className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+   354→   354→                            style={{ width: `${todoPct}%` }}
+   355→   355→                            title={`Not Started: ${todo}`}
+   356→   356→                          />
+   357→   357→                        )}
+   358→   358→                        {inProgress > 0 && (
+   359→   359→                          <div
+   360→   360→                            className="bg-amber-500 transition-all duration-500"
+   361→   361→                            style={{ width: `${inProgressPct}%` }}
+   362→   362→                            title={`In Progress: ${inProgress}`}
+   363→   363→                          />
+   364→   364→                        )}
+   365→   365→                        {inReview > 0 && (
+   366→   366→                          <div
+   367→   367→                            className="bg-blue-500 transition-all duration-500"
+   368→   368→                            style={{ width: `${inReviewPct}%` }}
+   369→   369→                            title={`In Review: ${inReview}`}
+   370→   370→                          />
+   371→   371→                        )}
+   372→   372→                        {completed > 0 && (
+   373→   373→                          <div
+   374→   374→                            className="bg-emerald-500 transition-all duration-500"
+   375→   375→                            style={{ width: `${completedPct}%` }}
+   376→   376→                            title={`Completed: ${completed}`}
+   377→   377→                          />
+   378→   378→                        )}
+   379→   379→                      </div>
+   380→   380→                      {/* Legend */}
+   381→   381→                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   382→   382→                        <span className="flex items-center gap-1.5">
+   383→   383→                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 dark:bg-slate-500" />
+   384→   384→                          Not Started ({todo})
+   385→   385→                        </span>
+   386→   386→                        <span className="flex items-center gap-1.5">
+   387→   387→                          <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
+   388→   388→                          In Progress ({inProgress})
+   389→   389→                        </span>
+   390→   390→                        <span className="flex items-center gap-1.5">
+   391→   391→                          <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+   392→   392→                          In Review ({inReview})
+   393→   393→                        </span>
+   394→   394→                        <span className="flex items-center gap-1.5">
+   395→   395→                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+   396→   396→                          Completed ({completed})
+   397→   397→                        </span>
+   398→   398→                      </div>
+   399→   399→                    </div>
+   400→   400→                  )
+   401→   401→                })}
+   402→   402→              </div>
+   403→   403→            </CardContent>
+   404→   404→          </Card>
+   405→   405→        </motion.div>
+   406→   406→      )}
+   407→   407→
+   408→   408→      {projects.length === 0 ? (
+   409→   409→        <EmptyState
+   410→   410→          icon={FolderKanban}
+   411→   411→          title="No active projects"
+   412→   412→          description="You don't have any active projects yet."
+   413→   413→        />
+   414→   414→      ) : (
+   415→   415→        <>
+   416→   416→          {/* ─── Project Cards ──────────────────────────────────── */}
+   417→   417→          <div className="space-y-4">
+   418→   418→            {projects.map((project, i) => {
+   419→   419→              const doneTasks = project.taskStats?.done || 0
+   420→   420→              const totalT = project._count?.tasks || 0
+   421→   421→              const pct = project.progress ?? 0
+   422→   422→              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+   423→   423→
+   424→   424→              // Compute progress bar gradient colors
+   425→   425→              const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
+   426→   426→
+   427→   427→              // Files for this project only
+   428→   428→              const projectFiles = uploadedFiles.filter(f => f.projectId === project.id)
+   429→   429→
+   430→   430→              return (
+   431→   431→                <motion.div
+   432→   432→                  key={project.id}
+   433→   433→                  initial={{ opacity: 0, y: 12 }}
+   434→   434→                  animate={{ opacity: 1, y: 0 }}
+   435→   435→                  transition={{ delay: i * 0.05 }}
+   436→   436→                >
+   437→   437→                  <Card
+   438→   438→                    className="hover:shadow-md transition-all border-l-4"
+   439→   439→                    style={{ borderLeftColor: project.color }}
+   440→   440→                  >
+   441→   441→                    <CardContent className="p-4 md:p-5">
+   442→   442→                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   443→   443→                        <div className="min-w-0 flex-1">
+   444→   444→                          <div className="flex items-center gap-2 mb-1">
+   445→   445→                            <h3 className="font-semibold text-base truncate">{project.name}</h3>
+   446→   446→                            <PriorityBadge priority={project.priority} />
+   447→   447→                          </div>
+   448→   448→                          <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+   449→   449→                        </div>
+   450→   450→                        <div className="flex items-center gap-2 shrink-0 text-sm flex-wrap">
+   451→   451→                          {project.dueDate && (
+   452→   452→                            <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+   453→   453→                              <Calendar className="w-3.5 h-3.5" />
+   454→   454→                              {formatDate(project.dueDate)}
+   455→   455→                            </span>
+   456→   456→                          )}
+   457→   457→                          <span className="text-muted-foreground flex items-center gap-1">
+   458→   458→                            <Users className="w-3.5 h-3.5" />
+   459→   459→                            {project._count?.members || 0}
+   460→   460→                          </span>
+   461→   461→                          <Button
+   462→   462→                            size="sm"
+   463→   463→                            variant="outline"
+   464→   464→                            className="h-7 gap-1.5 text-xs"
+   465→   465→                            onClick={(e) => { e.stopPropagation(); openUploadDialog(project.id) }}
+   466→   466→                          >
+   467→   467→                            <Upload className="w-3.5 h-3.5" />
+   468→   468→                            Upload Files
+   469→   469→                          </Button>
+   470→   470→                        </div>
+   471→   471→                      </div>
+   472→   472→
+   473→   473→                      {/* Progress bar with percentage */}
+   474→   474→                      <div className="mt-3 space-y-1">
+   475→   475→                        <div className="flex items-center justify-between text-xs">
+   476→   476→                          <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
+   477→   477→                          <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+   478→   478→                        </div>
+   479→   479→                        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-primary/20">
+   480→   480→                          <div
+   481→   481→                            className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
+   482→   482→                            style={{
+   483→   483→                              width: `${pct}%`,
+   484→   484→                              background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+   485→   485→                            }}
+   486→   486→                          />
+   487→   487→                        </div>
+   488→   488→                      </div>
+   489→   489→
+   490→   490→                      {/* Per-project uploaded files */}
+   491→   491→                      {projectFiles.length > 0 && (
+   492→   492→                        <div className="mt-4 pt-3 border-t">
+   493→   493→                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+   494→   494→                            Files ({projectFiles.length})
+   495→   495→                          </p>
+   496→   496→                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+   497→   497→                            {projectFiles.map((file, idx) => {
+   498→   498→                              const globalIdx = uploadedFiles.indexOf(file)
+   499→   499→                              return (
+   500→   500→                                <motion.div
+   501→   501→                                  key={file.filename}
+   502→   502→                                  initial={{ opacity: 0, x: -8 }}
+   503→   503→                                  animate={{ opacity: 1, x: 0 }}
+   504→   504→                                  className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/30 group"
+   505→   505→                                >
+   506→   506→                                  <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+   507→   507→                                    {getFileIcon(file.type)}
+   508→   508→                                  </div>
+   509→   509→                                  <div className="flex-1 min-w-0">
+   510→   510→                                    <p className="text-xs font-medium truncate">{file.originalName}</p>
+   511→   511→                                    <p className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</p>
+   512→   512→                                  </div>
+   513→   513→                                  <a
+   514→   514→                                    href={file.url}
+   515→   515→                                    download={file.originalName}
+   516→   516→                                    className="p-1 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+   517→   517→                                    onClick={(e) => e.stopPropagation()}
+   518→   518→                                  >
+   519→   519→                                    <Download className="w-3 h-3 text-muted-foreground" />
+   520→   520→                                  </a>
+   521→   521→                                  <button
+   522→   522→                                    onClick={(e) => { e.stopPropagation(); deleteUploadedFile(globalIdx) }}
+   523→   523→                                    className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+   524→   524→                                  >
+   525→   525→                                    <Trash2 className="w-3 h-3 text-red-500" />
+   526→   526→                                  </button>
+   527→   527→                                </motion.div>
+   528→   528→                              )
+   529→   529→                            })}
+   530→   530→                          </div>
+   531→   531→                        </div>
+   532→   532→                      )}
+   533→   533→                    </CardContent>
+   534→   534→                  </Card>
+   535→   535→                </motion.div>
+   536→   536→              )
+   537→   537→            })}
+   538→   538→          </div>
+   539→   539→        </>
+   540→   540→      )}
+   541→   541→
+   542→   542→    </div>
+   543→   543→  )
+   544→   544→}
+   545→   545→
+   546→   546→// ═══════════════════════════════════════════════════════════════════
+   547→   547→// CLIENT MESSAGES
+   548→   548→// ═══════════════════════════════════════════════════════════════════
+   549→   549→export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesPanel'
+   550→   550→
+   551→   551→// ═══════════════════════════════════════════════════════════════════
+   552→   552→// CLIENT PROFILE
+   553→   553→// ═══════════════════════════════════════════════════════════════════
+   554→   554→export function ClientProfile() {
+   555→   555→  const { user, updateUser } = useAuthStore()
+   556→   556→  const [loading, setLoading] = useState(true)
+   557→   557→  const [saving, setSaving] = useState(false)
+   558→   558→  const [savingPassword, setSavingPassword] = useState(false)
+   559→   559→
+   560→   560→  const [name, setName] = useState('')
+   561→   561→  const [email, setEmail] = useState('')
+   562→   562→  const [phone, setPhone] = useState('')
+   563→   563→  const [company, setCompany] = useState('')
+   564→   564→
+   565→   565→  const [currentPassword, setCurrentPassword] = useState('')
+   566→   566→  const [newPassword, setNewPassword] = useState('')
+   567→   567→  const [confirmPassword, setConfirmPassword] = useState('')
+   568→   568→
+   569→   569→  useEffect(() => {
+   570→   570→    if (!user?.id) return
+   571→   571→    const fetchProfile = async () => {
+   572→   572→      try {
+   573→   573→        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+   574→   574→        const data = await res.json()
+   575→   575→        if (data.user) {
+   576→   576→          setName(data.user.name || '')
+   577→   577→          setEmail(data.user.email || '')
+   578→   578→          setPhone(data.user.phone || '')
+   579→   579→          setCompany(data.user.company || '')
+   580→   580→        }
+   581→   581→      } catch {
+   582→   582→        toast.error('Failed to load profile')
+   583→   583→      } finally {
+   584→   584→        setLoading(false)
+   585→   585→      }
+   586→   586→    }
+   587→   587→    fetchProfile()
+   588→   588→  }, [user?.id])
+   589→   589→
+   590→   590→  const saveProfile = async () => {
+   591→   591→    if (!user?.id) return
+   592→   592→    setSaving(true)
+   593→   593→    try {
+   594→   594→      const res = await fetch('/api/user/profile', {
+   595→   595→        method: 'PATCH',
+   596→   596→        headers: { 'Content-Type': 'application/json' },
+   597→   597→        body: JSON.stringify({ userId: user.id, name, email, phone, company })
+   598→   598→      })
+   599→   599→      if (!res.ok) {
+   600→   600→        const data = await res.json()
+   601→   601→        throw new Error(data.error || 'Failed')
+   602→   602→      }
+   603→   603→      const data = await res.json()
+   604→   604→      toast.success('Profile updated successfully')
+   605→   605→      // Update user in store
+   606→   606→      if (data.user && user) {
+   607→   607→        updateUser({ name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+   608→   608→      }
+   609→   609→    } catch (e: unknown) {
+   610→   610→      const msg = e instanceof Error ? e.message : 'Failed to update profile'
+   611→   611→      toast.error(msg)
+   612→   612→    } finally {
+   613→   613→      setSaving(false)
+   614→   614→    }
+   615→   615→  }
+   616→   616→
+   617→   617→  const changePassword = async () => {
+   618→   618→    if (!user?.id) return
+   619→   619→    if (!currentPassword || !newPassword || !confirmPassword) {
+   620→   620→      toast.error('Please fill in all password fields')
+   621→   621→      return
+   622→   622→    }
+   623→   623→    if (newPassword !== confirmPassword) {
+   624→   624→      toast.error('New passwords do not match')
+   625→   625→      return
+   626→   626→    }
+   627→   627→    if (newPassword.length < 6) {
+   628→   628→      toast.error('Password must be at least 6 characters')
+   629→   629→      return
+   630→   630→    }
+   631→   631→    setSavingPassword(true)
+   632→   632→    try {
+   633→   633→      const res = await fetch('/api/user/profile', {
+   634→   634→        method: 'PATCH',
+   635→   635→        headers: { 'Content-Type': 'application/json' },
+   636→   636→        body: JSON.stringify({
+   637→   637→          userId: user.id,
+   638→   638→          currentPassword,
+   639→   639→          newPassword
+   640→   640→        })
+   641→   641→      })
+   642→   642→      if (!res.ok) {
+   643→   643→        const data = await res.json()
+   644→   644→        throw new Error(data.error || 'Failed')
+   645→   645→      }
+   646→   646→      toast.success('Password changed successfully')
+   647→   647→      setCurrentPassword('')
+   648→   648→      setNewPassword('')
+   649→   649→      setConfirmPassword('')
+   650→   650→    } catch (e: unknown) {
+   651→   651→      const msg = e instanceof Error ? e.message : 'Failed to change password'
+   652→   652→      toast.error(msg)
+   653→   653→    } finally {
+   654→   654→      setSavingPassword(false)
+   655→   655→    }
+   656→   656→  }
+   657→   657→
+   658→   658→  if (loading) return <PageSkeleton />
+   659→   659→
+   660→   660→  return (
+   661→   661→    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
+   662→   662→      <div className="flex items-center gap-3">
+   663→   663→        <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+   664→   664→          <UserCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+   665→   665→        </div>
+   666→   666→        <div>
+   667→   667→          <h1 className="text-2xl font-bold">Profile Settings</h1>
+   668→   668→          <p className="text-sm text-muted-foreground">Manage your account information</p>
+   669→   669→        </div>
+   670→   670→      </div>
+   671→   671→
+   672→   672→      {/* Profile Card */}
+   673→   673→      <motion.div {...fadeSlide}>
+   674→   674→        <Card>
+   675→   675→          <CardHeader>
+   676→   676→            <div className="flex items-center justify-between">
+   677→   677→              <CardTitle className="text-lg">Personal Information</CardTitle>
+   678→   678→              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+   679→   679→                Client
+   680→   680→              </span>
+   681→   681→            </div>
+   682→   682→            {user?.createdAt && (
+   683→   683→              <p className="text-sm text-muted-foreground">
+   684→   684→                Member since {formatDate(user.createdAt)}
+   685→   685→              </p>
+   686→   686→            )}
+   687→   687→          </CardHeader>
+   688→   688→          <CardContent className="space-y-4">
+   689→   689→            <div className="space-y-2">
+   690→   690→              <Label htmlFor="profile-name">Full Name</Label>
+   691→   691→              <Input
+   692→   692→                id="profile-name"
+   693→   693→                value={name}
+   694→   694→                onChange={e => setName(e.target.value)}
+   695→   695→                placeholder="Your full name"
+   696→   696→              />
+   697→   697→            </div>
+   698→   698→            <div className="space-y-2">
+   699→   699→              <Label htmlFor="profile-email">Email Address</Label>
+   700→   700→              <Input
+   701→   701→                id="profile-email"
+   702→   702→                type="email"
+   703→   703→                value={email}
+   704→   704→                onChange={e => setEmail(e.target.value)}
+   705→   705→                placeholder="your@email.com"
+   706→   706→              />
+   707→   707→            </div>
+   708→   708→            <div className="space-y-2">
+   709→   709→              <Label htmlFor="profile-phone">Phone Number</Label>
+   710→   710→              <Input
+   711→   711→                id="profile-phone"
+   712→   712→                type="tel"
+   713→   713→                value={phone}
+   714→   714→                onChange={e => setPhone(e.target.value)}
+   715→   715→                placeholder="+1 (555) 000-0000"
+   716→   716→              />
+   717→   717→            </div>
+   718→   718→            <div className="space-y-2">
+   719→   719→              <Label htmlFor="profile-company">Company</Label>
+   720→   720→              <Input
+   721→   721→                id="profile-company"
+   722→   722→                value={company}
+   723→   723→                onChange={e => setCompany(e.target.value)}
+   724→   724→                placeholder="Your company name"
+   725→   725→              />
+   726→   726→            </div>
+   727→   727→            <div className="pt-2">
+   728→   728→              <Button onClick={saveProfile} disabled={saving} className="w-full sm:w-auto">
+   729→   729→                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+   730→   730→                Save Changes
+   731→   731→              </Button>
+   732→   732→            </div>
+   733→   733→          </CardContent>
+   734→   734→        </Card>
+   735→   735→      </motion.div>
+   736→   736→
+   737→   737→      {/* Change Password */}
+   738→   738→      <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   739→   739→        <Card>
+   740→   740→          <CardHeader>
+   741→   741→            <CardTitle className="text-lg flex items-center gap-2">
+   742→   742→              <Shield className="w-5 h-5 text-muted-foreground" />
+   743→   743→              Change Password
+   744→   744→            </CardTitle>
+   745→   745→            <p className="text-sm text-muted-foreground">
+   746→   746→              Update your password to keep your account secure
+   747→   747→            </p>
+   748→   748→          </CardHeader>
+   749→   749→          <CardContent className="space-y-4">
+   750→   750→            <div className="space-y-2">
+   751→   751→              <Label htmlFor="current-password">Current Password</Label>
+   752→   752→              <div className="relative">
+   753→   753→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   754→   754→                <Input
+   755→   755→                  id="current-password"
+   756→   756→                  type="password"
+   757→   757→                  value={currentPassword}
+   758→   758→                  onChange={e => setCurrentPassword(e.target.value)}
+   759→   759→                  placeholder="Enter current password"
+   760→   760→                  className="pl-9"
+   761→   761→                />
+   762→   762→              </div>
+   763→   763→            </div>
+   764→   764→            <div className="space-y-2">
+   765→   765→              <Label htmlFor="new-password">New Password</Label>
+   766→   766→              <div className="relative">
+   767→   767→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   768→   768→                <Input
+   769→   769→                  id="new-password"
+   770→   770→                  type="password"
+   771→   771→                  value={newPassword}
+   772→   772→                  onChange={e => setNewPassword(e.target.value)}
+   773→   773→                  placeholder="Enter new password"
+   774→   774→                  className="pl-9"
+   775→   775→                />
+   776→   776→              </div>
+   777→   777→            </div>
+   778→   778→            <div className="space-y-2">
+   779→   779→              <Label htmlFor="confirm-password">Confirm New Password</Label>
+   780→   780→              <div className="relative">
+   781→   781→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   782→   782→                <Input
+   783→   783→                  id="confirm-password"
+   784→   784→                  type="password"
+   785→   785→                  value={confirmPassword}
+   786→   786→                  onChange={e => setConfirmPassword(e.target.value)}
+   787→   787→                  placeholder="Confirm new password"
+   788→   788→                  className="pl-9"
+   789→   789→                />
+   790→   790→              </div>
+   791→   791→            </div>
+   792→   792→            <div className="pt-2">
+   793→   793→              <Button onClick={changePassword} disabled={savingPassword} variant="outline" className="w-full sm:w-auto">
+   794→   794→                {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+   795→   795→                Change Password
+   796→   796→              </Button>
+   797→   797→            </div>
+   798→   798→          </CardContent>
+   799→   799→        </Card>
+   800→   800→      </motion.div>
+   801→   801→    </div>
+   802→   802→  )
+   803→   803→}

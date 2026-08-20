@@ -1490,7 +1490,7 @@ export function AdminProjects() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {form.dueDate ? format(form.dueDate, 'MMM d, yyyy') : 'Pick a date'}
+                      {form.dueDate ? format(form.dueDate, 'MMM dd, yyyy') : 'Pick a date'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -2008,7 +2008,7 @@ export function AdminTasks() {
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-fit justify-start text-left font-normal h-9">
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {editDueDate ? format(editDueDate, 'MMM d, yyyy') : 'Set due date'}
+                          {editDueDate ? format(editDueDate, 'MMM dd, yyyy') : 'Set due date'}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -3507,7 +3507,7 @@ export function AdminTimeTracking() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateFrom && 'text-muted-foreground')}>
                       <CalendarIcon className="h-3.5 w-3.5" />
-                      {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From date'}
+                      {customDateFrom ? format(customDateFrom, 'MMM dd, yyyy') : 'From date'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -3527,7 +3527,7 @@ export function AdminTimeTracking() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateTo && 'text-muted-foreground')}>
                       <CalendarIcon className="h-3.5 w-3.5" />
-                      {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To date'}
+                      {customDateTo ? format(customDateTo, 'MMM dd, yyyy') : 'To date'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">

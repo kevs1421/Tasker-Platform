@@ -33,7 +33,10 @@ export function getStatusConfig(status: string) {
 }
 
 export function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const d = new Date(dateStr)
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${months[d.getMonth()]} ${day}, ${d.getFullYear()}`
 }
 
 export function formatRelativeTime(dateStr: string) {

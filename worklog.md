@@ -1394,3 +1394,39 @@ Stage Summary:
 - Modified /home/z/my-project/src/features/admin-dashboard.tsx — completely rewrote submissions review dialog (lines 686-847)
 - Data now organized by onboarding step with proper icons and labels
 - Image previews for uploaded logos, document cards for PDFs/DOCs
+---
+Task ID: kanban-dnd-fix
+Agent: main
+Task: Fix Kanban dashboard - add drag-and-drop for task cards between status columns, remove ordinal indicators from dates
+
+Work Log:
+- Installed @dnd-kit/core@6.3.1, @dnd-kit/sortable@10.0.0, @dnd-kit/utilities@3.2.2
+- Added dnd-kit imports (DndContext, DragOverlay, closestCorners, PointerSensor, KeyboardSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, DragOverEvent, SortableContext, verticalListSortingStrategy, useSortable, CSS)
+- Added GripVertical icon import from lucide-react
+- Added useMemo to React imports
+- Created SortableTaskCard component (~160 lines) with useSortable hook, drag handle (GripVertical), tags, title, priority badge, due date (MMM dd format), assignee popover with toggle, comment count
+- Created DragOverlayCard component showing a floating card preview during drag
+- Added DnD state to TeamTasks: activeTask, dragOverColumn, sensors, columnTaskIds (useMemo)
+- Implemented handleDragStart (sets active task for overlay)
+- Implemented handleDragOver (tracks which column is being hovered for visual feedback)
+- Implemented handleDragEnd: detects target status column, does optimistic UI update, calls PATCH /api/tasks/{id} with new status, reverts on error, shows toast
+- Added training role check in handleDragEnd (training users can't move tasks)
+- Replaced old board view (static cards with motion.div) with DndContext wrapping 4-column grid
+- Each column wrapped in SortableContext with verticalListSortingStrategy
+- Columns show 'Drop tasks here' dashed border when empty
+- Active column gets ring-2 ring-primary/30 bg-primary/5 highlight during drag
+- Fixed date ordinal indicators: changed all 'MMM d' format strings to 'MMM dd' across:
+  - src/features/team-dashboard.tsx (6 instances)
+  - src/features/admin-dashboard.tsx (4 instances)
+  - src/features/route-guard.tsx formatDate helper (replaced toLocaleDateString with manual formatting)
+- Verified: bun run lint passes, bun run build succeeds
+
+Stage Summary:
+- Kanban board now supports drag-and-drop between status columns (To Do, In Progress, In Review, Done)
+- Drag handle (GripVertical icon) on each card for clear affordance
+- Optimistic UI updates with error rollback
+- Visual drag overlay card follows cursor during drag
+- Target column highlights when dragging over it
+- Empty columns show 'Drop tasks here' placeholder
+- All date displays use 'MMM dd' format (e.g., 'Jan 05') instead of ordinal format ('Jan 5th')
+- Training users are blocked from moving tasks

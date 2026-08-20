@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { Project, Task, Comment, User } from '@/types'
@@ -56,6 +56,22 @@ import { toast } from 'sonner'
 // framer-motion
 import { motion, AnimatePresence } from 'framer-motion'
 
+// dnd-kit
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+  DragOverEvent,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
 // lucide-react
 import {
   Plus, Trash2, LayoutGrid, List, CheckCircle2,
@@ -64,7 +80,7 @@ import {
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Lock, Shield,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
-  Save, RotateCcw, Timer,
+  Save, RotateCcw, Timer, GripVertical,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -552,6 +568,197 @@ export function TeamProjects() {
   )
 }
 
+// ─── Sortable Task Card for DnD ───────────────────────────────
+
+type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
+
+function SortableTaskCard({
+  task,
+  onOpen,
+  assignableUsers,
+  assigneePopoverTaskId,
+  setAssigneePopoverTaskId,
+  assigneeLoading,
+  onToggleAssignee,
+  isTraining,
+}: {
+  task: Task
+  onOpen: (task: Task) => void
+  assignableUsers: User[]
+  assigneePopoverTaskId: string | null
+  setAssigneePopoverTaskId: (id: string | null) => void
+  assigneeLoading: string | null
+  onToggleAssignee: (task: Task, userId: string) => void
+  isTraining: boolean
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const pConf = getPriorityConfig(task.priority)
+  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+  const tags = task.tags ? task.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
+  const commentCount = task._count?.comments || 0
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card
+        className={cn(
+          'p-3 cursor-pointer hover:shadow-md transition-all border-border/50 hover:border-border',
+          isDragging && 'opacity-50 shadow-lg rotate-2 scale-105'
+        )}
+        onClick={() => !isDragging && onOpen(task)}
+      >
+        <div className="space-y-2.5">
+          {/* Drag handle + Tags */}
+          <div className="flex items-start justify-between gap-1">
+            <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+              {tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-500">
+                  {tag}
+                </Badge>
+              ))}
+              {tags.length > 3 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-400">
+                  +{tags.length - 3}
+                </Badge>
+              )}
+            </div>
+            <button
+              className="shrink-0 mt-0.5 p-0.5 rounded hover:bg-muted cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+              {...attributes}
+              {...listeners}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Title */}
+          <h4 className="text-sm font-medium leading-tight">{task.title}</h4>
+
+          {/* Meta row */}
+          <div className="flex items-center justify-between">
+            <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>
+              {pConf.label}
+            </Badge>
+            {task.dueDate && (
+              <span className={cn(
+                'text-[10px] flex items-center gap-1',
+                isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
+                  ? 'text-red-500' : 'text-muted-foreground',
+              )}>
+                <CalendarIcon className="h-3 w-3" />
+                {format(parseISO(task.dueDate), 'MMM dd')}
+              </span>
+            )}
+          </div>
+
+          {/* Bottom row: Assignees + Comments */}
+          <div className="flex items-center justify-between pt-1">
+            <Popover
+              open={assigneePopoverTaskId === task.id}
+              onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
+            >
+              <PopoverTrigger asChild>
+                <button
+                  className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <AvatarStack users={assignees} max={2} />
+                  <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start" side="bottom">
+                <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
+                <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                  {assignableUsers.map((u) => {
+                    const isAssigned = assignees.some((a) => a.id === u.id)
+                    const isLoading = assigneeLoading === u.id
+                    return (
+                      <button
+                        key={u.id}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
+                          isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                        )}
+                        onClick={(e) => { e.stopPropagation(); onToggleAssignee(task, u.id) }}
+                        disabled={isLoading}
+                      >
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
+                            {getInitials(u.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
+                        <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
+                        {isLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : isAssigned ? (
+                      <Check className="h-3.5 w-3.5 text-primary" />
+                    ) : (
+                      <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                    )}
+                  </button>
+                    )
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <div className="flex items-center gap-2">
+              {commentCount > 0 && (
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <MessageCircle className="h-3 w-3" />
+                  {commentCount}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ─── Drag Overlay Card ─────────────────────────────────────
+
+function DragOverlayCard({ task }: { task: Task }) {
+  const pConf = getPriorityConfig(task.priority)
+  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
+  return (
+    <Card className="p-3 shadow-xl border-primary/30 w-72 rotate-3">
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-1">
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+          <h4 className="text-sm font-medium leading-tight">{task.title}</h4>
+        </div>
+        <div className="flex items-center justify-between">
+          <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>{pConf.label}</Badge>
+          {task.dueDate && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <CalendarIcon className="h-3 w-3" />
+              {format(parseISO(task.dueDate), 'MMM dd')}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <AvatarStack users={assignees} max={2} />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // ─── TeamTasks ──────────────────────────────────────────────
 
 export function TeamTasks() {
@@ -604,6 +811,103 @@ export function TeamTasks() {
       || editPriority !== detailTask.priority
       || (editDueDate ? editDueDate.toISOString() : null) !== (detailTask.dueDate || null)
     : false
+
+  // DnD state
+  const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  )
+
+  // Build column task IDs for sortable
+  const columnTaskIds = useMemo(() => {
+    const map: Record<TaskStatus, string[]> = { todo: [], in_progress: [], in_review: [], done: [] }
+    for (const t of tasks) {
+      map[t.status as TaskStatus]?.push(t.id)
+    }
+    return map
+  }, [tasks])
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = tasks.find((t) => t.id === event.active.id)
+    if (task) setActiveTask(task)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { over } = event
+    if (!over) return
+    // Determine which column the item is being dragged over
+    const overId = over.id as string
+    const overTask = tasks.find((t) => t.id === overId)
+    if (overTask) {
+      setDragOverColumn(overTask.status as TaskStatus)
+    }
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveTask(null)
+    setDragOverColumn(null)
+
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    const activeTaskItem = tasks.find((t) => t.id === activeId)
+    if (!activeTaskItem) return
+
+    // Determine the target status column
+    let targetStatus: TaskStatus | null = null
+    const overTask = tasks.find((t) => t.id === overId)
+    if (overTask) {
+      targetStatus = overTask.status as TaskStatus
+    } else {
+      // Check if dropped on a column (column IDs are the status keys)
+      const possibleStatus = overId as TaskStatus
+      if (STATUS_COLUMNS.some((c) => c.key === possibleStatus)) {
+        targetStatus = possibleStatus
+      }
+    }
+
+    if (!targetStatus || activeTaskItem.status === targetStatus) return
+
+    // Training users cannot move tasks
+    if (isTraining) {
+      toast.error('Training users cannot move tasks')
+      return
+    }
+
+    // Optimistic UI update
+    setTasks((prev) =>
+      prev.map((t) => (t.id === activeId ? { ...t, status: targetStatus! } : t))
+    )
+
+    try {
+      const res = await fetch(`/api/tasks/${activeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus, updatedBy: user?.id }),
+      })
+      if (!res.ok) {
+        // Revert on error
+        setTasks((prev) =>
+          prev.map((t) => (t.id === activeId ? { ...t, status: activeTaskItem.status } : t))
+        )
+        toast.error('Failed to move task')
+      } else {
+        toast.success(`Moved to ${STATUS_COLUMNS.find((c) => c.key === targetStatus)?.label}`)
+      }
+    } catch {
+      // Revert on error
+      setTasks((prev) =>
+        prev.map((t) => (t.id === activeId ? { ...t, status: activeTaskItem.status } : t))
+      )
+      toast.error('Failed to move task')
+    }
+  }
 
   // Inline assignee management on task cards
   const [assigneePopoverTaskId, setAssigneePopoverTaskId] = useState<string | null>(null)
@@ -1016,151 +1320,70 @@ export function TeamTasks() {
         </div>
       </div>
 
-      {/* Board View */}
+      {/* Board View with DnD */}
       {viewMode === 'board' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {STATUS_COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => t.status === col.key)
-            return (
-              <div key={col.key} className="space-y-3">
-                <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
-                  <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
-                  <span className="text-sm font-semibold">{col.label}</span>
-                  <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center">
-                    {colTasks.length}
-                  </Badge>
-                </div>
-                <ScrollArea className="max-h-[calc(100vh-280px)]">
-                  <div className="space-y-2 pb-2">
-                    {colTasks.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-muted-foreground">No tasks</div>
-                    ) : (
-                      colTasks.map((task, idx) => {
-                        const pConf = getPriorityConfig(task.priority)
-                        const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean) as User[]
-                        const tags = task.tags ? task.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
-                        const commentCount = task._count?.comments || 0
-
-                        return (
-                          <motion.div
-                            key={task.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx * 0.03 }}
-                          >
-                            <Card
-                              className="p-3 cursor-pointer hover:shadow-md transition-all border-border/50 hover:border-border"
-                              onClick={() => openDetail(task)}
-                            >
-                              <div className="space-y-2.5">
-                                {/* Tags */}
-                                {tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {tags.slice(0, 3).map((tag) => (
-                                      <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-500">
-                                        {tag}
-                                      </Badge>
-                                    ))}
-                                    {tags.length > 3 && (
-                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-slate-400">
-                                        +{tags.length - 3}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Title */}
-                                <h4 className="text-sm font-medium leading-tight">{task.title}</h4>
-
-                                {/* Meta row */}
-                                <div className="flex items-center justify-between">
-                                  <Badge className={cn('text-[10px] px-1.5 py-0 h-4', pConf.color)}>
-                                    {pConf.label}
-                                  </Badge>
-                                  {task.dueDate && (
-                                    <span className={cn(
-                                      'text-[10px] flex items-center gap-1',
-                                      isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== 'done'
-                                        ? 'text-red-500' : 'text-muted-foreground',
-                                    )}>
-                                      <CalendarIcon className="h-3 w-3" />
-                                      {format(parseISO(task.dueDate), 'MMM d')}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Bottom row: Assignees + Comments */}
-                                <div className="flex items-center justify-between pt-1">
-                                  <Popover
-                                    open={assigneePopoverTaskId === task.id}
-                                    onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
-                                  >
-                                    <PopoverTrigger asChild>
-                                      <button
-                                        className="flex items-center gap-1 hover:opacity-80 transition-opacity"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <AvatarStack users={assignees} max={2} />
-                                        <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
-                                      </button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-56 p-2" align="start" side="bottom">
-                                      <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5">Assign to</p>
-                                      <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                                        {assignableUsers.map((u) => {
-                                          const isAssigned = assignees.some((a) => a.id === u.id)
-                                          const isLoading = assigneeLoading === u.id
-                                          return (
-                                            <button
-                                              key={u.id}
-                                              className={cn(
-                                                'w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors text-left',
-                                                isAssigned ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
-                                              )}
-                                              onClick={(e) => { e.stopPropagation(); handleToggleAssignee(task, u.id) }}
-                                              disabled={isLoading}
-                                            >
-                                              <Avatar className="h-6 w-6">
-                                                <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                                                  {getInitials(u.name)}
-                                                </AvatarFallback>
-                                              </Avatar>
-                                              <span className="flex-1 truncate text-xs font-medium">{u.name}</span>
-                                              <span className="text-[10px] text-muted-foreground capitalize">{u.role}</span>
-                                              {isLoading ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                              ) : isAssigned ? (
-                                                <Check className="h-3.5 w-3.5 text-primary" />
-                                              ) : (
-                                                <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
-                                              )}
-                                            </button>
-                                          )
-                                        })}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                  <div className="flex items-center gap-2">
-                                    {commentCount > 0 && (
-                                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                        <MessageCircle className="h-3 w-3" />
-                                        {commentCount}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </Card>
-                          </motion.div>
-                        )
-                      })
-                    )}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {STATUS_COLUMNS.map((col) => {
+              const colTasks = tasks.filter((t) => t.status === col.key)
+              return (
+                <div
+                  key={col.key}
+                  id={col.key}
+                  className={cn(
+                    'space-y-3 rounded-xl p-2 transition-colors duration-200 min-h-[120px]',
+                    dragOverColumn === col.key && 'ring-2 ring-primary/30 bg-primary/5'
+                  )}
+                >
+                  <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
+                    <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
+                    <span className="text-sm font-semibold">{col.label}</span>
+                    <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center">
+                      {colTasks.length}
+                    </Badge>
                   </div>
-                </ScrollArea>
-              </div>
-            )
-          })}
-        </div>
+                  <ScrollArea className="max-h-[calc(100vh-280px)]">
+                    <SortableContext
+                      items={columnTaskIds[col.key]}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2 pb-2">
+                        {colTasks.length === 0 ? (
+                          <div className="text-center py-8 text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
+                            Drop tasks here
+                          </div>
+                        ) : (
+                          colTasks.map((task) => (
+                            <SortableTaskCard
+                              key={task.id}
+                              task={task}
+                              onOpen={openDetail}
+                              assignableUsers={assignableUsers}
+                              assigneePopoverTaskId={assigneePopoverTaskId}
+                              setAssigneePopoverTaskId={setAssigneePopoverTaskId}
+                              assigneeLoading={assigneeLoading}
+                              onToggleAssignee={handleToggleAssignee}
+                              isTraining={isTraining}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </SortableContext>
+                  </ScrollArea>
+                </div>
+              )
+            })}
+          </div>
+          <DragOverlay>
+            {activeTask && <DragOverlayCard task={activeTask} />}
+          </DragOverlay>
+        </DndContext>
       ) : (
         /* List View */
         <Card>
@@ -2217,7 +2440,7 @@ export function TeamTimeTracking() {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateFrom && 'text-muted-foreground')}>
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From date'}
+                  {customDateFrom ? format(customDateFrom, 'MMM dd, yyyy') : 'From date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -2237,7 +2460,7 @@ export function TeamTimeTracking() {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn('h-8 text-xs gap-1.5 w-[140px] justify-start text-left font-normal', !customDateTo && 'text-muted-foreground')}>
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To date'}
+                  {customDateTo ? format(customDateTo, 'MMM dd, yyyy') : 'To date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -2305,7 +2528,7 @@ export function TeamTimeTracking() {
                   <h4 className="text-sm font-semibold text-muted-foreground">
                     {isToday(parseISO(group.date))
                       ? 'Today'
-                      : format(parseISO(group.date), 'EEEE, MMM d, yyyy')}
+                      : format(parseISO(group.date), 'EEEE, MMM dd, yyyy')}
                   </h4>
                   <Separator className="flex-1" />
                   <span className="text-xs text-muted-foreground">
