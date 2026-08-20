@@ -116,12 +116,7 @@ export function ClientProjects() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Onboarding creation state
-  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false)
-  const [onboardingProjectId, setOnboardingProjectId] = useState<string>('')
-  const [onboardingTitle, setOnboardingTitle] = useState('')
-  const [onboardingDesc, setOnboardingDesc] = useState('')
-  const [onboardingSteps, setOnboardingSteps] = useState<string[]>(ONBOARDING_STEPS.map(s => s.id))
-  const [creatingOnboarding, setCreatingOnboarding] = useState(false)
+
 
   const fetchProjects = useCallback(async () => {
     if (!user?.id) return
@@ -220,55 +215,6 @@ export function ClientProjects() {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const openOnboardingDialog = (projectId: string, projectName: string) => {
-    setOnboardingProjectId(projectId)
-    setOnboardingTitle(`Onboarding - ${projectName}`)
-    setOnboardingDesc('')
-    setOnboardingSteps(ONBOARDING_STEPS.map(s => s.id))
-    setOnboardingDialogOpen(true)
-  }
-
-  const handleCreateOnboarding = async () => {
-    if (!onboardingTitle.trim() || !onboardingProjectId) return
-    setCreatingOnboarding(true)
-    try {
-      const stepsJson = JSON.stringify(
-        onboardingSteps.map(stepId => {
-          const config = ONBOARDING_STEPS.find(s => s.id === stepId)
-          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
-        })
-      )
-      const res = await fetch('/api/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: onboardingTitle.trim(),
-          description: onboardingDesc.trim() || null,
-          stepsJson,
-          projectId: onboardingProjectId,
-          clientId: user?.id || null,
-          status: 'published',
-        }),
-      })
-      if (!res.ok) {
-        const d = await res.json()
-        throw new Error(d.error || 'Failed to create')
-      }
-      toast.success('Onboarding form created successfully')
-      setOnboardingDialogOpen(false)
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding')
-    } finally {
-      setCreatingOnboarding(false)
-    }
-  }
-
-  const toggleOnboardingStep = (stepId: string) => {
-    setOnboardingSteps(prev =>
-      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId]
-    )
   }
 
   if (loading) return <PageSkeleton />
@@ -532,7 +478,7 @@ export function ClientProjects() {
                             size="sm"
                             variant="outline"
                             className="h-7 gap-1.5 text-xs"
-                            onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
+                            onClick={(e) => { e.stopPropagation(); useAuthStore.getState().setRoute({ page: 'client-dashboard', tab: 'onboarding' }) }}
                           >
                             <ClipboardCheck className="w-3.5 h-3.5" />
                             Onboarding
@@ -608,83 +554,6 @@ export function ClientProjects() {
           </div>
         </>
       )}
-
-      {/* Create Onboarding Dialog */}
-      <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5 text-primary" />
-              Create Onboarding
-            </DialogTitle>
-            <DialogDescription>Create an onboarding form for this project</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                placeholder="Onboarding form title"
-                value={onboardingTitle}
-                onChange={(e) => setOnboardingTitle(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Description (optional)</Label>
-              <Textarea
-                placeholder="Brief description of the onboarding..."
-                value={onboardingDesc}
-                onChange={(e) => setOnboardingDesc(e.target.value)}
-                rows={2}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Steps</Label>
-                <span className="text-xs text-muted-foreground">{onboardingSteps.length} / {ONBOARDING_STEPS.length} selected</span>
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {ONBOARDING_STEPS.map((step) => {
-                  const isSelected = onboardingSteps.includes(step.id)
-                  return (
-                    <button
-                      key={step.id}
-                      type="button"
-                      onClick={() => toggleOnboardingStep(step.id)}
-                      className={cn(
-                        'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
-                        isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                      )}
-                    >
-                      <div className={cn(
-                        'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
-                        isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
-                      )}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{step.label}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOnboardingDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleCreateOnboarding}
-              disabled={creatingOnboarding || !onboardingTitle.trim() || onboardingSteps.length === 0}
-              className="gap-2"
-            >
-              {creatingOnboarding && <Loader2 className="h-4 w-4 animate-spin" />}
-              <Plus className="h-4 w-4" />
-              Create Onboarding
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
     </div>
   )

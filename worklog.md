@@ -1336,3 +1336,19 @@ Stage Summary:
 - Files modified: src/stores/auth.ts (async hydrate, authFetch, forceLogout), src/app/page.tsx
 - Root cause: stale tokens in localStorage after session system migration
 - Fix: server-side token validation on app hydration + 401 auto-redirect
+---
+Task ID: fix-client-onboarding
+Agent: main
+Task: Fix client onboarding navigation and project progress display
+
+Work Log:
+- Diagnosed two issues: (1) Client had no projects linked via ClientProject table, (2) Onboarding button in project cards opened a 'create onboarding' dialog instead of navigating to onboarding tab
+- Linked client user (jaika) to YD Website project in ClientProject table
+- Removed all client-side onboarding creation code (state, functions, dialog) from client-dashboard.tsx since only admins should create onboarding forms
+- Changed project card 'Onboarding' button to navigate to onboarding tab via useAuthStore.getState().setRoute()
+- Verified: sidebar Onboarding click navigates correctly, form card click opens the 4-step wizard, project card Onboarding button navigates to onboarding tab
+
+Stage Summary:
+- Files modified: src/features/client-dashboard.tsx (removed create onboarding dialog, changed button to navigate)
+- Database: linked ClientProject record for jaika → YD Website
+- Root causes: empty ClientProject table, client had admin-only 'create onboarding' UI
