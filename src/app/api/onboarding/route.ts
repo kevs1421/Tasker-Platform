@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, AuthError } from '@/lib/session'
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,18 +25,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Only admins can create onboarding forms
+    await requireAdmin(request)
+
     const { title, description, stepsJson, projectId, status, clientId } = await request.json()
     if (!title || !projectId || !stepsJson) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
-
-    // If a clientId is provided (client is creating), verify they own the project
-    if (clientId) {
-      const ownership = await db.clientProject.findUnique({
-        where: { clientId_projectId: { clientId, projectId } }
-      })
-      if (!ownership) {
-        return NextResponse.json({ error: 'You do not have access to this project' }, { status: 403 })
-      }
-    }
 
     const form = await db.onboardingForm.create({
       data: {
@@ -50,5 +44,10 @@ export async function POST(request: NextRequest) {
       }
     })
     return NextResponse.json({ form }, { status: 201 })
-  } catch { return NextResponse.json({ error: 'Failed to process onboarding request' }, { status: 500 }) }
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    return NextResponse.json({ error: 'Failed to process onboarding request' }, { status: 500 })
+  }
 }

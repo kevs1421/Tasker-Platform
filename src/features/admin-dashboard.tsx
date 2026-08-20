@@ -384,7 +384,7 @@ export function AdminOnboarding() {
       )
       const res = await fetch('/api/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           title: createForm.title.trim(),
           description: createForm.description.trim() || null,
@@ -416,7 +416,7 @@ export function AdminOnboarding() {
       const notes = reviewNotes[submissionId] || ''
       const patchRes = await fetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
       })
       if (!patchRes.ok) {
@@ -444,6 +444,7 @@ export function AdminOnboarding() {
     try {
       const res = await fetch(`/api/onboarding/${formId}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       })
       if (!res.ok) throw new Error()
       toast.success(`"${formTitle}" deleted`)
@@ -478,7 +479,7 @@ export function AdminOnboarding() {
       )
       const res = await fetch(`/api/onboarding/${editFormId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           title: editForm.title.trim(),
           description: editForm.description.trim() || null,

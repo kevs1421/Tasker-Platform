@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, AuthError } from '@/lib/session'
 
 // GET /api/onboarding/:id - get form with submissions
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch { return NextResponse.json({ error: 'Failed to fetch onboarding form' }, { status: 500 }) }
 }
 
-// PATCH /api/onboarding/:id - update form or review submission
+// PATCH /api/onboarding/:id - submit response, review, or update form
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -44,21 +45,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { action, ...data } = body
 
     if (action === 'submit') {
+      // Client submits onboarding — no admin required
       const { formId, clientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
 
-      // Check if this is a new submission (formId + clientId) or updating an existing one (id matches an Onboarding record)
       let result
       const existingSubmission = await db.onboarding.findUnique({ where: { id } })
 
       if (existingSubmission) {
-        // Update existing submission
         result = await db.onboarding.update({
           where: { id },
           data: { status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || existingSubmission.responsesJson, updatedAt: new Date() },
           include: { form: true, client: { select: { id: true, name: true } } }
         })
       } else if (formId && clientId) {
-        // Create new submission (upsert to handle the unique constraint on [formId, clientId])
         result = await db.onboarding.upsert({
           where: { formId_clientId: { formId, clientId } },
           create: { formId, clientId, status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || '{}' },
@@ -73,8 +72,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ onboarding: result })
     }
 
+    // All other actions (review, update form) require admin
+    await requireAdmin(req)
+
     if (action === 'review') {
-      // Admin reviews a submission
       const { reviewStatus, reviewNotes, reviewedBy } = data
       const updated = await db.onboarding.update({
         where: { id },
@@ -113,12 +114,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     return NextResponse.json({ form })
-  } catch { return NextResponse.json({ error: 'Failed to update onboarding' }, { status: 500 }) }
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    return NextResponse.json({ error: 'Failed to update onboarding' }, { status: 500 })
+  }
 }
 
-// DELETE /api/onboarding/:id - delete onboarding form and its submissions
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// DELETE /api/onboarding/:id - delete onboarding form (admin only)
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAdmin(req)
+
     const { id } = await params
     const form = await db.onboardingForm.findUnique({
       where: { id },
@@ -129,5 +137,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await db.onboardingForm.delete({ where: { id } })
     await db.activityLog.create({ data: { action: 'onboarding_deleted', details: `Deleted onboarding form "${form.title}"` } })
     return NextResponse.json({ success: true })
-  } catch { return NextResponse.json({ error: 'Failed to delete onboarding form' }, { status: 500 }) }
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    return NextResponse.json({ error: 'Failed to delete onboarding form' }, { status: 500 })
+  }
 }
