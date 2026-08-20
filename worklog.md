@@ -1352,3 +1352,21 @@ Stage Summary:
 - Files modified: src/features/client-dashboard.tsx (removed create onboarding dialog, changed button to navigate)
 - Database: linked ClientProject record for jaika → YD Website
 - Root causes: empty ClientProject table, client had admin-only 'create onboarding' UI
+---
+Task ID: client-upload-fix
+Agent: main
+Task: Fix file upload (images, documents) on client dashboard onboarding and remove onboarding button from My Projects
+
+Work Log:
+- Diagnosed root cause: /api/upload route was missing entirely — file upload calls in both ClientProjects and ClientOnboardingWizard were hitting a 404
+- Created /api/upload/route.ts POST handler supporting images (jpg, png, gif, webp, svg, bmp, tiff), documents (pdf, doc, docx, xls, xlsx, ppt, pptx), text (txt, csv, md), and archives (zip, rar, 7z) with 10MB limit
+- Removed the 'Onboarding' button from project cards in ClientProjects component, keeping only 'Upload Files' button
+- Cleaned up unused imports (ClipboardCheck) and constants (ONBOARDING_STEPS) from client-dashboard.tsx
+- Verified with curl: image upload returns 201, PDF upload returns 201
+- Verified with browser: client user can upload files via Upload Files dialog on project cards
+- Verified with browser: client user can upload images and PDFs in onboarding wizard (Brand Assets step)
+
+Stage Summary:
+- Created /home/z/my-project/src/app/api/upload/route.ts — new upload endpoint
+- Modified /home/z/my-project/src/features/client-dashboard.tsx — removed onboarding button from project cards, cleaned imports
+- File uploads (images + documents) now work in both: My Projects upload dialog AND Onboarding wizard

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import {
   FolderKanban, UserCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  Check, ClipboardCheck, Plus,
+  Check, Plus,
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
@@ -95,13 +95,6 @@ export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboa
 // ═══════════════════════════════════════════════════════════════════
 // CLIENT PROJECTS
 // ═══════════════════════════════════════════════════════════════════
-const ONBOARDING_STEPS = [
-  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
-  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
-  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
-  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
-]
-
 export function ClientProjects() {
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<ClientProject[]>([])
@@ -473,15 +466,6 @@ export function ClientProjects() {
                           >
                             <Upload className="w-3.5 h-3.5" />
                             Upload Files
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1.5 text-xs"
-                            onClick={(e) => { e.stopPropagation(); useAuthStore.getState().setRoute({ page: 'client-dashboard', tab: 'onboarding' }) }}
-                          >
-                            <ClipboardCheck className="w-3.5 h-3.5" />
-                            Onboarding
                           </Button>
                         </div>
                       </div>
