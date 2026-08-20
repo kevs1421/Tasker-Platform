@@ -43,7 +43,8 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save, FileArchive, FileDown, Square, GraduationCap
+  KeyRound, Download, Save, FileArchive, Square, GraduationCap,
+  ImageIcon, Building2, Palette, Rocket, ExternalLink
 } from 'lucide-react'
 
 import { toast } from 'sonner'
@@ -684,24 +685,31 @@ export function AdminOnboarding() {
 
       {/* Submissions Review Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{selectedForm?.title ?? 'Form'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-amber-500" />
+              {selectedForm?.title ?? 'Form'}
+            </DialogTitle>
             <DialogDescription>
-              {selectedForm?.project ? (
-                <span className="flex items-center gap-2">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
-                  {(selectedForm.project as { name?: string }).name}
-                </span>
-              ) : 'Project'} — {selectedForm?.submissions?.length ?? 0} submissions
+              <div className="flex items-center gap-2">
+                {selectedForm?.project ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+                    {(selectedForm.project as { name?: string }).name}
+                  </span>
+                ) : 'Project'}
+                <span className="text-muted-foreground">•</span>
+                <span>{selectedForm?.submissions?.length ?? 0} submission{(selectedForm?.submissions?.length ?? 0) !== 1 ? 's' : ''}</span>
+              </div>
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 -mx-6 px-6">
-            <div className="space-y-4 py-2">
+            <div className="space-y-5 py-2">
               {selectedForm?.submissions?.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                    <FileCheck className="h-6 w-6 text-muted-foreground" />
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-3">
+                    <FileCheck className="h-7 w-7 text-muted-foreground" />
                   </div>
                   <p className="text-sm font-medium">No submissions yet</p>
                   <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
@@ -709,135 +717,162 @@ export function AdminOnboarding() {
               )}
               {selectedForm?.submissions?.map((sub) => {
                 let parsedResponses: Record<string, string> = {}
-                let parsedFiles: Record<string, { url: string; originalName: string } | null> = {}
+                let parsedFiles: Record<string, { url: string; originalName: string; filename: string; size: number; type: string } | null> = {}
                 try {
                   const raw = JSON.parse(sub.responsesJson)
                   parsedResponses = raw.responses || {}
                   parsedFiles = raw.files || {}
                 } catch { /* old format fallback */ }
 
+                const fmtSz = (b: number) => {
+                  if (b < 1024) return b + ' B'
+                  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'
+                  return (b / 1048576).toFixed(1) + ' MB'
+                }
+
+                const stepCfg = [
+                  { id: 'biz', label: 'Business Information', icon: Building2, clr: 'text-slate-600 dark:text-slate-400',
+                    fields: [{ k: 'businessName', l: 'Business Name' }, { k: 'businessEmail', l: 'Business Email' }, { k: 'businessPhone', l: 'Business Phone' }, { k: 'businessAddress', l: 'Business Address' }, { k: 'industry', l: 'Industry' }, { k: 'companySize', l: 'Company Size' }], fks: [] },
+                  { id: 'brand', label: 'Brand Assets', icon: Palette, clr: 'text-pink-600 dark:text-pink-400',
+                    fields: [{ k: 'brandColors', l: 'Brand Colors' }, { k: 'typography', l: 'Typography / Fonts' }],
+                    fks: [{ k: 'companyLogo', l: 'Company Logo', img: true }, { k: 'brandGuidelines', l: 'Brand Guidelines' }] },
+                  { id: 'kick', label: 'Project Kickoff', icon: Rocket, clr: 'text-amber-600 dark:text-amber-400',
+                    fields: [{ k: 'projectGoals', l: 'Project Goals' }, { k: 'targetAudience', l: 'Target Audience' }, { k: 'mainCompetitors', l: 'Main Competitors' }, { k: 'budgetRange', l: 'Budget Range' }, { k: 'expectedTimeline', l: 'Expected Timeline' }], fks: [] },
+                  { id: 'docs', label: 'Document Submission', icon: FileText, clr: 'text-emerald-600 dark:text-emerald-400',
+                    fields: [],
+                    fks: [{ k: 'contractForm', l: 'Contract Form' }, { k: 'paymentForm', l: 'Payment Form' }, { k: 'workOrderAgreement', l: 'Work Order Agreement' }] },
+                ]
+
                 return (
-                  <Card key={sub.id} className="border">
-                    <CardContent className="p-4 space-y-4">
+                  <div key={sub.id} className="space-y-4">
+                    {/* Client header card */}
+                    <Card className="border"><CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
+                          <Avatar className="h-10 w-10">
                             {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
-                            <AvatarFallback className="text-xs">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+                            <AvatarFallback className="text-sm font-medium">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="text-sm font-medium">{sub.client?.name ?? 'Unknown'}</p>
+                            <p className="text-sm font-semibold">{sub.client?.name ?? 'Unknown'}</p>
                             <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
                           </div>
                         </div>
-                        <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>
-                          {getOnboardingStatusLabel(sub.status)}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {sub.submittedAt && <span className="text-xs text-muted-foreground hidden sm:inline">{formatDate(sub.submittedAt)}</span>}
+                          <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>{getOnboardingStatusLabel(sub.status)}</Badge>
+                        </div>
                       </div>
-
-                      {sub.submittedAt && (
-                        <p className="text-xs text-muted-foreground">Submitted {formatDate(sub.submittedAt)}</p>
-                      )}
-
-                      {/* Download buttons */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 h-8 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            window.open(`/api/onboarding/download?submissionId=${sub.id}`, '_blank')
-                          }}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download Report
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => window.open('/api/onboarding/download?submissionId=' + sub.id, '_blank')}>
+                          <Download className="h-3.5 w-3.5" /> Download Report
                         </Button>
-                        {Object.keys(parsedFiles).filter(([_, f]) => f).length > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              window.open(`/api/onboarding/download-documents?submissionId=${sub.id}`, '_blank')
-                            }}
-                          >
-                            <FileArchive className="h-3.5 w-3.5" />
-                            Download Documents
+                        {Object.keys(parsedFiles).filter(([, f]) => f).length > 0 && (
+                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.open('/api/onboarding/download-documents?submissionId=' + sub.id, '_blank')}>
+                            <FileArchive className="h-3.5 w-3.5" /> Download All Documents
                           </Button>
                         )}
                       </div>
+                    </CardContent></Card>
 
-                      {Object.keys(parsedResponses).length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {Object.entries(parsedResponses).filter(([_, v]) => v?.trim()).map(([key, value]) => (
-                            <div key={key} className="p-2.5 rounded-lg bg-muted/50 border">
-                              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
-                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase())}
-                              </p>
-                              <p className="text-sm whitespace-pre-wrap line-clamp-3">{value}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    {/* Step-by-step organized data */}
+                    {stepCfg.map((st, si) => {
+                      const SI = st.icon
+                      const hasContent = st.fields.some(f => parsedResponses[f.k]?.trim()) || st.fks.some(f => parsedFiles[f.k])
+                      if (!hasContent) return null
+                      return (
+                        <Card key={st.id} className="border">
+                          <CardHeader className="pb-2 pt-3 px-4">
+                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                              <div className="h-7 w-7 rounded-md bg-muted flex items-center justify-center">
+                                <SI className={'h-3.5 w-3.5 ' + st.clr} />
+                              </div>
+                              <span className="flex items-center gap-2">
+                                {st.label}
+                                <span className="text-[10px] text-muted-foreground font-normal bg-muted px-1.5 py-0.5 rounded">Step {si + 1}</span>
+                              </span>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="px-4 pb-4 space-y-3">
+                            {st.fks.map((fc: { k: string; l: string; img?: boolean }) => {
+                              const f = parsedFiles[fc.k]
+                              if (!f) return null
+                              const isImg = fc.img && f.type?.startsWith('image/')
+                              return (
+                                <div key={fc.k} className="space-y-1.5">
+                                  <p className="text-xs font-medium text-muted-foreground">{fc.l}</p>
+                                  {isImg ? (
+                                    <a href={f.url} target="_blank" rel="noopener noreferrer" className="inline-block group">
+                                      <div className="w-24 h-24 rounded-lg border bg-muted/30 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-all">
+                                        <img src={f.url} alt={f.originalName} className="w-full h-full object-contain p-1" />
+                                      </div>
+                                      <div className="flex items-center gap-1.5 mt-1.5">
+                                        <ImageIcon className="h-3 w-3 text-muted-foreground" />
+                                        <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors truncate max-w-[180px]">{f.originalName}</span>
+                                        <span className="text-[10px] text-muted-foreground">({fmtSz(f.size)})</span>
+                                      </div>
+                                    </a>
+                                  ) : (
+                                    <a href={f.url} download={f.originalName} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors group">
+                                      <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                                        <FileText className="h-4 w-4 text-primary" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{f.originalName}</p>
+                                        <p className="text-[11px] text-muted-foreground">{fmtSz(f.size)} • {f.type?.split('/').pop()?.toUpperCase()}</p>
+                                      </div>
+                                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                    </a>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {st.fields.length > 0 && (
+                              <div className={cn('grid gap-2.5', st.id === 'kick' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2')}>
+                                {st.fields.map((fd: { k: string; l: string }) => {
+                                  const v = parsedResponses[fd.k]?.trim()
+                                  if (!v) return null
+                                  return (
+                                    <div key={fd.k} className="p-3 rounded-lg bg-muted/50 border">
+                                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{fd.l}</p>
+                                      <p className="text-sm whitespace-pre-wrap">{v}</p>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
 
-                      {Object.keys(parsedFiles).length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Documents</p>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(parsedFiles).filter(([_, f]) => f).map(([key, f]) => (
-                              <a key={key} href={f!.url} download={f!.originalName} target="_blank" rel="noopener noreferrer"
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-sm group">
-                                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
-                                <span className="max-w-[180px] truncate">{f!.originalName}</span>
-                                <FileDown className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    {/* Review notes */}
+                    {sub.reviewNotes && (
+                      <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                        <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+                        {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+                      </div>
+                    )}
 
-                      {sub.reviewNotes && (
-                        <div className="bg-muted/50 rounded-md p-2 text-xs">
-                          <span className="font-medium">Review notes:</span> {sub.reviewNotes}
-                          {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
-                        </div>
-                      )}
-
-                      {sub.status === 'submitted' && (
-                        <div className="space-y-2">
-                          <Textarea
-                            placeholder="Add review notes..."
-                            value={reviewNotes[sub.id] ?? ''}
-                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))}
-                            className="text-sm"
-                            rows={2}
-                          />
+                    {/* Review actions */}
+                    {sub.status === 'submitted' && (
+                      <Card className="border-dashed border-primary/30 bg-primary/[0.02]">
+                        <CardContent className="p-4 space-y-3">
+                          <p className="text-sm font-medium">Review this submission</p>
+                          <Textarea placeholder="Add review notes (optional)..." value={reviewNotes[sub.id] ?? ''} onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))} className="text-sm" rows={2} />
                           <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'approved') }}
-                              disabled={reviewing === sub.id}
-                            >
-                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />}
-                              Approve
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handleReview(sub.id, 'approved')} disabled={reviewing === sub.id}>
+                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />} Approve
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={(e) => { e.stopPropagation(); handleReview(sub.id, 'rejected') }}
-                              disabled={reviewing === sub.id}
-                            >
-                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />}
-                              Reject
+                            <Button size="sm" variant="destructive" onClick={() => handleReview(sub.id, 'rejected')} disabled={reviewing === sub.id}>
+                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />} Reject
                             </Button>
                           </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
                 )
               })}
             </div>

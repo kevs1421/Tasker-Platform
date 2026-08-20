@@ -1370,3 +1370,27 @@ Stage Summary:
 - Created /home/z/my-project/src/app/api/upload/route.ts — new upload endpoint
 - Modified /home/z/my-project/src/features/client-dashboard.tsx — removed onboarding button from project cards, cleaned imports
 - File uploads (images + documents) now work in both: My Projects upload dialog AND Onboarding wizard
+---
+Task ID: admin-onboarding-modal-fix
+Agent: main
+Task: Fix UI modal to show client onboarding data properly organized in admin onboarding management
+
+Work Log:
+- Analyzed current modal: flat grid of responses + file links, no step organization, no image previews
+- Queried DB directly to see actual submission data structure (responsesJson with responses + files objects)
+- Redesigned modal to organize data by 4 steps: Business Information, Brand Assets, Project Kickoff, Document Submission
+- Each step has its own Card with step icon (Building2, Palette, Rocket, FileText), step number badge
+- Image files (companyLogo) now show as 96x96px clickable thumbnail with file name and size
+- Document files show with file type icon, size, type label, and external link icon on hover
+- Client header card shows avatar, name, company, submission date, status badge, download buttons
+- Review section uses dashed border card with green Approve button
+- Added new icon imports: ImageIcon, Building2, Palette, Rocket, ExternalLink
+- Removed unused FileDown import
+- Widened dialog from max-w-3xl to max-w-4xl, max-h from 85vh to 90vh
+- Added ClipboardList icon to dialog title
+- Steps with no data are automatically hidden
+
+Stage Summary:
+- Modified /home/z/my-project/src/features/admin-dashboard.tsx — completely rewrote submissions review dialog (lines 686-847)
+- Data now organized by onboarding step with proper icons and labels
+- Image previews for uploaded logos, document cards for PDFs/DOCs
