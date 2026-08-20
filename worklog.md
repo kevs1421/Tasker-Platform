@@ -1430,3 +1430,23 @@ Stage Summary:
 - Empty columns show 'Drop tasks here' placeholder
 - All date displays use 'MMM dd' format (e.g., 'Jan 05') instead of ordinal format ('Jan 5th')
 - Training users are blocked from moving tasks
+---
+Task ID: training-save-comment
+Agent: main
+Task: Add Save Changes button and comment input for training users in task detail modal
+
+Work Log:
+- Removed `{!isTraining && (...)}` wrapper from comment input textarea + send button — now all users (team, admin, training) can add comments
+- Refactored action buttons section: removed outer `{!isTraining && (...)}` wrapper
+- Save Changes button now visible to ALL users (admin, team, training) — always shown, disabled when no changes
+- Discard button: wrapped with `{!isTraining && hasChanges && (...)}` — only non-training users see discard
+- Delete button + AlertDialog: wrapped with `{!isTraining && (...)}` — only non-training users see delete
+- Added `updatedBy: user?.id` to the PATCH request body in handleSaveTask for proper activity log attribution
+- Removed training role restriction from PATCH /api/tasks/[id] endpoint — training users can now update task fields (status, priority, due date, description)
+- Kept training restriction on DELETE /api/tasks/[id] and POST /api/tasks (can't create or delete)
+- Verified: lint passes, build succeeds
+
+Stage Summary:
+- Training users can now: save task changes (status/priority/due date/description), add comments
+- Training users still cannot: create tasks, delete tasks, edit task title inline, see discard button, see delete button
+- Team and admin users: unchanged behavior (full CRUD + discard + delete)

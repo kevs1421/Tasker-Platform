@@ -995,7 +995,7 @@ export function TeamTasks() {
       const res = await fetch(`/api/tasks/${detailTask.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ ...updates, updatedBy: user?.id }),
       })
       if (!res.ok) {
         toast.error('Failed to save')
@@ -1743,7 +1743,6 @@ export function TeamTasks() {
                       )}
                     </div>
                   </ScrollArea>
-                  {!isTraining && (
                   <div className="flex gap-2">
                     <Textarea
                       placeholder="Write a comment... (Ctrl+Enter to send)"
@@ -1762,13 +1761,11 @@ export function TeamTasks() {
                       {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
-                  )}
                 </div>
 
                 <Separator />
 
                 {/* Action buttons: Save, Discard, Delete */}
-                {!isTraining && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {hasChanges && (
@@ -1778,7 +1775,7 @@ export function TeamTasks() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {hasChanges && (
+                    {!isTraining && hasChanges && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1799,6 +1796,7 @@ export function TeamTasks() {
                       {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                       Save Changes
                     </Button>
+                    {!isTraining && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="destructive" size="sm" className="gap-2" disabled={deleting}>
@@ -1821,9 +1819,9 @@ export function TeamTasks() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    )}
                   </div>
                 </div>
-                )}
               </div>
             </>
           )}

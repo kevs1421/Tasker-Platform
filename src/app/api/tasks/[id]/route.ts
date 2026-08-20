@@ -26,14 +26,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json()
     const { title, description, status, priority, dueDate, tags, updatedBy } = body
 
-    // Training users cannot update tasks
-    if (updatedBy) {
-      const user = await db.user.findUnique({ where: { id: updatedBy }, select: { role: true } })
-      if (user?.role === 'training') {
-        return NextResponse.json({ error: 'Training users cannot update tasks' }, { status: 403 })
-      }
-    }
-
     const task = await db.task.update({
       where: { id },
       data: {
