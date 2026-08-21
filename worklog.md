@@ -1450,3 +1450,26 @@ Stage Summary:
 - Training users can now: save task changes (status/priority/due date/description), add comments
 - Training users still cannot: create tasks, delete tasks, edit task title inline, see discard button, see delete button
 - Team and admin users: unchanged behavior (full CRUD + discard + delete)
+---
+Task ID: admin-task-dnd-inline-status-timein
+Agent: main
+Task: Fix admin Task Dashboard drag/status change, add Time In button for team/training
+
+Work Log:
+- Admin Task Dashboard: Added `handleInlineStatusChange` function for quick status updates from table rows
+- Replaced static status Badge in admin task table with an inline `<Select>` dropdown
+- Status Select uses `sCfg.color` for visual styling, `e.stopPropagation()` prevents row click from firing
+- Optimistic UI update with toast notification, reverts on error
+- Added `inlineStatusSaving` state for loading feedback
+- Time Tracking page: Replaced null/empty active timer display with two states
+  - When active: shows timer card (same as before)
+  - When inactive: shows prominent 'Time In' button card with dashed border
+- Time In button clicks the sidebar button via `document.querySelector('[data-time-in-btn]')` data attribute
+- Added `data-time-in-btn` attribute to sidebar Time In button in app-shell.tsx
+- Added `Play` icon import to team-dashboard.tsx (was missing)
+- Updated empty state message to reference the new on-page button
+- Verified: lint passes, build succeeds
+
+Stage Summary:
+- Admin Task Dashboard now has inline status dropdown in each table row for quick status changes without opening detail dialog
+- Time Tracking page now shows a prominent Time In button when no timer is active, making it accessible for team and training users who may not notice the sidebar button

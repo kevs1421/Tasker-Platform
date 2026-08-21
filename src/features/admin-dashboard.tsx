@@ -1684,6 +1684,28 @@ export function AdminTasks() {
   const [comments, setComments] = useState<CommentType[]>([])
   const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
   const [assigneeOpen, setAssigneeOpen] = useState(false)
+  const [inlineStatusSaving, setInlineStatusSaving] = useState<string | null>(null)
+
+  // Quick inline status change from the table
+  const handleInlineStatusChange = async (taskId: string, newStatus: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setInlineStatusSaving(taskId)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, updatedBy: user?.id }),
+      })
+      if (!res.ok) throw new Error()
+      // Optimistic update
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus as Task['status'] } : t))
+      toast.success(`Status updated to ${STATUS_LABELS[newStatus] || newStatus}`)
+    } catch {
+      toast.error('Failed to update status')
+    } finally {
+      setInlineStatusSaving(null)
+    }
+  }
 
   // ─── Buffered edit state ───────────────────────────────────────
   const [editStatus, setEditStatus] = useState('')
@@ -1894,8 +1916,21 @@ export function AdminTasks() {
                         <span className="font-medium text-sm">{task.title}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={`${sCfg.color} text-xs`}>{sCfg.label}</Badge>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={task.status}
+                        onValueChange={(v) => handleInlineStatusChange(task.id, v)}
+                      >
+                        <SelectTrigger className={cn('h-7 w-[120px] text-xs border-0 p-0 gap-1', sCfg.color)}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todo">To Do</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="in_review">In Review</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={`${pCfg.color} text-xs`}>{pCfg.label}</Badge>

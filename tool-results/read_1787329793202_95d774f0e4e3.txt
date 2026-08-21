@@ -1,0 +1,502 @@
+   501→      toast.error(e instanceof Error ? e.message : 'Failed to update onboarding form')
+   502→    } finally {
+   503→      setEditing(false)
+   504→    }
+   505→  }
+   506→
+   507→  const toggleStep = (stepId: string) => {
+   508→    setCreateForm(prev => ({
+   509→      ...prev,
+   510→      selectedSteps: prev.selectedSteps.includes(stepId)
+   511→        ? prev.selectedSteps.filter(s => s !== stepId)
+   512→        : [...prev.selectedSteps, stepId],
+   513→    }))
+   514→  }
+   515→
+   516→  if (loading) {
+   517→    return (
+   518→      <div className="space-y-4">
+   519→        <Skeleton className="h-10 w-48" />
+   520→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   521→      </div>
+   522→    )
+   523→  }
+   524→
+   525→  return (
+   526→    <motion.div {...fadeIn} className="space-y-6">
+   527→      <div className="flex items-center justify-between">
+   528→        <div>
+   529→          <h2 className="text-xl font-semibold">Onboarding Management</h2>
+   530→          <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
+   531→        </div>
+   532→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+   533→          <Plus className="h-4 w-4 mr-2" /> Create Onboarding
+   534→        </Button>
+   535→      </div>
+   536→
+   537→      {/* Summary cards */}
+   538→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+   539→        {[
+   540→          { label: 'Total Forms', value: forms.length, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+   541→          { label: 'Published', value: forms.filter(f => f.status === 'published').length, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   542→          { label: 'Drafts', value: forms.filter(f => f.status === 'draft').length, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   543→          { label: 'Pending Review', value: forms.reduce((acc, f) => acc + (f._count?.submissions ?? 0), 0), color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+   544→        ].map((c) => (
+   545→          <Card key={c.label}>
+   546→            <CardContent className="p-4">
+   547→              <div className="flex items-center gap-3">
+   548→                <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   549→                  <FileCheck className={`h-4 w-4 ${c.color}`} />
+   550→                </div>
+   551→                <div>
+   552→                  <p className="text-lg font-semibold">{c.value}</p>
+   553→                  <p className="text-xs text-muted-foreground">{c.label}</p>
+   554→                </div>
+   555→              </div>
+   556→            </CardContent>
+   557→          </Card>
+   558→        ))}
+   559→      </div>
+   560→
+   561→      {/* Onboarding Forms Table */}
+   562→      <Card>
+   563→        <CardContent className="p-0">
+   564→          <Table>
+   565→            <TableHeader>
+   566→              <TableRow>
+   567→                <TableHead>Form Title</TableHead>
+   568→                <TableHead>Project</TableHead>
+   569→                <TableHead className="hidden md:table-cell">Client Owner</TableHead>
+   570→                <TableHead className="text-center">Submissions</TableHead>
+   571→                <TableHead>Status</TableHead>
+   572→                <TableHead className="w-28"></TableHead>
+   573→              </TableRow>
+   574→            </TableHeader>
+   575→            <TableBody>
+   576→              {forms.length === 0 && (
+   577→                <TableRow>
+   578→                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+   579→                    <div className="flex flex-col items-center gap-2">
+   580→                      <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
+   581→                      <p>No onboarding forms yet</p>
+   582→                      <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+   583→                        <Plus className="h-4 w-4 mr-1" /> Create your first form
+   584→                      </Button>
+   585→                    </div>
+   586→                  </TableCell>
+   587→                </TableRow>
+   588→              )}
+   589→              {forms.map((form) => {
+   590→                const project = form.project as { color?: string; name?: string } | undefined
+   591→                return (
+   592→                  <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+   593→                    <TableCell>
+   594→                      <div className="flex items-center gap-2">
+   595→                        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+   596→                          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   597→                        </div>
+   598→                        <div>
+   599→                          <p className="font-medium text-sm">{form.title}</p>
+   600→                          {form.description && <p className="text-xs text-muted-foreground truncate max-w-48">{form.description}</p>}
+   601→                        </div>
+   602→                      </div>
+   603→                    </TableCell>
+   604→                    <TableCell>
+   605→                      <div className="flex items-center gap-2">
+   606→                        {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
+   607→                        <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
+   608→                      </div>
+   609→                    </TableCell>
+   610→                    <TableCell className="hidden md:table-cell">
+   611→                      {form.client ? (
+   612→                        <div className="flex items-center gap-2">
+   613→                          <Avatar className="h-6 w-6">
+   614→                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   615→                              {getInitials(form.client.name)}
+   616→                            </AvatarFallback>
+   617→                          </Avatar>
+   618→                          <div className="min-w-0">
+   619→                            <p className="text-sm font-medium truncate">{form.client.name}</p>
+   620→                            {form.client.company && <p className="text-xs text-muted-foreground truncate">{form.client.company}</p>}
+   621→                          </div>
+   622→                        </div>
+   623→                      ) : (
+   624→                        <span className="text-sm text-muted-foreground">—</span>
+   625→                      )}
+   626→                    </TableCell>
+   627→                    <TableCell className="text-center">
+   628→                      {(form._count?.submissions ?? 0) > 0 && (
+   629→                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+   630→                          {form._count?.submissions}
+   631→                        </Badge>
+   632→                      )}
+   633→                      {(form._count?.submissions ?? 0) === 0 && <span className="text-muted-foreground text-sm">0</span>}
+   634→                    </TableCell>
+   635→                    <TableCell>
+   636→                      <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+   637→                        {getOnboardingStatusLabel(form.status)}
+   638→                      </Badge>
+   639→                    </TableCell>
+   640→                    <TableCell>
+   641→                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+   642→                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
+   643→                          <Eye className="h-4 w-4" />
+   644→                        </Button>
+   645→                        <TooltipProvider>
+   646→                          <Tooltip>
+   647→                            <TooltipTrigger asChild>
+   648→                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(form)}>
+   649→                                <Pencil className="h-4 w-4" />
+   650→                              </Button>
+   651→                            </TooltipTrigger>
+   652→                            <TooltipContent>Edit Form</TooltipContent>
+   653→                          </Tooltip>
+   654→                        </TooltipProvider>
+   655→                        <AlertDialog>
+   656→                          <AlertDialogTrigger asChild>
+   657→                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+   658→                              <Trash2 className="h-4 w-4" />
+   659→                            </Button>
+   660→                          </AlertDialogTrigger>
+   661→                          <AlertDialogContent>
+   662→                            <AlertDialogHeader>
+   663→                              <AlertDialogTitle>Delete Onboarding Form</AlertDialogTitle>
+   664→                              <AlertDialogDescription>
+   665→                                Are you sure you want to delete &quot;{form.title}&quot;? This will also delete all associated submissions. This action cannot be undone.
+   666→                              </AlertDialogDescription>
+   667→                            </AlertDialogHeader>
+   668→                            <AlertDialogFooter>
+   669→                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   670→                              <AlertDialogAction onClick={() => handleDeleteForm(form.id, form.title)} className="bg-rose-600 hover:bg-rose-700">
+   671→                                Delete
+   672→                              </AlertDialogAction>
+   673→                            </AlertDialogFooter>
+   674→                          </AlertDialogContent>
+   675→                        </AlertDialog>
+   676→                      </div>
+   677→                    </TableCell>
+   678→                  </TableRow>
+   679→                )
+   680→              })}
+   681→            </TableBody>
+   682→          </Table>
+   683→        </CardContent>
+   684→      </Card>
+   685→
+   686→      {/* Submissions Review Dialog */}
+   687→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   688→        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+   689→          <DialogHeader>
+   690→            <DialogTitle className="flex items-center gap-2">
+   691→              <ClipboardList className="h-5 w-5 text-amber-500" />
+   692→              {selectedForm?.title ?? 'Form'}
+   693→            </DialogTitle>
+   694→            <DialogDescription>
+   695→              <div className="flex items-center gap-2">
+   696→                {selectedForm?.project ? (
+   697→                  <span className="flex items-center gap-1.5">
+   698→                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+   699→                    {(selectedForm.project as { name?: string }).name}
+   700→                  </span>
+   701→                ) : 'Project'}
+   702→                <span className="text-muted-foreground">•</span>
+   703→                <span>{selectedForm?.submissions?.length ?? 0} submission{(selectedForm?.submissions?.length ?? 0) !== 1 ? 's' : ''}</span>
+   704→              </div>
+   705→            </DialogDescription>
+   706→          </DialogHeader>
+   707→          <ScrollArea className="flex-1 -mx-6 px-6">
+   708→            <div className="space-y-5 py-2">
+   709→              {selectedForm?.submissions?.length === 0 && (
+   710→                <div className="flex flex-col items-center justify-center py-16 text-center">
+   711→                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-3">
+   712→                    <FileCheck className="h-7 w-7 text-muted-foreground" />
+   713→                  </div>
+   714→                  <p className="text-sm font-medium">No submissions yet</p>
+   715→                  <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
+   716→                </div>
+   717→              )}
+   718→              {selectedForm?.submissions?.map((sub) => {
+   719→                let parsedResponses: Record<string, string> = {}
+   720→                let parsedFiles: Record<string, { url: string; originalName: string; filename: string; size: number; type: string } | null> = {}
+   721→                try {
+   722→                  const raw = JSON.parse(sub.responsesJson)
+   723→                  parsedResponses = raw.responses || {}
+   724→                  parsedFiles = raw.files || {}
+   725→                } catch { /* old format fallback */ }
+   726→
+   727→                const fmtSz = (b: number) => {
+   728→                  if (b < 1024) return b + ' B'
+   729→                  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'
+   730→                  return (b / 1048576).toFixed(1) + ' MB'
+   731→                }
+   732→
+   733→                const stepCfg = [
+   734→                  { id: 'biz', label: 'Business Information', icon: Building2, clr: 'text-slate-600 dark:text-slate-400',
+   735→                    fields: [{ k: 'businessName', l: 'Business Name' }, { k: 'businessEmail', l: 'Business Email' }, { k: 'businessPhone', l: 'Business Phone' }, { k: 'businessAddress', l: 'Business Address' }, { k: 'industry', l: 'Industry' }, { k: 'companySize', l: 'Company Size' }], fks: [] },
+   736→                  { id: 'brand', label: 'Brand Assets', icon: Palette, clr: 'text-pink-600 dark:text-pink-400',
+   737→                    fields: [{ k: 'brandColors', l: 'Brand Colors' }, { k: 'typography', l: 'Typography / Fonts' }],
+   738→                    fks: [{ k: 'companyLogo', l: 'Company Logo', img: true }, { k: 'brandGuidelines', l: 'Brand Guidelines' }] },
+   739→                  { id: 'kick', label: 'Project Kickoff', icon: Rocket, clr: 'text-amber-600 dark:text-amber-400',
+   740→                    fields: [{ k: 'projectGoals', l: 'Project Goals' }, { k: 'targetAudience', l: 'Target Audience' }, { k: 'mainCompetitors', l: 'Main Competitors' }, { k: 'budgetRange', l: 'Budget Range' }, { k: 'expectedTimeline', l: 'Expected Timeline' }], fks: [] },
+   741→                  { id: 'docs', label: 'Document Submission', icon: FileText, clr: 'text-emerald-600 dark:text-emerald-400',
+   742→                    fields: [],
+   743→                    fks: [{ k: 'contractForm', l: 'Contract Form' }, { k: 'paymentForm', l: 'Payment Form' }, { k: 'workOrderAgreement', l: 'Work Order Agreement' }] },
+   744→                ]
+   745→
+   746→                return (
+   747→                  <div key={sub.id} className="space-y-4">
+   748→                    {/* Client header card */}
+   749→                    <Card className="border"><CardContent className="p-4">
+   750→                      <div className="flex items-start justify-between">
+   751→                        <div className="flex items-center gap-3">
+   752→                          <Avatar className="h-10 w-10">
+   753→                            {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+   754→                            <AvatarFallback className="text-sm font-medium">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+   755→                          </Avatar>
+   756→                          <div>
+   757→                            <p className="text-sm font-semibold">{sub.client?.name ?? 'Unknown'}</p>
+   758→                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
+   759→                          </div>
+   760→                        </div>
+   761→                        <div className="flex items-center gap-2 shrink-0">
+   762→                          {sub.submittedAt && <span className="text-xs text-muted-foreground hidden sm:inline">{formatDate(sub.submittedAt)}</span>}
+   763→                          <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>{getOnboardingStatusLabel(sub.status)}</Badge>
+   764→                        </div>
+   765→                      </div>
+   766→                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+   767→                        <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => window.open('/api/onboarding/download?submissionId=' + sub.id, '_blank')}>
+   768→                          <Download className="h-3.5 w-3.5" /> Download Report
+   769→                        </Button>
+   770→                        {Object.keys(parsedFiles).filter(([, f]) => f).length > 0 && (
+   771→                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.open('/api/onboarding/download-documents?submissionId=' + sub.id, '_blank')}>
+   772→                            <FileArchive className="h-3.5 w-3.5" /> Download All Documents
+   773→                          </Button>
+   774→                        )}
+   775→                      </div>
+   776→                    </CardContent></Card>
+   777→
+   778→                    {/* Step-by-step organized data */}
+   779→                    {stepCfg.map((st, si) => {
+   780→                      const SI = st.icon
+   781→                      const hasContent = st.fields.some(f => parsedResponses[f.k]?.trim()) || st.fks.some(f => parsedFiles[f.k])
+   782→                      if (!hasContent) return null
+   783→                      return (
+   784→                        <Card key={st.id} className="border">
+   785→                          <CardHeader className="pb-2 pt-3 px-4">
+   786→                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   787→                              <div className="h-7 w-7 rounded-md bg-muted flex items-center justify-center">
+   788→                                <SI className={'h-3.5 w-3.5 ' + st.clr} />
+   789→                              </div>
+   790→                              <span className="flex items-center gap-2">
+   791→                                {st.label}
+   792→                                <span className="text-[10px] text-muted-foreground font-normal bg-muted px-1.5 py-0.5 rounded">Step {si + 1}</span>
+   793→                              </span>
+   794→                            </CardTitle>
+   795→                          </CardHeader>
+   796→                          <CardContent className="px-4 pb-4 space-y-3">
+   797→                            {st.fks.map((fc: { k: string; l: string; img?: boolean }) => {
+   798→                              const f = parsedFiles[fc.k]
+   799→                              if (!f) return null
+   800→                              const isImg = fc.img && f.type?.startsWith('image/')
+   801→                              return (
+   802→                                <div key={fc.k} className="space-y-1.5">
+   803→                                  <p className="text-xs font-medium text-muted-foreground">{fc.l}</p>
+   804→                                  {isImg ? (
+   805→                                    <a href={f.url} target="_blank" rel="noopener noreferrer" className="inline-block group">
+   806→                                      <div className="w-24 h-24 rounded-lg border bg-muted/30 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-all">
+   807→                                        <img src={f.url} alt={f.originalName} className="w-full h-full object-contain p-1" />
+   808→                                      </div>
+   809→                                      <div className="flex items-center gap-1.5 mt-1.5">
+   810→                                        <ImageIcon className="h-3 w-3 text-muted-foreground" />
+   811→                                        <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors truncate max-w-[180px]">{f.originalName}</span>
+   812→                                        <span className="text-[10px] text-muted-foreground">({fmtSz(f.size)})</span>
+   813→                                      </div>
+   814→                                    </a>
+   815→                                  ) : (
+   816→                                    <a href={f.url} download={f.originalName} target="_blank" rel="noopener noreferrer"
+   817→                                      className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors group">
+   818→                                      <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+   819→                                        <FileText className="h-4 w-4 text-primary" />
+   820→                                      </div>
+   821→                                      <div className="flex-1 min-w-0">
+   822→                                        <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{f.originalName}</p>
+   823→                                        <p className="text-[11px] text-muted-foreground">{fmtSz(f.size)} • {f.type?.split('/').pop()?.toUpperCase()}</p>
+   824→                                      </div>
+   825→                                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+   826→                                    </a>
+   827→                                  )}
+   828→                                </div>
+   829→                              )
+   830→                            })}
+   831→                            {st.fields.length > 0 && (
+   832→                              <div className={cn('grid gap-2.5', st.id === 'kick' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2')}>
+   833→                                {st.fields.map((fd: { k: string; l: string }) => {
+   834→                                  const v = parsedResponses[fd.k]?.trim()
+   835→                                  if (!v) return null
+   836→                                  return (
+   837→                                    <div key={fd.k} className="p-3 rounded-lg bg-muted/50 border">
+   838→                                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{fd.l}</p>
+   839→                                      <p className="text-sm whitespace-pre-wrap">{v}</p>
+   840→                                    </div>
+   841→                                  )
+   842→                                })}
+   843→                              </div>
+   844→                            )}
+   845→                          </CardContent>
+   846→                        </Card>
+   847→                      )
+   848→                    })}
+   849→
+   850→                    {/* Review notes */}
+   851→                    {sub.reviewNotes && (
+   852→                      <div className="bg-muted/50 rounded-lg p-3 text-sm">
+   853→                        <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+   854→                        {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+   855→                      </div>
+   856→                    )}
+   857→
+   858→                    {/* Review actions */}
+   859→                    {sub.status === 'submitted' && (
+   860→                      <Card className="border-dashed border-primary/30 bg-primary/[0.02]">
+   861→                        <CardContent className="p-4 space-y-3">
+   862→                          <p className="text-sm font-medium">Review this submission</p>
+   863→                          <Textarea placeholder="Add review notes (optional)..." value={reviewNotes[sub.id] ?? ''} onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))} className="text-sm" rows={2} />
+   864→                          <div className="flex gap-2">
+   865→                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handleReview(sub.id, 'approved')} disabled={reviewing === sub.id}>
+   866→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />} Approve
+   867→                            </Button>
+   868→                            <Button size="sm" variant="destructive" onClick={() => handleReview(sub.id, 'rejected')} disabled={reviewing === sub.id}>
+   869→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />} Reject
+   870→                            </Button>
+   871→                          </div>
+   872→                        </CardContent>
+   873→                      </Card>
+   874→                    )}
+   875→                  </div>
+   876→                )
+   877→              })}
+   878→            </div>
+   879→          </ScrollArea>
+   880→        </DialogContent>
+   881→      </Dialog>
+   882→
+   883→      {/* Create Onboarding Form Dialog */}
+   884→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   885→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   886→          <DialogHeader>
+   887→            <DialogTitle className="flex items-center gap-2">
+   888→              <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
+   889→            </DialogTitle>
+   890→            <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
+   891→          </DialogHeader>
+   892→
+   893→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+   894→            {/* Title */}
+   895→            <div className="space-y-1.5">
+   896→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+   897→              <Input
+   898→                placeholder="e.g., Client Onboarding Package"
+   899→                value={createForm.title}
+   900→                onChange={(e) => setCreateForm(p => ({ ...p, title: e.target.value }))}
+   901→                autoFocus
+   902→              />
+   903→            </div>
+   904→
+   905→            {/* Description */}
+   906→            <div className="space-y-1.5">
+   907→              <Label className="text-sm">Description</Label>
+   908→              <Textarea
+   909→                placeholder="Brief description of this onboarding form (optional)"
+   910→                value={createForm.description}
+   911→                onChange={(e) => setCreateForm(p => ({ ...p, description: e.target.value }))}
+   912→                rows={2}
+   913→              />
+   914→            </div>
+   915→
+   916→            {/* Project Selection */}
+   917→            <div className="space-y-1.5">
+   918→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+   919→              <Select value={createForm.projectId} onValueChange={(v) => setCreateForm(p => ({ ...p, projectId: v }))}>
+   920→                <SelectTrigger className="w-full">
+   921→                  <SelectValue placeholder="Select a project" />
+   922→                </SelectTrigger>
+   923→                <SelectContent>
+   924→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+   925→                  {projects.map((p) => (
+   926→                    <SelectItem key={p.id} value={p.id}>
+   927→                      <span className="flex items-center gap-2">
+   928→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+   929→                        {p.name}
+   930→                      </span>
+   931→                    </SelectItem>
+   932→                  ))}
+   933→                </SelectContent>
+   934→              </Select>
+   935→              <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
+   936→            </div>
+   937→
+   938→            {/* Client Owner Selection */}
+   939→            <div className="space-y-1.5">
+   940→              <Label className="text-sm">Client Owner <span className="text-red-500">*</span></Label>
+   941→              <Select value={createForm.clientId} onValueChange={(v) => setCreateForm(p => ({ ...p, clientId: v }))}>
+   942→                <SelectTrigger className="w-full">
+   943→                  <SelectValue placeholder="Select a client" />
+   944→                </SelectTrigger>
+   945→                <SelectContent>
+   946→                  {clients.length === 0 && <SelectItem value="_none" disabled>No active clients available</SelectItem>}
+   947→                  {clients.map((c) => (
+   948→                    <SelectItem key={c.id} value={c.id}>
+   949→                      <span className="flex items-center gap-2">
+   950→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   951→                          {getInitials(c.name)}
+   952→                        </span>
+   953→                        <span>{c.name}</span>
+   954→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+   955→                      </span>
+   956→                    </SelectItem>
+   957→                  ))}
+   958→                </SelectContent>
+   959→              </Select>
+   960→              <p className="text-xs text-muted-foreground">Only this client will see and fill out this onboarding form</p>
+   961→            </div>
+   962→
+   963→            <Separator />
+   964→
+   965→            {/* Step Selection */}
+   966→            <div className="space-y-3">
+   967→              <div className="flex items-center justify-between">
+   968→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+   969→                <Badge variant="secondary" className="text-xs">
+   970→                  {createForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+   971→                </Badge>
+   972→              </div>
+   973→
+   974→              <p className="text-xs text-muted-foreground">Choose which steps to include in the onboarding form</p>
+   975→
+   976→              <div className="space-y-2">
+   977→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+   978→                  const isSelected = createForm.selectedSteps.includes(step.id)
+   979→                  return (
+   980→                    <button
+   981→                      key={step.id}
+   982→                      type="button"
+   983→                      onClick={() => toggleStep(step.id)}
+   984→                      className={cn(
+   985→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+   986→                        isSelected
+   987→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+   988→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+   989→                      )}
+   990→                    >
+   991→                      <div className="flex items-start gap-3">
+   992→                        <div className={cn(
+   993→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+   994→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+   995→                        )}>
+   996→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+   997→                        </div>
+   998→                        <div className="flex-1 min-w-0">
+   999→                          <div className="flex items-center gap-2">
+  1000→                            <p className="text-sm font-medium">{step.label}</p>
+
+[showing lines 501-1000 of 3837; use offset=1001 with limit to continue reading]

@@ -76,7 +76,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, Trash2, LayoutGrid, List, CheckCircle2,
   Send, CalendarIcon, Tag, Users, FolderKanban,
-  Clock, Circle,
+  Clock, Circle, Play,
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Lock, Shield,
   MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
@@ -2335,7 +2335,7 @@ export function TeamTimeTracking() {
         </div>
       </div>
 
-      {/* Active Timer Display (read-only, managed by sidebar) */}
+      {/* Active Timer Display / Time In Button */}
       {activeEntry ? (
         <Card className="p-4">
           <div className="flex items-center gap-4">
@@ -2353,14 +2353,39 @@ export function TeamTimeTracking() {
                   </div>
                 )}
                 {activeEntry.task && (
-                  <span className="text-xs text-muted-foreground">· {activeEntry.task.title}</span>
+                  <span className="text-xs text-muted-foreground">{activeEntry.task.title}</span>
                 )}
               </div>
             </div>
             <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 ml-auto shrink-0">Active</Badge>
           </div>
         </Card>
-      ) : null}
+      ) : (
+        <Card className="p-4 border-dashed border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40 shrink-0">
+                <Play className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Ready to track time</p>
+                <p className="text-xs text-muted-foreground">Clock in to start tracking your work hours</p>
+              </div>
+            </div>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0"
+              onClick={() => {
+                const timeInBtn = document.querySelector('[data-time-in-btn]') as HTMLElement
+                if (timeInBtn) timeInBtn.click()
+                else toast.info('Use the sidebar Time In button to start tracking')
+              }}
+            >
+              <Play className="h-4 w-4" />
+              Time In
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Summary Stats Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -2513,7 +2538,7 @@ export function TeamTimeTracking() {
             <h3 className="text-lg font-medium text-foreground">No time entries yet</h3>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {dateFilter === 'today'
-                ? "Use the sidebar \"Time In\" button to start tracking your time."
+                ? 'Click the "Time In" button above or use the sidebar to start tracking.'
                 : `No entries found for ${filterButtons.find((f) => f.key === dateFilter)?.label.toLowerCase() || 'this period'}.`}
             </p>
           </motion.div>

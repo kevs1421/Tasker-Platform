@@ -605,6 +605,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   return (
     <>
       <button
+        data-time-in-btn
         onClick={handleOpenDialog}
         className="mb-3 w-full rounded-lg border border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30 px-3 py-2 flex items-center justify-center gap-2 hover:bg-green-100 dark:hover:bg-green-950/50 transition-colors cursor-pointer"
       >
