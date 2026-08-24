@@ -109,6 +109,16 @@ export interface ScreenshotConfig {
   intervalMinutes: number
 }
 
+export interface CalendarNote {
+  id: string
+  userId: string
+  date: string // YYYY-MM-DD
+  content: string
+  color: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type Role = 'admin' | 'team' | 'training' | 'client'
 
 // SPA route types

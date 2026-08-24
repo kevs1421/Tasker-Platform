@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, RefreshCw, ArrowRightLeft, ListTodo } from 'lucide-react'
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
+import { CalendarNoteWidget } from '@/features/calendar-note-widget'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
@@ -845,6 +846,11 @@ export function AppSidebar() {
       <ScrollArea className="flex-1 px-3 py-3">
         {showTimeWidget && (
           <TimeInOutWidget userId={user.id} />
+        )}
+        {showTimeWidget && (
+          <>
+            <CalendarNoteWidget userId={user.id} />
+          </>
         )}
         <nav className="space-y-1">
           {navItems.map((item) => (

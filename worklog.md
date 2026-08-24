@@ -1473,3 +1473,32 @@ Work Log:
 Stage Summary:
 - Admin Task Dashboard now has inline status dropdown in each table row for quick status changes without opening detail dialog
 - Time Tracking page now shows a prominent Time In button when no timer is active, making it accessible for team and training users who may not notice the sidebar button
+---
+Task ID: calendar-note-sidebar
+Agent: main
+Task: Add calendar note feature to Admin, Team, and Training user dashboard sidebar
+
+Work Log:
+- Added CalendarNote model to prisma/schema.prisma (id, userId, date, content, color, timestamps)
+- Added calendarNotes relation to User model
+- Ran db:push to sync schema
+- Added CalendarNote interface to src/types/index.ts
+- Created GET/POST/PUT API route at src/app/api/calendar-notes/route.ts (month/date filtering, CRUD operations)
+- Created DELETE API route at src/app/api/calendar-notes/[id]/route.ts
+- Created src/features/calendar-note-widget.tsx with:
+  - Mini calendar grid (month navigation with prev/next arrows)
+  - Color-coded note dots on calendar days
+  - Today's notes preview section
+  - Add/Edit note dialog with textarea and 6-color picker (Amber, Red, Green, Blue, Purple, Pink)
+  - Delete note capability from edit dialog
+  - Existing notes listed when adding a new note on the same date
+- Integrated CalendarNoteWidget into AppSidebar (below TimeInOutWidget) for admin, team, and training roles
+- Fixed initial API route to use userId query param instead of non-existent getServerSession
+- Verified via Agent Browser: calendar renders, day click opens dialog, notes CRUD works
+
+Stage Summary:
+- Calendar note widget visible in sidebar for admin, team, and training users
+- Full CRUD: create, read, update, delete notes per date
+- 6 color options for note categorization
+- Monthly calendar navigation with note indicators
+- API routes: GET (by month/date), POST, PUT, DELETE

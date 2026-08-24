@@ -1,0 +1,936 @@
+     1→'use client'
+     2→
+     3→import { useAuthStore } from '@/stores/auth'
+     4→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+     5→import { Button } from '@/components/ui/button'
+     6→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { ScrollArea } from '@/components/ui/scroll-area'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Input } from '@/components/ui/input'
+    14→import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, RefreshCw, ArrowRightLeft, ListTodo } from 'lucide-react'
+    15→import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
+    16→import type { AppRoute } from '@/types'
+    17→import { cn } from '@/lib/utils'
+    18→import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+    19→import { useTheme } from 'next-themes'
+    20→import { toast } from 'sonner'
+    21→import { screenshotSession } from '@/lib/screenshot-capture'
+    22→import { useTimeTrackingStore, useScreenshotStore } from '@/stores/time-tracking'
+    23→import type { ActiveTimeSession } from '@/stores/time-tracking'
+    24→
+    25→// ─── Time In/Out Widget ──────────────────────────────────
+    26→
+    27→interface ActiveTimeEntry {
+    28→  id: string
+    29→  timeIn: string
+    30→  projectId?: string | null
+    31→  project?: { id: string; name: string } | null
+    32→  task?: { id: string; title: string } | null
+    33→  description?: string | null
+    34→}
+    35→
+    36→interface Project {
+    37→  id: string
+    38→  name: string
+    39→}
+    40→
+    41→interface Task {
+    42→  id: string
+    43→  title: string
+    44→}
+    45→
+    46→function formatElapsed(ms: number): string {
+    47→  const totalSeconds = Math.floor(ms / 1000)
+    48→  const h = Math.floor(totalSeconds / 3600)
+    49→  const m = Math.floor((totalSeconds % 3600) / 60)
+    50→  const s = totalSeconds % 60
+    51→  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    52→  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    53→}
+    54→
+    55→function formatCountdown(ms: number): string {
+    56→  if (ms <= 0) return '0:00'
+    57→  const totalSeconds = Math.floor(ms / 1000)
+    58→  const m = Math.floor(totalSeconds / 60)
+    59→  const s = totalSeconds % 60
+    60→  return `${m}:${String(s).padStart(2, '0')}`
+    61→}
+    62→
+    63→function TimeInOutWidget({ userId }: { userId: string }) {
+    64→  // Shared stores
+    65→  const {
+    66→    activeSession,
+    67→    clockingIn,
+    68→    clockingOut,
+    69→    setActiveSession,
+    70→    setClockingIn,
+    71→    setClockingOut,
+    72→    initialized,
+    73→    setInitialized,
+    74→  } = useTimeTrackingStore()
+    75→  const {
+    76→    isCapturing,
+    77→    captureCount,
+    78→    nextCaptureInMs,
+    79→    setIsCapturing,
+    80→    setCaptureCount,
+    81→    setNextCaptureInMs,
+    82→    resetScreenshotState,
+    83→  } = useScreenshotStore()
+    84→
+    85→  const [elapsedMs, setElapsedMs] = useState(0)
+    86→  const [loading, setLoading] = useState(true)
+    87→  const [dialogOpen, setDialogOpen] = useState(false)
+    88→
+    89→  // Time In dialog state
+    90→  const [projects, setProjects] = useState<Project[]>([])
+    91→  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+    92→  const [tasks, setTasks] = useState<Task[]>([])
+    93→  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+    94→  const [description, setDescription] = useState('')
+    95→  const [loadingProjects, setLoadingProjects] = useState(false)
+    96→  const [loadingTasks, setLoadingTasks] = useState(false)
+    97→
+    98→  // Switch task dialog state
+    99→  const [switchOpen, setSwitchOpen] = useState(false)
+   100→  const [switchProjects, setSwitchProjects] = useState<Project[]>([])
+   101→  const [switchProjectId, setSwitchProjectId] = useState('')
+   102→  const [switchTasks, setSwitchTasks] = useState<Task[]>([])
+   103→  const [switchTaskId, setSwitchTaskId] = useState('')
+   104→  const [switching, setSwitching] = useState(false)
+   105→  const [loadingSwitchTasks, setLoadingSwitchTasks] = useState(false)
+   106→
+   107→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   108→  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   109→
+   110→  // Open switch-task dialog
+   111→  const handleOpenSwitch = async () => {
+   112→    if (!activeSession) return
+   113→    setSwitchOpen(true)
+   114→    setSwitchProjectId(activeSession.projectId || '')
+   115→    setSwitchTaskId(activeSession.task?.id || '')
+   116→    setSwitchTasks([])
+   117→    setLoadingSwitchTasks(false)
+   118→    try {
+   119→      const res = await fetch('/api/projects')
+   120→      if (res.ok) {
+   121→        const data = await res.json()
+   122→        setSwitchProjects(data.projects ?? [])
+   123→      }
+   124→    } catch {
+   125→      // silent
+   126→    }
+   127→    // If current project is set, pre-load its tasks
+   128→    if (activeSession.projectId) {
+   129→      setLoadingSwitchTasks(true)
+   130→      try {
+   131→        const res = await fetch(`/api/projects/${activeSession.projectId}`)
+   132→        if (res.ok) {
+   133→          const data = await res.json()
+   134→          setSwitchTasks(data.project?.tasks ?? [])
+   135→        }
+   136→      } catch {
+   137→        // silent
+   138→      } finally {
+   139→        setLoadingSwitchTasks(false)
+   140→      }
+   141→    }
+   142→  }
+   143→
+   144→  // Handle switch-task project change
+   145→  const handleSwitchProjectChange = async (projectId: string) => {
+   146→    setSwitchProjectId(projectId)
+   147→    setSwitchTaskId('')
+   148→    setSwitchTasks([])
+   149→    if (!projectId) return
+   150→    setLoadingSwitchTasks(true)
+   151→    try {
+   152→      const res = await fetch(`/api/projects/${projectId}`)
+   153→      if (res.ok) {
+   154→        const data = await res.json()
+   155→        setSwitchTasks(data.project?.tasks ?? [])
+   156→      }
+   157→    } catch {
+   158→      // silent
+   159→    } finally {
+   160→      setLoadingSwitchTasks(false)
+   161→    }
+   162→  }
+   163→
+   164→  // Execute task switch — update the time entry, screenshot context, and store
+   165→  const handleSwitchTask = async () => {
+   166→    if (!activeSession) return
+   167→    setSwitching(true)
+   168→    try {
+   169→      const body: Record<string, unknown> = { action: 'switch_task' }
+   170→      if (switchProjectId) body.projectId = switchProjectId
+   171→      if (switchTaskId) body.taskId = switchTaskId
+   172→
+   173→      const res = await fetch(`/api/time-entries/${activeSession.id}`, {
+   174→        method: 'PATCH',
+   175→        headers: { 'Content-Type': 'application/json' },
+   176→        body: JSON.stringify(body),
+   177→      })
+   178→      if (!res.ok) {
+   179→        const err = await res.json().catch(() => ({}))
+   180→        throw new Error(err.error || 'Failed to switch task')
+   181→      }
+   182→      const data = await res.json()
+   183→      const updated = data.timeEntry
+   184→      if (updated) {
+   185→        const session: ActiveTimeSession = {
+   186→          id: updated.id,
+   187→          timeIn: updated.timeIn,
+   188→          projectId: updated.projectId,
+   189→          project: updated.project,
+   190→          task: updated.task,
+   191→          description: updated.description,
+   192→        }
+   193→        setActiveSession(session)
+   194→
+   195→        // Update screenshot session context and capture immediately
+   196→        screenshotSession.updateContext({
+   197→          projectId: switchProjectId || undefined,
+   198→          taskId: switchTaskId || undefined,
+   199→        })
+   200→      }
+   201→      setSwitchOpen(false)
+   202→      toast.success('Switched task — timer continues', {
+   203→        description: switchTaskId ? 'Screenshot captured for new task' : undefined,
+   204→      })
+   205→    } catch (err) {
+   206→      toast.error(err instanceof Error ? err.message : 'Failed to switch task')
+   207→    } finally {
+   208→      setSwitching(false)
+   209→    }
+   210→  }
+   211→
+   212→  // Fetch screenshot config on mount (for interval)
+   213→  useEffect(() => {
+   214→    fetch(`/api/screenshot-config?userId=${userId}`)
+   215→      .then(r => r.json())
+   216→      .then(d => {
+   217→        if (d.intervalMinutes) useScreenshotStore.getState().setIntervalMinutes(d.intervalMinutes)
+   218→      })
+   219→      .catch(() => {})
+   220→  }, [userId])
+   221→
+   222→  // Countdown timer for next screenshot
+   223→  useEffect(() => {
+   224→    if (activeSession && screenshotSession.getIsRunning()) {
+   225→      countdownRef.current = setInterval(() => {
+   226→        setNextCaptureInMs(screenshotSession.getTimeUntilNextCapture())
+   227→      }, 1000)
+   228→    } else {
+   229→      if (countdownRef.current) {
+   230→        clearInterval(countdownRef.current)
+   231→        countdownRef.current = null
+   232→      }
+   233→      setNextCaptureInMs(0)
+   234→    }
+   235→    return () => {
+   236→      if (countdownRef.current) {
+   237→        clearInterval(countdownRef.current)
+   238→        countdownRef.current = null
+   239→      }
+   240→    }
+   241→  }, [activeSession])
+   242→
+   243→  // Fetch active timer on mount
+   244→  const fetchActiveTimer = useCallback(async () => {
+   245→    try {
+   246→      const res = await fetch(`/api/time-entries?userId=${userId}&active=true`)
+   247→      if (res.ok) {
+   248→        const data = await res.json()
+   249→        const entries = data.timeEntries || []
+   250→        const entry: ActiveTimeEntry | null = entries.find((e: ActiveTimeEntry) => e.timeIn) || null
+   251→
+   252→        if (entry) {
+   253→          const session: ActiveTimeSession = {
+   254→            id: entry.id,
+   255→            timeIn: entry.timeIn,
+   256→            projectId: entry.projectId,
+   257→            project: entry.project,
+   258→            task: entry.task,
+   259→            description: entry.description,
+   260→          }
+   261→          setActiveSession(session)
+   262→
+   263→          // Re-start screenshot session if we find an active timer (page reload)
+   264→          const user = useAuthStore.getState().user
+   265→          if (user && user.role !== 'client') {
+   266→            fetch(`/api/screenshot-config?userId=${userId}`)
+   267→              .then(r => r.json())
+   268→              .then(config => {
+   269→                if (config.autoEnabled) {
+   270→                  screenshotSession.start({
+   271→                    userId,
+   272→                    userRole: user.role,
+   273→                    projectId: entry.projectId || undefined,
+   274→                    taskId: entry.task?.id || undefined,
+   275→                    intervalMinutes: config.intervalMinutes || 5,
+   276→                    quality: 0.6,
+   277→                    onCaptureStart: () => setIsCapturing(true),
+   278→                    onCaptureComplete: (count) => {
+   279→                      setCaptureCount(count)
+   280→                      setIsCapturing(false)
+   281→                    },
+   282→                    onCaptureError: () => setIsCapturing(false),
+   283→                  })
+   284→                }
+   285→              })
+   286→              .catch(() => {})
+   287→          }
+   288→        } else {
+   289→          setActiveSession(null)
+   290→        }
+   291→      }
+   292→    } catch {
+   293→      // silent
+   294→    } finally {
+   295→      setLoading(false)
+   296→      setInitialized(true)
+   297→    }
+   298→  }, [userId, setActiveSession, setInitialized, setIsCapturing, setCaptureCount])
+   299→
+   300→  useEffect(() => {
+   301→    if (!initialized) {
+   302→      fetchActiveTimer()
+   303→    }
+   304→    // Cleanup screenshot session on unmount
+   305→    return () => {
+   306→      screenshotSession.stop()
+   307→    }
+   308→  }, [fetchActiveTimer, initialized])
+   309→
+   310→  // 1-second interval for elapsed display — derived from shared store
+   311→  useEffect(() => {
+   312→    const startTimeMs = useTimeTrackingStore.getState().startTimeMs
+   313→    if (activeSession && startTimeMs) {
+   314→      setElapsedMs(Date.now() - startTimeMs)
+   315→      intervalRef.current = setInterval(() => {
+   316→        setElapsedMs(Date.now() - useTimeTrackingStore.getState().startTimeMs)
+   317→      }, 1000)
+   318→    } else {
+   319→      setElapsedMs(0)
+   320→      if (intervalRef.current) {
+   321→        clearInterval(intervalRef.current)
+   322→        intervalRef.current = null
+   323→      }
+   324→    }
+   325→    return () => {
+   326→      if (intervalRef.current) {
+   327→        clearInterval(intervalRef.current)
+   328→        intervalRef.current = null
+   329→      }
+   330→    }
+   331→  }, [activeSession])
+   332→
+   333→  // Open time-in dialog and fetch projects
+   334→  const handleOpenDialog = async () => {
+   335→    setDialogOpen(true)
+   336→    setSelectedProjectId('')
+   337→    setSelectedTaskId('')
+   338→    setDescription('')
+   339→    setTasks([])
+   340→    setLoadingProjects(true)
+   341→    try {
+   342→      const res = await fetch('/api/projects')
+   343→      if (res.ok) {
+   344→        const data = await res.json()
+   345→        setProjects(data.projects ?? [])
+   346→      }
+   347→    } catch {
+   348→      // silent
+   349→    } finally {
+   350→      setLoadingProjects(false)
+   351→    }
+   352→  }
+   353→
+   354→  // Fetch tasks when project changes
+   355→  const handleProjectChange = async (projectId: string) => {
+   356→    setSelectedProjectId(projectId)
+   357→    setSelectedTaskId('')
+   358→    setTasks([])
+   359→    if (!projectId) return
+   360→    setLoadingTasks(true)
+   361→    try {
+   362→      const res = await fetch(`/api/projects/${projectId}`)
+   363→      if (res.ok) {
+   364→        const data = await res.json()
+   365→        setTasks(data.project?.tasks ?? [])
+   366→      }
+   367→    } catch {
+   368→      // silent
+   369→    } finally {
+   370→      setLoadingTasks(false)
+   371→    }
+   372→  }
+   373→
+   374→  // Clock in
+   375→  const handleClockIn = async () => {
+   376→    const user = useAuthStore.getState().user
+   377→    setClockingIn(true)
+   378→    try {
+   379→      const body: Record<string, unknown> = { action: 'time_in', userId }
+   380→      if (selectedProjectId) body.projectId = selectedProjectId
+   381→      if (selectedTaskId) body.taskId = selectedTaskId
+   382→      if (description.trim()) body.description = description.trim()
+   383→
+   384→      const res = await fetch('/api/time-entries', {
+   385→        method: 'POST',
+   386→        headers: { 'Content-Type': 'application/json' },
+   387→        body: JSON.stringify(body),
+   388→      })
+   389→      if (!res.ok) {
+   390→        const err = await res.json().catch(() => ({}))
+   391→        throw new Error(err.error || 'Failed to clock in')
+   392→      }
+   393→      const data = await res.json()
+   394→      const entry = data.timeEntry
+   395→      if (entry) {
+   396→        const session: ActiveTimeSession = {
+   397→          id: entry.id,
+   398→          timeIn: entry.timeIn,
+   399→          projectId: entry.projectId,
+   400→          project: entry.project,
+   401→          task: entry.task,
+   402→          description: entry.description,
+   403→        }
+   404→        setActiveSession(session)
+   405→      }
+   406→      setDialogOpen(false)
+   407→      toast.success('Clocked in successfully')
+   408→
+   409→      // Start periodic screenshot session in background (admin-controlled)
+   410→      if (user && user.role !== 'client') {
+   411→        const currentInterval = useScreenshotStore.getState().intervalMinutes
+   412→        fetch(`/api/screenshot-config?userId=${userId}`)
+   413→          .then(r => r.json())
+   414→          .then(config => {
+   415→            if (config.autoEnabled) {
+   416→              setCaptureCount(0)
+   417→              const interval = config.intervalMinutes || currentInterval
+   418→              screenshotSession.start({
+   419→                userId,
+   420→                userRole: user.role,
+   421→                projectId: selectedProjectId || undefined,
+   422→                taskId: selectedTaskId || undefined,
+   423→                intervalMinutes: interval,
+   424→                quality: 0.6,
+   425→                onCaptureStart: () => setIsCapturing(true),
+   426→                onCaptureComplete: (count) => {
+   427→                  setCaptureCount(count)
+   428→                  setIsCapturing(false)
+   429→                },
+   430→                onCaptureError: () => setIsCapturing(false),
+   431→              })
+   432→            }
+   433→          })
+   434→          .catch(() => {})
+   435→      }
+   436→    } catch (err) {
+   437→      toast.error(err instanceof Error ? err.message : 'Failed to clock in')
+   438→    } finally {
+   439→      setClockingIn(false)
+   440→    }
+   441→  }
+   442→
+   443→  // Clock out
+   444→  const handleClockOut = async () => {
+   445→    if (!activeSession) return
+   446→    setClockingOut(true)
+   447→
+   448→    // Stop screenshot session immediately
+   449→    screenshotSession.stop()
+   450→    const finalCount = screenshotSession.getCaptureCount()
+   451→    resetScreenshotState()
+   452→
+   453→    try {
+   454→      const res = await fetch(`/api/time-entries/${activeSession.id}`, {
+   455→        method: 'PATCH',
+   456→        headers: { 'Content-Type': 'application/json' },
+   457→        body: JSON.stringify({ action: 'time_out' }),
+   458→      })
+   459→      if (!res.ok) {
+   460→        const err = await res.json().catch(() => ({}))
+   461→        throw new Error(err.error || 'Failed to clock out')
+   462→      }
+   463→      setActiveSession(null)
+   464→      setElapsedMs(0)
+   465→      toast.success('Clocked out successfully', {
+   466→        ...(finalCount > 0 && {
+   467→          description: `${finalCount} screenshot${finalCount > 1 ? 's' : ''} saved during this session`,
+   468→        }),
+   469→      })
+   470→    } catch (err) {
+   471→      toast.error(err instanceof Error ? err.message : 'Failed to clock out')
+   472→    } finally {
+   473→      setClockingOut(false)
+   474→    }
+   475→  }
+   476→
+   477→  if (loading) {
+   478→    return (
+   479→      <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 flex items-center justify-center gap-2">
+   480→        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+   481→        <span className="text-xs text-muted-foreground">Loading timer…</span>
+   482→      </div>
+   483→    )
+   484→  }
+   485→
+   486→  if (activeSession) {
+   487→    return (
+   488→      <>
+   489→        {/* Screenshot monitoring status (shown when active, admin-controlled) */}
+   490→        {screenshotSession.getIsRunning() && (
+   491→          <div className={cn(
+   492→            'mb-2 rounded-lg border px-3 py-1.5 flex items-center gap-2',
+   493→            isCapturing
+   494→              ? 'border-primary/40 bg-primary/5 dark:bg-primary/10 animate-pulse'
+   495→              : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30'
+   496→          )}>
+   497→            {isCapturing ? (
+   498→              <>
+   499→                <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
+   500→                <span className="text-[11px] text-primary font-medium flex-1">Capturing screenshot…</span>
+   501→                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+   502→              </>
+   503→            ) : (
+   504→              <>
+   505→                <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+   506→                <div className="flex-1 min-w-0">
+   507→                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+   508→                    Monitoring • {captureCount} captured
+   509→                  </span>
+   510→                  {nextCaptureInMs > 0 && (
+   511→                    <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 ml-1.5">
+   512→                      Next in {formatCountdown(nextCaptureInMs)}
+   513→                    </span>
+   514→                  )}
+   515→                </div>
+   516→                <RefreshCw className="w-3 h-3 text-emerald-500 dark:text-emerald-400 animate-[spin_3s_linear_infinite]" />
+   517→              </>
+   518→            )}
+   519→          </div>
+   520→        )}
+   521→        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-2">
+   522→          <Timer className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+   523→          <div className="flex-1 min-w-0">
+   524→            <div className="text-[10px] text-red-600 dark:text-red-400 font-medium leading-none mb-0.5">
+   525→              {activeSession.project?.name || 'No Project'}
+   526→            </div>
+   527→            <div className="text-xs font-mono font-semibold text-red-700 dark:text-red-300 tabular-nums">
+   528→              {formatElapsed(elapsedMs)}
+   529→            </div>
+   530→          </div>
+   531→          <Button
+   532→            size="sm"
+   533→            variant="destructive"
+   534→            className="h-7 px-2 text-[11px] shrink-0"
+   535→            onClick={handleClockOut}
+   536→            disabled={clockingOut}
+   537→          >
+   538→            {clockingOut ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3 mr-1" />}
+   539→            Out
+   540→          </Button>
+   541→        </div>
+   542→        {/* Switch Task button */}
+   543→        <button
+   544→          onClick={handleOpenSwitch}
+   545→          className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30 px-3 py-1.5 flex items-center justify-center gap-1.5 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors cursor-pointer"
+   546→        >
+   547→          <ArrowRightLeft className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+   548→          <span className="text-[11px] font-medium text-blue-700 dark:text-blue-300">Switch Task</span>
+   549→        </button>
+   550→
+   551→        {/* Switch Task Dialog */}
+   552→        <Dialog open={switchOpen} onOpenChange={(open) => { setSwitchOpen(open) }}>
+   553→          <DialogContent className="sm:max-w-md">
+   554→            <DialogHeader>
+   555→              <DialogTitle className="flex items-center gap-2">
+   556→                <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+   557→                Switch Task
+   558→              </DialogTitle>
+   559→              <DialogDescription>Change your project or task. Your timer will continue without interruption.</DialogDescription>
+   560→            </DialogHeader>
+   561→            <div className="space-y-4 py-2">
+   562→              <div className="space-y-2">
+   563→                <Label className="text-sm">Project</Label>
+   564→                <Select value={switchProjectId} onValueChange={handleSwitchProjectChange}>
+   565→                  <SelectTrigger className="h-9">
+   566→                    <SelectValue placeholder="Select project" />
+   567→                  </SelectTrigger>
+   568→                  <SelectContent>
+   569→                    {switchProjects.map((p) => (
+   570→                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   571→                    ))}
+   572→                  </SelectContent>
+   573→                </Select>
+   574→              </div>
+   575→              {switchProjectId && (
+   576→                <div className="space-y-2">
+   577→                  <Label className="text-sm">Task</Label>
+   578→                  <Select value={switchTaskId} onValueChange={setSwitchTaskId} disabled={loadingSwitchTasks}>
+   579→                    <SelectTrigger className="h-9">
+   580→                      <SelectValue placeholder={loadingSwitchTasks ? 'Loading…' : 'Select task'} />
+   581→                    </SelectTrigger>
+   582→                    <SelectContent>
+   583→                      {switchTasks.map((t) => (
+   584→                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+   585→                      ))}
+   586→                    </SelectContent>
+   587→                  </Select>
+   588→                </div>
+   589→              )}
+   590→            </div>
+   591→            <DialogFooter>
+   592→              <Button variant="outline" onClick={() => setSwitchOpen(false)} className="h-9">Cancel</Button>
+   593→              <Button onClick={handleSwitchTask} disabled={switching} className="h-9 bg-blue-600 hover:bg-blue-700 text-white">
+   594→                {switching && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+   595→                <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" />
+   596→                Switch
+   597→              </Button>
+   598→            </DialogFooter>
+   599→          </DialogContent>
+   600→        </Dialog>
+   601→      </>
+   602→    )
+   603→  }
+   604→
+   605→  return (
+   606→    <>
+   607→      <button
+   608→        data-time-in-btn
+   609→        onClick={handleOpenDialog}
+   610→        className="mb-3 w-full rounded-lg border border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30 px-3 py-2 flex items-center justify-center gap-2 hover:bg-green-100 dark:hover:bg-green-950/50 transition-colors cursor-pointer"
+   611→      >
+   612→        <Play className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+   613→        <Clock className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+   614→        <span className="text-xs font-medium text-green-700 dark:text-green-300">Time In</span>
+   615→      </button>
+   616→
+   617→      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open) }}>
+   618→        <DialogContent className="sm:max-w-md">
+   619→          <DialogHeader>
+   620→            <DialogTitle>Clock In</DialogTitle>
+   621→            <DialogDescription>Optionally select a project, task, and add a description before clocking in.</DialogDescription>
+   622→          </DialogHeader>
+   623→          <div className="space-y-4 py-2">
+   624→            <div className="space-y-2">
+   625→              <Label className="text-sm">Project (optional)</Label>
+   626→              <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={loadingProjects}>
+   627→                <SelectTrigger className="h-9">
+   628→                  <SelectValue placeholder={loadingProjects ? 'Loading…' : 'Select project'} />
+   629→                </SelectTrigger>
+   630→                <SelectContent>
+   631→                  {projects.map((p) => (
+   632→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   633→                  ))}
+   634→                </SelectContent>
+   635→              </Select>
+   636→            </div>
+   637→            {selectedProjectId && (
+   638→              <div className="space-y-2">
+   639→                <Label className="text-sm">Task (optional)</Label>
+   640→                <Select value={selectedTaskId} onValueChange={setSelectedTaskId} disabled={loadingTasks}>
+   641→                  <SelectTrigger className="h-9">
+   642→                    <SelectValue placeholder={loadingTasks ? 'Loading…' : 'Select task'} />
+   643→                  </SelectTrigger>
+   644→                  <SelectContent>
+   645→                    {tasks.map((t) => (
+   646→                      <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+   647→                    ))}
+   648→                  </SelectContent>
+   649→                </Select>
+   650→              </div>
+   651→            )}
+   652→            <div className="space-y-2">
+   653→              <Label className="text-sm">Description (optional)</Label>
+   654→              <Input
+   655→                placeholder="What are you working on?"
+   656→                value={description}
+   657→                onChange={(e) => setDescription(e.target.value)}
+   658→                className="h-9"
+   659→              />
+   660→            </div>
+   661→          </div>
+   662→          <DialogFooter>
+   663→            <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
+   664→            <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+   665→              {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+   666→              <Play className="w-3.5 h-3.5 mr-1.5" />
+   667→              Clock In
+   668→            </Button>
+   669→          </DialogFooter>
+   670→        </DialogContent>
+   671→      </Dialog>
+   672→    </>
+   673→  )
+   674→}
+   675→
+   676→// ─── Header ─────────────────────────────────────────────
+   677→export function AppHeader() {
+   678→  const { user, logout } = useAuthStore()
+   679→  const { theme, setTheme } = useTheme()
+   680→  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+   681→  const [unreadCount, setUnreadCount] = useState(0)
+   682→
+   683→  useEffect(() => {
+   684→    if (user) {
+   685→      fetch(`/api/messages?userId=${user.id}`)
+   686→        .then(r => r.json())
+   687→        .then(d => setUnreadCount(d.conversations?.reduce((sum: number, c: { unread: number }) => sum + c.unread, 0) || 0))
+   688→        .catch(() => {})
+   689→    }
+   690→  }, [user])
+   691→
+   692→  // Stop screenshot session on logout
+   693→  const handleLogout = () => {
+   694→    screenshotSession.stop()
+   695→    logout()
+   696→  }
+   697→
+   698→  if (!user) return null
+   699→  const roleInfo = getRoleBadgeClasses(user.role)
+   700→
+   701→  return (
+   702→    <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
+   703→      <div className="flex items-center gap-3">
+   704→        <button onClick={() => useAuthStore.getState().toggleSidebar()} className="lg:hidden p-1.5 rounded-md hover:bg-accent">
+   705→          <Menu className="w-5 h-5" />
+   706→        </button>
+   707→        <div className="flex items-center gap-2">
+   708→          <img src="/logo.svg" alt="Yber Digitals" className="w-8 h-8 rounded-lg object-contain" />
+   709→          <span className="font-semibold text-lg hidden sm:block">Yber Digitals</span>
+   710→        </div>
+   711→      </div>
+   712→      <div className="flex items-center gap-2">
+   713→        {mounted && (
+   714→          <DropdownMenu>
+   715→            <DropdownMenuTrigger asChild>
+   716→              <Button variant="ghost" size="icon" className="relative">
+   717→                {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+   718→              </Button>
+   719→            </DropdownMenuTrigger>
+   720→            <DropdownMenuContent align="end" className="w-36">
+   721→              <DropdownMenuItem onClick={() => setTheme('light')} className={cn(theme === 'light' && 'bg-accent')}>
+   722→                <Sun className="mr-2 h-4 w-4" />Light
+   723→              </DropdownMenuItem>
+   724→              <DropdownMenuItem onClick={() => setTheme('dark')} className={cn(theme === 'dark' && 'bg-accent')}>
+   725→                <Moon className="mr-2 h-4 w-4" />Dark
+   726→              </DropdownMenuItem>
+   727→            </DropdownMenuContent>
+   728→          </DropdownMenu>
+   729→        )}
+   730→        <Button variant="ghost" size="icon" className="relative" onClick={() => useAuthStore.getState().setRoute(
+   731→          user.role === 'admin' ? { page: 'admin-dashboard', tab: 'messages' } :
+   732→          user.role === 'team' ? { page: 'team-dashboard', tab: 'messages' } :
+   733→          { page: 'client-dashboard', tab: 'messages' }
+   734→        )}>
+   735→          <MessageSquare className="w-4 h-4" />
+   736→          {unreadCount > 0 && (
+   737→            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-destructive text-destructive-foreground rounded-full text-[10px] font-bold flex items-center justify-center px-1">
+   738→              {unreadCount > 9 ? '9+' : unreadCount}
+   739→            </span>
+   740→          )}
+   741→        </Button>
+   742→        <DropdownMenu>
+   743→          <DropdownMenuTrigger asChild>
+   744→            <Button variant="ghost" className="flex items-center gap-2 pl-2 pr-3">
+   745→              <Avatar className="w-7 h-7">
+   746→                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">{getInitials(user.name)}</AvatarFallback>
+   747→              </Avatar>
+   748→              <div className="hidden sm:flex flex-col items-start">
+   749→                <span className="text-sm font-medium leading-tight">{user.name}</span>
+   750→                <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0', roleInfo)}>{user.role}</Badge>
+   751→              </div>
+   752→            </Button>
+   753→          </DropdownMenuTrigger>
+   754→          <DropdownMenuContent align="end" className="w-56">
+   755→            <DropdownMenuLabel className="font-normal">
+   756→              <div className="flex flex-col space-y-1">
+   757→                <p className="text-sm font-medium">{user.name}</p>
+   758→                <p className="text-xs text-muted-foreground">{user.email}</p>
+   759→              </div>
+   760→            </DropdownMenuLabel>
+   761→            <DropdownMenuSeparator />
+   762→            <DropdownMenuItem onClick={() => useAuthStore.getState().setRoute(
+   763→              user.role === 'admin' ? { page: 'admin-dashboard', tab: 'profile' } :
+   764→              user.role === 'team' ? { page: 'team-dashboard', tab: 'profile' } :
+   765→              { page: 'client-dashboard', tab: 'profile' }
+   766→            )}>
+   767→              <User className="mr-2 h-4 w-4" />Profile
+   768→            </DropdownMenuItem>
+   769→            <DropdownMenuSeparator />
+   770→            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+   771→              <LogOut className="mr-2 h-4 w-4" />Sign out
+   772→            </DropdownMenuItem>
+   773→          </DropdownMenuContent>
+   774→        </DropdownMenu>
+   775→      </div>
+   776→    </header>
+   777→  )
+   778→}
+   779→
+   780→// ─── Sidebar ────────────────────────────────────────────
+   781→interface NavItem {
+   782→  id: string
+   783→  label: string
+   784→  icon: React.ElementType
+   785→  route: AppRoute
+   786→  badge?: string
+   787→}
+   788→
+   789→function getNavItems(role: string): NavItem[] {
+   790→  if (role === 'admin') return [
+   791→    { id: 'overview', label: 'Overview', icon: LayoutDashboard, route: { page: 'admin-dashboard', tab: 'overview' } },
+   792→    { id: 'users', label: 'Users', icon: Users, route: { page: 'admin-dashboard', tab: 'users' } },
+   793→    { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'admin-dashboard', tab: 'onboarding' } },
+   794→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'admin-dashboard', tab: 'project' } },
+   795→    { id: 'task-dashboard', label: 'Task Dashboard', icon: ListTodo, route: { page: 'admin-dashboard', tab: 'task-dashboard' } },
+   796→    { id: 'task-view', label: 'Task', icon: Kanban, route: { page: 'admin-dashboard', tab: 'task-view' } },
+   797→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'admin-dashboard', tab: 'time-tracking' } },
+   798→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
+   799→    { id: 'screenshots', label: 'Screenshot Report', icon: Camera, route: { page: 'admin-dashboard', tab: 'screenshots' } },
+   800→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
+   801→  ]
+   802→  if (role === 'team') return [
+   803→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
+   804→    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+   805→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
+   806→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
+   807→    { id: 'screenshots', label: 'Screenshots', icon: Camera, route: { page: 'team-dashboard', tab: 'screenshots' } },
+   808→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
+   809→  ]
+   810→  if (role === 'training') return [
+   811→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
+   812→    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+   813→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
+   814→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
+   815→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
+   816→  ]
+   817→  return [ // client
+   818→    { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'client-dashboard', tab: 'onboarding' } },
+   819→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'client-dashboard', tab: 'project' } },
+   820→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'client-dashboard', tab: 'messages' } },
+   821→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'client-dashboard', tab: 'profile' } },
+   822→  ]
+   823→}
+   824→
+   825→export function AppSidebar() {
+   826→  const { user, route, setRoute, sidebarOpen, setSidebarOpen } = useAuthStore()
+   827→
+   828→  if (!user) return null
+   829→  const navItems = getNavItems(user.role)
+   830→  const showTimeWidget = user.role === 'admin' || user.role === 'team' || user.role === 'training'
+   831→
+   832→  const isCurrentTab = (item: NavItem) => 'tab' in route && route.page === item.route.page && route.tab === item.route.tab
+   833→
+   834→  const sidebarContent = (
+   835→    <div className="flex flex-col h-full">
+   836→      <div className="p-4 flex items-center justify-between">
+   837→        <Badge variant="secondary" className="text-xs">
+   838→          {user.role === 'admin' ? 'Admin Panel' : user.role === 'client' ? 'Client Portal' : user.role === 'training' ? 'Training' : 'Team Workspace'}
+   839→        </Badge>
+   840→        <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+   841→          <X className="w-4 h-4" />
+   842→        </Button>
+   843→      </div>
+   844→      <Separator className="mx-4" />
+   845→      <ScrollArea className="flex-1 px-3 py-3">
+   846→        {showTimeWidget && (
+   847→          <TimeInOutWidget userId={user.id} />
+   848→        )}
+   849→        <nav className="space-y-1">
+   850→          {navItems.map((item) => (
+   851→            <Button
+   852→              key={item.id}
+   853→              variant={isCurrentTab(item) ? 'secondary' : 'ghost'}
+   854→              className={cn('w-full justify-start gap-3 h-9', isCurrentTab(item) && 'font-medium')}
+   855→              onClick={() => { setRoute(item.route); setSidebarOpen(false) }}
+   856→            >
+   857→              <item.icon className="w-4 h-4" />
+   858→              {item.label}
+   859→            </Button>
+   860→          ))}
+   861→        </nav>
+   862→      </ScrollArea>
+   863→      {user.role === 'admin' && (
+   864→        <>
+   865→          <Separator />
+   866→          <div className="p-4 flex items-center gap-2">
+   867→            <Shield className="w-4 h-4 text-primary" />
+   868→            <span className="text-xs text-muted-foreground">Admin Access</span>
+   869→          </div>
+   870→        </>
+   871→      )}
+   872→    </div>
+   873→  )
+   874→
+   875→  return (
+   876→    <>
+   877→      {sidebarOpen && (
+   878→        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+   879→      )}
+   880→      <aside className={cn(
+   881→        'fixed inset-y-0 left-0 z-50 w-64 bg-card border-r transform transition-transform duration-200 lg:hidden',
+   882→        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+   883→      )}>
+   884→        {sidebarContent}
+   885→      </aside>
+   886→      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:border-r bg-card shrink-0">
+   887→        {sidebarContent}
+   888→      </aside>
+   889→    </>
+   890→  )
+   891→}
+   892→
+   893→// ─── Dashboard Shell ────────────────────────────────────
+   894→function OfflineBanner() {
+   895→  const [isOffline, setIsOffline] = useState(() => {
+   896→    if (typeof navigator === 'undefined') return false
+   897→    return !navigator.onLine
+   898→  })
+   899→
+   900→  useEffect(() => {
+   901→    const handleOnline = () => setIsOffline(false)
+   902→    const handleOffline = () => setIsOffline(true)
+   903→    window.addEventListener('online', handleOnline)
+   904→    window.addEventListener('offline', handleOffline)
+   905→    return () => {
+   906→      window.removeEventListener('online', handleOnline)
+   907→      window.removeEventListener('offline', handleOffline)
+   908→    }
+   909→  }, [])
+   910→
+   911→  if (!isOffline) return null
+   912→
+   913→  return (
+   914→    <div className="bg-amber-500 text-white text-center text-xs font-medium py-1.5 px-4 flex items-center justify-center gap-2">
+   915→      <WifiOff className="w-3.5 h-3.5 shrink-0" />
+   916→      <span>You are offline. Some features may be unavailable until connection is restored.</span>
+   917→    </div>
+   918→  )
+   919→}
+   920→
+   921→export function DashboardShell({ children }: { children: React.ReactNode }) {
+   922→  return (
+   923→    <div className="min-h-screen flex flex-col bg-background">
+   924→      <OfflineBanner />
+   925→      <AppHeader />
+   926→      <div className="flex flex-1 overflow-hidden">
+   927→        <AppSidebar />
+   928→        <main className="flex-1 overflow-y-auto">
+   929→          <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
+   930→            {children}
+   931→          </div>
+   932→        </main>
+   933→      </div>
+   934→    </div>
+   935→  )
+   936→}
