@@ -1,15 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths } from 'date-fns'
-import { CalendarIcon, Trash2, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths, startOfWeek, endOfWeek, isSameDay, isSameMonth, parseISO } from 'date-fns'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, StickyNote, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth'
 import type { CalendarNote } from '@/types'
+import { motion, AnimatePresence } from 'framer-motion'
 
 const NOTE_COLORS = [
   { value: '#f59e0b', label: 'Amber' },
@@ -20,24 +26,27 @@ const NOTE_COLORS = [
   { value: '#ec4899', label: 'Pink' },
 ]
 
-interface CalendarNoteWidgetProps {
-  userId: string
-}
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
+export function CalendarNotesDashboard() {
+  const user = useAuthStore((s) => s.user)
+  const userId = user?.id ?? ''
+
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [notes, setNotes] = useState<CalendarNote[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [noteColor, setNoteColor] = useState('#f59e0b')
   const [editingNote, setEditingNote] = useState<CalendarNote | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const monthStr = format(currentMonth, 'yyyy-MM')
 
   const fetchNotes = useCallback(async () => {
+    if (!userId) return
     try {
       setLoading(true)
       const res = await fetch(`/api/calendar-notes?month=${monthStr}&userId=${userId}`)
@@ -46,36 +55,60 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
         setNotes(data)
       }
     } catch {
-      // silent fail
+      // silent
     } finally {
       setLoading(false)
     }
-  }, [monthStr])
+  }, [monthStr, userId])
 
   useEffect(() => {
     fetchNotes()
   }, [fetchNotes])
 
-  const days = eachDayOfInterval({
-    start: startOfMonth(currentMonth),
-    end: endOfMonth(currentMonth),
-  })
+  // Calendar grid: include leading/trailing days for a full 6-week grid
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(currentMonth)
+    const calStart = startOfWeek(monthStart)
+    const calEnd = endOfWeek(monthEnd)
+    return eachDayOfInterval({ start: calStart, end: calEnd })
+  }, [currentMonth])
+
+  const notesByDate = useMemo(() => {
+    const map = new Map<string, CalendarNote[]>()
+    notes.forEach((n) => {
+      const list = map.get(n.date) || []
+      list.push(n)
+      map.set(n.date, list)
+    })
+    return map
+  }, [notes])
+
+  const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null
+  const selectedDayNotes = selectedDateStr ? (notesByDate.get(selectedDateStr) ?? []) : []
+
+  // All notes for the month sorted by date desc for the list
+  const allMonthNotes = useMemo(() => {
+    return [...notes].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+  }, [notes])
 
   const getNotesForDay = (day: Date) => {
-    const dateStr = format(day, 'yyyy-MM-dd')
-    return notes.filter((n) => n.date === dateStr)
+    return notesByDate.get(format(day, 'yyyy-MM-dd')) ?? []
   }
 
   const handleDayClick = (day: Date) => {
     setSelectedDate(day)
+  }
+
+  const handleAddNote = () => {
+    if (!selectedDate) return
     setEditingNote(null)
     setNoteText('')
     setNoteColor('#f59e0b')
     setDialogOpen(true)
   }
 
-  const handleEditNote = (note: CalendarNote, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleEditNote = (note: CalendarNote) => {
     setEditingNote(note)
     setNoteText(note.content)
     setNoteColor(note.color)
@@ -84,7 +117,6 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
 
   const handleSaveNote = async () => {
     if (!noteText.trim()) return
-    if (!selectedDate && !editingNote) return
 
     setSaving(true)
     try {
@@ -94,11 +126,8 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingNote.id, userId, content: noteText, color: noteColor }),
         })
-        if (res.ok) {
-          toast.success('Note updated')
-        } else {
-          toast.error('Failed to update note')
-        }
+        if (res.ok) toast.success('Note updated')
+        else toast.error('Failed to update note')
       } else {
         const dateStr = format(selectedDate!, 'yyyy-MM-dd')
         const res = await fetch('/api/calendar-notes', {
@@ -106,11 +135,8 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, date: dateStr, content: noteText, color: noteColor }),
         })
-        if (res.ok) {
-          toast.success('Note added')
-        } else {
-          toast.error('Failed to add note')
-        }
+        if (res.ok) toast.success('Note added')
+        else toast.error('Failed to add note')
       }
       setDialogOpen(false)
       fetchNotes()
@@ -121,109 +147,293 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
     }
   }
 
-  const handleDeleteNote = async (noteId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleDeleteNote = async (noteId: string) => {
+    setDeletingId(noteId)
     try {
-      const res = await fetch(`/api/calendar-notes/${noteId}?userId=${userId}`, {
-        method: 'DELETE',
-      })
+      const res = await fetch(`/api/calendar-notes/${noteId}?userId=${userId}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Note deleted')
         fetchNotes()
-        // close dialog if deleting the note being edited
-        if (editingNote?.id === noteId) {
-          setDialogOpen(false)
-        }
+        if (editingNote?.id === noteId) setDialogOpen(false)
       }
     } catch {
       toast.error('Failed to delete note')
+    } finally {
+      setDeletingId(null)
     }
   }
 
+  const todayNoteCount = getNotesForDay(new Date()).length
+
   return (
-    <div className="mb-3">
-      {/* Calendar Header */}
-      <div className="flex items-center justify-between px-1 mb-2">
-        <div className="flex items-center gap-1.5">
-          <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-xs font-medium">Notes</span>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Calendar Notes</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Organize your notes by date. Click a day to view or add notes.
+          </p>
         </div>
-        <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-            <ChevronLeft className="w-3 h-3" />
-          </Button>
-          <span className="text-[11px] font-medium w-14 text-center tabular-nums">
-            {format(currentMonth, 'MMM yyyy')}
-          </span>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-            <ChevronRight className="w-3 h-3" />
-          </Button>
+        <div className="flex items-center gap-2">
+          {todayNoteCount > 0 && (
+            <Badge variant="secondary" className="gap-1">
+              <StickyNote className="w-3 h-3" />
+              {todayNoteCount} note{todayNoteCount !== 1 ? 's' : ''} today
+            </Badge>
+          )}
         </div>
       </div>
 
-      {/* Day Labels */}
-      <div className="grid grid-cols-7 gap-px mb-1 px-0.5">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d} className="text-[9px] text-muted-foreground text-center font-medium py-0.5">
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-px px-0.5">
-        {days.map((day) => {
-          const dayNotes = getNotesForDay(day)
-          const hasNotes = dayNotes.length > 0
-          const today = isToday(day)
-
-          return (
-            <button
-              key={day.toISOString()}
-              className={cn(
-                'relative h-6 w-full text-[10px] rounded-sm transition-colors hover:bg-accent flex items-center justify-center',
-                today && 'bg-primary text-primary-foreground hover:bg-primary/90 font-bold'
-              )}
-              onClick={() => handleDayClick(day)}
-            >
-              {format(day, 'd')}
-              {hasNotes && !today && (
-                <span
-                  className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: dayNotes[0].color }}
-                />
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Today's Notes Preview */}
-      {(() => {
-        const todayNotes = getNotesForDay(new Date())
-        if (todayNotes.length === 0) return null
-        return (
-          <div className="mt-2 space-y-1">
-            <div className="text-[10px] text-muted-foreground font-medium px-1">Today</div>
-            {todayNotes.slice(0, 2).map((note) => (
-              <div
-                key={note.id}
-                className="flex items-start gap-1.5 group cursor-pointer rounded px-1.5 py-1 hover:bg-accent/50"
-                onClick={() => handleEditNote(note, { stopPropagation: () => {} } as React.MouseEvent)}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full mt-1 shrink-0"
-                  style={{ backgroundColor: note.color }}
-                />
-                <span className="text-[11px] leading-tight line-clamp-2 flex-1">{note.content}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Calendar */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CalendarDays className="w-5 h-5" />
+                {format(currentMonth, 'MMMM yyyy')}
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date()) }}>
+                  Today
+                </Button>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
               </div>
-            ))}
-            {todayNotes.length > 2 && (
-              <span className="text-[10px] text-muted-foreground px-1">+{todayNotes.length - 2} more</span>
-            )}
-          </div>
-        )
-      })()}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Day Labels */}
+            <div className="grid grid-cols-7 mb-1">
+              {DAY_LABELS.map((d) => (
+                <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 border-t border-l">
+              {calendarDays.map((day) => {
+                const dayNotes = getNotesForDay(day)
+                const hasNotes = dayNotes.length > 0
+                const today = isToday(day)
+                const inMonth = isSameMonth(day, currentMonth)
+                const isSelected = selectedDate && isSameDay(day, selectedDate)
+
+                return (
+                  <button
+                    key={day.toISOString()}
+                    className={cn(
+                      'relative min-h-[72px] sm:min-h-[80px] p-1.5 border-r border-b text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-in-0',
+                      !inMonth && 'bg-muted/30',
+                      isSelected && 'bg-primary/5 ring-2 ring-primary/30 ring-inset',
+                    )}
+                    onClick={() => handleDayClick(day)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={cn(
+                          'text-sm font-medium inline-flex items-center justify-center w-7 h-7 rounded-full',
+                          today && 'bg-primary text-primary-foreground',
+                          !today && !inMonth && 'text-muted-foreground/50',
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </span>
+                      {hasNotes && (
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          {dayNotes.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Note indicators */}
+                    {hasNotes && (
+                      <div className="mt-0.5 space-y-0.5">
+                        {dayNotes.slice(0, 2).map((n) => (
+                          <div
+                            key={n.id}
+                            className="text-[10px] leading-tight truncate rounded px-1 py-0.5 text-white"
+                            style={{ backgroundColor: n.color }}
+                          >
+                            {n.content}
+                          </div>
+                        ))}
+                        {dayNotes.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground pl-1">
+                            +{dayNotes.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Right: Selected Day Notes + Note List */}
+        <div className="space-y-4">
+          {/* Selected Day Panel */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">
+                  {selectedDate
+                    ? isToday(selectedDate)
+                      ? 'Today'
+                      : format(selectedDate, 'EEEE, MMM dd')
+                    : 'Select a Day'}
+                </CardTitle>
+                {selectedDate && (
+                  <Button size="sm" className="h-7 gap-1" onClick={handleAddNote}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Add
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!selectedDate ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Click a day on the calendar to view notes
+                </p>
+              ) : selectedDayNotes.length === 0 ? (
+                <div className="text-center py-8">
+                  <StickyNote className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">No notes for this day</p>
+                  <Button variant="link" size="sm" className="mt-1" onClick={handleAddNote}>
+                    Add one
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <AnimatePresence>
+                    {selectedDayNotes.map((note) => (
+                      <motion.div
+                        key={note.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        className="group rounded-lg border p-3 hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex items-start gap-2">
+                          <span
+                            className="w-3 h-3 rounded-full mt-0.5 shrink-0"
+                            style={{ backgroundColor: note.color }}
+                          />
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1">
+                            {note.content}
+                          </p>
+                          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEditNote(note)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteNote(note.id)}
+                              disabled={deletingId === note.id}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1.5 pl-5">
+                          {format(parseISO(note.updatedAt), 'hh:mm a')}
+                        </p>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* All Notes This Month */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <StickyNote className="w-4 h-4" />
+                All Notes
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  {allMonthNotes.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                  ))}
+                </div>
+              ) : allMonthNotes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  No notes this month
+                </p>
+              ) : (
+                <ScrollArea className="max-h-[300px]">
+                  <div className="space-y-2 pr-2">
+                    {allMonthNotes.map((note) => (
+                      <button
+                        key={note.id}
+                        className="w-full text-left rounded-lg border p-3 hover:shadow-sm transition-shadow group"
+                        onClick={() => setSelectedDate(parseISO(note.date))}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full mt-1 shrink-0"
+                            style={{ backgroundColor: note.color }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">{note.content}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {format(parseISO(note.date), 'MMM dd, yyyy')}
+                            </p>
+                          </div>
+                          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={(e) => { e.stopPropagation(); handleEditNote(note) }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id) }}
+                              disabled={deletingId === note.id}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Add/Edit Note Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -231,7 +441,11 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <StickyNote className="w-4 h-4" />
-              {editingNote ? 'Edit Note' : selectedDate ? `Note for ${format(selectedDate, 'MMM dd, yyyy')}` : 'Add Note'}
+              {editingNote
+                ? 'Edit Note'
+                : selectedDate
+                  ? `Note for ${format(selectedDate, 'MMM dd, yyyy')}`
+                  : 'Add Note'}
             </DialogTitle>
             <DialogDescription>
               {editingNote ? 'Update your note below.' : 'Write a note for this date.'}
@@ -248,15 +462,14 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
               autoFocus
             />
 
-            {/* Color Picker */}
             <div>
               <span className="text-xs text-muted-foreground mb-2 block">Color</span>
-              <div className="flex gap-2">
+              <div className="flex gap-2.5">
                 {NOTE_COLORS.map((c) => (
                   <button
                     key={c.value}
                     className={cn(
-                      'w-6 h-6 rounded-full transition-all border-2',
+                      'w-7 h-7 rounded-full transition-all border-2',
                       noteColor === c.value ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
                     )}
                     style={{ backgroundColor: c.value }}
@@ -267,40 +480,29 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
               </div>
             </div>
 
-            {/* Existing notes for this date */}
+            {/* Existing notes for this date (when adding new) */}
             {selectedDate && !editingNote && (() => {
-              const existingNotes = getNotesForDay(selectedDate)
-              if (existingNotes.length === 0) return null
+              const existing = getNotesForDay(selectedDate)
+              if (existing.length === 0) return null
               return (
                 <div>
                   <Separator className="mb-2" />
-                  <span className="text-xs text-muted-foreground mb-1.5 block">Existing notes</span>
+                  <span className="text-xs text-muted-foreground mb-1.5 block">
+                    {existing.length} existing note{existing.length !== 1 ? 's' : ''} on this day
+                  </span>
                   <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                    {existingNotes.map((n) => (
+                    {existing.map((n) => (
                       <div
                         key={n.id}
                         className="flex items-start gap-2 group rounded-md border p-2 hover:bg-accent/30"
                       >
-                        <span
-                          className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                          style={{ backgroundColor: n.color }}
-                        />
+                        <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: n.color }} />
                         <p className="text-xs flex-1 leading-relaxed whitespace-pre-wrap">{n.content}</p>
                         <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={(e) => handleEditNote(n, e)}
-                          >
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditNote(n)}>
                             <Pencil className="w-3 h-3" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 text-destructive hover:text-destructive"
-                            onClick={(e) => handleDeleteNote(n.id, e)}
-                          >
+                          <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive" onClick={() => handleDeleteNote(n.id)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
@@ -314,12 +516,7 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
 
           <DialogFooter className="gap-2">
             {editingNote && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={(e) => handleDeleteNote(editingNote.id, e)}
-                className="mr-auto"
-              >
+              <Button variant="destructive" size="sm" onClick={() => handleDeleteNote(editingNote.id)} className="mr-auto">
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
                 Delete
               </Button>
@@ -334,24 +531,5 @@ export function CalendarNoteWidget({ userId }: CalendarNoteWidgetProps) {
         </DialogContent>
       </Dialog>
     </div>
-  )
-}
-
-function Pencil({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-    </svg>
   )
 }

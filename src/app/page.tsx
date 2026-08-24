@@ -9,6 +9,7 @@ import { TeamProjects, TeamTasks, TeamMessages, TeamProfile, TeamTimeTracking } 
 import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { TeamScreenshots } from '@/features/screenshot-capture'
 import { AdminScreenshotReport } from '@/features/screenshot-report'
+import { CalendarNotesDashboard } from '@/features/calendar-note-widget'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const emptySubscribe = () => () => {}
@@ -31,6 +32,7 @@ function AdminDashboard() {
         {route.tab === 'time-tracking' && <AdminTimeTracking />}
         {route.tab === 'messages' && <AdminMessages />}
         {route.tab === 'screenshots' && <AdminScreenshotReport />}
+        {route.tab === 'calendar' && <CalendarNotesDashboard />}
         {route.tab === 'profile' && <AdminProfile />}
       </motion.div>
     </AnimatePresence>
@@ -48,6 +50,7 @@ function TeamDashboard() {
         {route.tab === 'time-tracking' && <TeamTimeTracking />}
         {route.tab === 'messages' && <TeamMessages />}
         {route.tab === 'screenshots' && <TeamScreenshots />}
+        {route.tab === 'calendar' && <CalendarNotesDashboard />}
         {route.tab === 'profile' && <TeamProfile />}
       </motion.div>
     </AnimatePresence>

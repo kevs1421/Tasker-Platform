@@ -1502,3 +1502,30 @@ Stage Summary:
 - 6 color options for note categorization
 - Monthly calendar navigation with note indicators
 - API routes: GET (by month/date), POST, PUT, DELETE
+---
+Task ID: calendar-dashboard-tab
+Agent: main
+Task: Move calendar notes from sidebar to its own dashboard tab with full calendar + note list
+
+Work Log:
+- Added 'calendar' tab to AppRoute for admin-dashboard and team-dashboard in types/index.ts
+- Added 'Calendar Notes' nav item (CalendarDays icon) to admin, team, and training sidebar navs in app-shell.tsx
+- Removed CalendarNoteWidget from sidebar in app-shell.tsx
+- Removed CalendarNoteWidget import from app-shell.tsx
+- Rewrote calendar-note-widget.tsx as CalendarNotesDashboard (full-page component):
+  - Left: 2/3 width full month calendar grid with prev/next/today nav
+  - Calendar shows note count per day, note previews (colored bars with truncated text)
+  - Right: 1/3 width split into "Selected Day" panel and "All Notes" panel
+  - Selected Day: shows notes for clicked day with edit/delete, Add button
+  - All Notes: scrollable list of all month notes sorted by date desc
+  - Add/Edit dialog with textarea + 6-color picker + existing notes display
+  - AnimatePresence for smooth note list animations
+- Wired calendar tab to both AdminDashboard and TeamDashboard in page.tsx
+- Verified via Agent Browser: full calendar renders, day selection works, add/edit/delete notes work
+
+Stage Summary:
+- Calendar Notes is now a standalone dashboard tab (not in sidebar)
+- Available for Admin, Team, and Training users
+- Full calendar view with note indicators and previews per day
+- Right panel shows selected day's notes + scrollable all-notes list
+- Complete CRUD: create, read, update, delete notes
