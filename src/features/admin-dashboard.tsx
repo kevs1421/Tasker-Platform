@@ -6,6 +6,7 @@ import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 // shadcn/ui
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -3064,14 +3065,18 @@ export function AdminProfile() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col items-center text-center">
-              <Avatar className="h-20 w-20 mb-3">
-                {user?.avatar ? <AvatarImage src={user.avatar} /> : null}
-                <AvatarFallback className="text-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  {user ? getInitials(user.name) : '?'}
-                </AvatarFallback>
-              </Avatar>
-              <h3 className="font-semibold">{user?.name}</h3>
+              <ProfileAvatarUpload
+                userId={user?.id ?? ''}
+                name={user?.name ?? ''}
+                avatar={user?.avatar}
+                size="lg"
+                onAvatarChange={(newAvatar) => {
+                  if (user) updateUser({ avatar: newAvatar })
+                }}
+              />
+              <h3 className="font-semibold mt-3">{user?.name}</h3>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="text-xs text-muted-foreground mt-1">Click photo to change</p>
             </div>
 
             <Separator />

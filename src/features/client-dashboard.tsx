@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { isBefore, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 
 // ─── Extended project type with task stats ────────────────────
@@ -669,21 +670,43 @@ export function ClientProfile() {
         </div>
       </div>
 
+      {/* Profile Avatar Card */}
+      <motion.div {...fadeSlide}>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <ProfileAvatarUpload
+                userId={user?.id ?? ''}
+                name={user?.name ?? ''}
+                avatar={user?.avatar}
+                size="lg"
+                onAvatarChange={(newAvatar) => {
+                  if (user) updateUser({ avatar: newAvatar })
+                }}
+              />
+              <h2 className="text-lg font-semibold mt-3">{user?.name}</h2>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="text-xs text-muted-foreground mt-1">Click photo to change</p>
+              <div className="flex flex-wrap gap-2 mt-3 justify-center">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+                  Client
+                </span>
+                {user?.createdAt && (
+                  <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-muted text-muted-foreground">
+                    Member since {formatDate(user.createdAt)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Profile Card */}
       <motion.div {...fadeSlide}>
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Personal Information</CardTitle>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
-                Client
-              </span>
-            </div>
-            {user?.createdAt && (
-              <p className="text-sm text-muted-foreground">
-                Member since {formatDate(user.createdAt)}
-              </p>
-            )}
+            <CardTitle className="text-lg">Personal Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">

@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Calendar } from '@/components/ui/calendar'
@@ -84,6 +84,7 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -118,6 +119,7 @@ function AvatarStack({ users, max = 3 }: { users: (User | undefined)[]; max?: nu
       {visible.map((u, i) =>
         u ? (
           <Avatar key={u.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/50" style={{ zIndex: visible.length - i }}>
+            {u.avatar && <AvatarImage src={u.avatar} alt={u.name} />}
             <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
               {getInitials(u.name)}
             </AvatarFallback>
@@ -138,6 +140,7 @@ function MemberAvatar({ user, size = 'md' }: { user: User | undefined; size?: 's
   if (!user) return null
   return (
     <Avatar className={sizeClasses}>
+      {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
       <AvatarFallback className={cn('bg-slate-200 dark:bg-slate-700 font-medium')}>
         {getInitials(user.name)}
       </AvatarFallback>
@@ -1837,7 +1840,7 @@ export { MessagesPanel as TeamMessages } from '@/components/messages/MessagesPan
 // ─── TeamProfile ────────────────────────────────────────────
 
 export function TeamProfile() {
-  const { user } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [profile, setProfile] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1965,11 +1968,15 @@ export function TeamProfile() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="p-6">
           <div className="flex items-start gap-5">
-            <Avatar className="h-20 w-20">
-              <AvatarFallback className="text-xl bg-slate-200 dark:bg-slate-700 font-semibold">
-                {displayUser ? getInitials(displayUser.name) : '??'}
-              </AvatarFallback>
-            </Avatar>
+            <ProfileAvatarUpload
+              userId={user?.id ?? ''}
+              name={displayUser?.name ?? ''}
+              avatar={displayUser?.avatar}
+              size="lg"
+              onAvatarChange={(newAvatar) => {
+                if (user) updateUser({ avatar: newAvatar })
+              }}
+            />
             <div className="flex-1 space-y-3">
               <div>
                 <h2 className="text-lg font-semibold">{displayUser?.name}</h2>

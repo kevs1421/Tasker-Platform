@@ -1529,3 +1529,26 @@ Stage Summary:
 - Full calendar view with note indicators and previews per day
 - Right panel shows selected day's notes + scrollable all-notes list
 - Complete CRUD: create, read, update, delete notes
+---
+Task ID: profile-avatar-upload
+Agent: main
+Task: Add profile image upload for every user
+
+Work Log:
+- Created /api/avatar POST endpoint: accepts FormData with avatar file + userId, validates type (JPEG/PNG/GIF/WebP) and size (max 2MB), saves to public/uploads/avatars/, updates DB user.avatar field
+- Created /api/avatar DELETE endpoint: removes avatar file from disk and sets DB user.avatar to null
+- Created public/uploads/avatars/ directory
+- Created src/components/profile-avatar-upload.tsx: shared component with hover overlay showing Camera icon (or Camera+Trash when image exists), 3 sizes (sm/md/lg), loading spinner during upload, calls onAvatarChange callback
+- Updated AdminProfile (admin-dashboard.tsx): replaced static Avatar with ProfileAvatarUpload in Account Info card, added 'Click photo to change' hint text
+- Updated TeamProfile (team-dashboard.tsx): replaced static Avatar with ProfileAvatarUpload in profile header card, added updateUser destructure
+- Updated ClientProfile (client-dashboard.tsx): added new avatar card above Personal Information card with ProfileAvatarUpload, role badge, and member-since
+- Updated app-shell.tsx header: added AvatarImage when user.avatar exists next to AvatarFallback, imported AvatarImage
+- Updated team-dashboard.tsx AvatarStack and MemberAvatar: added AvatarImage when user.avatar exists
+- All avatar renderings now show actual profile image when available, falling back to initials
+
+Stage Summary:
+- Profile image upload available for Admin, Team, Training, and Client users
+- File validation: type (JPEG/PNG/GIF/WebP), size (2MB max)
+- Hover overlay on avatar with camera icon; existing images show camera + delete
+- Header avatar updates immediately after upload
+- All user avatar displays across the app show the uploaded image
