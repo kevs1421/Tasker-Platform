@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ avatar: avatarUrl })
   } catch (error) {
-    console.error('POST /api/avatar error:', error)
     return NextResponse.json({ error: 'Failed to upload avatar' }, { status: 500 })
   }
 }
@@ -76,7 +75,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, avatar: null })
   } catch (error) {
-    console.error('DELETE /api/avatar error:', error)
     return NextResponse.json({ error: 'Failed to remove avatar' }, { status: 500 })
   }
 }

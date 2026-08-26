@@ -3,26 +3,21 @@ import { db } from '@/lib/db'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import crypto from 'crypto'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'screenshots')
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
 const MAX_SIZE = 20 * 1024 * 1024 // 20MB
 
-// GET /api/screenshots?userId=xxx&admin=true — list screenshots
+// GET /api/screenshots — list screenshots (own for users, all for admins)
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    const adminView = searchParams.get('admin') === 'true'
+    const auth = await requireAuth(request)
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    }
-
-    // Non-admin users can only see their own screenshots
+    // Admins see all screenshots; regular users see only their own
     const where: Record<string, unknown> = {}
-    if (!adminView) {
-      where.userId = userId
+    if (auth.role !== 'admin') {
+      where.userId = auth.id
     }
 
     const screenshots = await db.screenshot.findMany({
@@ -38,30 +33,29 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ screenshots })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to fetch screenshots'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 // POST /api/screenshots — upload a screenshot
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request)
+
     const formData = await request.formData()
     const file = formData.get('file') as File | null
-    const userId = formData.get('userId') as string | null
-    const userRole = formData.get('userRole') as string | null
     const title = formData.get('title') as string | null
     const description = formData.get('description') as string | null
     const projectId = formData.get('projectId') as string | null
     const taskId = formData.get('taskId') as string | null
     const isAuto = formData.get('isAuto') === 'true'
 
-    if (!file || !userId) {
-      return NextResponse.json({ error: 'File and userId are required' }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: 'File is required' }, { status: 400 })
     }
 
     // Block client role from uploading
-    if (userRole === 'client') {
+    if (auth.role === 'client') {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -86,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     const screenshot = await db.screenshot.create({
       data: {
-        userId,
+        userId: auth.id,
         projectId: projectId || null,
         taskId: taskId || null,
         title: title || file.name,
@@ -105,7 +99,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ screenshot }, { status: 201 })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to upload screenshot'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }

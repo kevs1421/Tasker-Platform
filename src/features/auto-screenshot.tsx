@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import {
   Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
@@ -178,7 +179,7 @@ export function useAutoScreenshot() {
     // Countdown timer (every second)
     countdownRef.current = setInterval(() => {
       setCountdown(prev => {
-        if (prev <= 1) return intervalMinutes * 60 // reset when reaching 0
+        if (prev <= 0) return intervalMinutes * 60 // reset when reaching 0
         return prev - 1
       })
     }, 1000)
@@ -469,9 +470,4 @@ export function AutoScreenshotPanel({ isTimerActive, autoHook, onToggle }: AutoS
       </Card>
     </motion.div>
   )
-}
-
-// ─── Skeleton helper ──────────────────────────────────────
-function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse bg-muted rounded-md', className)} />
 }

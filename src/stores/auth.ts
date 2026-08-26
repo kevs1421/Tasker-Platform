@@ -69,26 +69,6 @@ export function authHeaders(extra?: Record<string, string>): HeadersInit {
   return headers
 }
 
-/**
- * Auth-aware fetch wrapper. Automatically redirects to login on 401.
- * Use this instead of raw `fetch` for all authenticated API calls.
- */
-export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const token = getAuthToken()
-  const headers = new Headers(init?.headers)
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-  const res = await fetch(input, { ...init, headers })
-  if (res.status === 401) {
-    // Token is invalid or expired — clear auth and force re-login
-    persistUser(null)
-    persistToken(null)
-    useAuthStore.getState().forceLogout()
-  }
-  return res
-}
-
 // ─── Hash-based tab routing ─────────────────────────────
 
 const HASH_ROUTES: Record<string, AppRoute> = {
@@ -221,7 +201,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, route: { page: 'login' }, _hydrated: true })
     } catch {
       // Network error — allow offline use with cached user, but mark hydrated
-      // The authFetch wrapper will catch 401s on the first real API call
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       let route = getDefaultRoute(persisted.role)
       if (hash && hash !== '#') {

@@ -87,8 +87,8 @@ export function AdminOverview() {
     async function fetchData() {
       try {
         const [statsRes, actRes] = await Promise.all([
-          fetch('/api/admin'),
-          fetch('/api/admin/activity')
+          fetch('/api/admin', { headers: authHeaders() }),
+          fetch('/api/admin/activity', { headers: authHeaders() })
         ])
         if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
         const statsData = await statsRes.json()
@@ -348,7 +348,7 @@ export function AdminOnboarding() {
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await fetch('/api/users')
+      const res = await fetch('/api/users', { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
@@ -1214,7 +1214,7 @@ export function AdminProjects() {
 
   // Fetch active admin + team users for member picker
   useEffect(() => {
-    fetch('/api/users')
+    fetch('/api/users', { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team' || u.role === 'training') && u.status === 'active')
@@ -1742,7 +1742,7 @@ export function AdminTasks() {
 
   // Fetch all team/admin users for assignee selection
   useEffect(() => {
-    fetch('/api/users')
+    fetch('/api/users', { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'training' || u.role === 'admin')
@@ -2226,7 +2226,7 @@ export function AdminUsers() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users')
+      const res = await fetch('/api/users', { headers: authHeaders() })
       if (!res.ok) throw new Error()
       const data = await res.json()
       setUsers(data.users ?? [])
@@ -2299,7 +2299,7 @@ export function AdminUsers() {
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: u.id, status: newStatus })
       })
       if (!res.ok) throw new Error()
@@ -2315,7 +2315,7 @@ export function AdminUsers() {
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: u.id, role: newRole })
       })
       if (!res.ok) throw new Error()
@@ -2348,7 +2348,7 @@ export function AdminUsers() {
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           id: editForm.id,
           name: editForm.name,
@@ -3207,7 +3207,7 @@ export function AdminTimeTracking() {
     async function fetchMetadata() {
       try {
         const [usersRes, projectsRes] = await Promise.all([
-          fetch('/api/users?role=team'),
+          fetch('/api/users?role=team', { headers: authHeaders() }),
           fetch('/api/projects'),
         ])
         if (usersRes.ok) {

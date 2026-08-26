@@ -3,35 +3,35 @@ import { db } from '@/lib/db'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import crypto from 'crypto'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'screenshots')
 
 // POST /api/screenshots/auto — auto-capture screenshot (real screen capture from html2canvas)
 // Expects multipart form-data with:
-//   file: base64-encoded PNG data (from html2canvas)
-//   userId: string
-//   userRole: string
+//   file: image data (from html2canvas)
 //   projectId?: string
 //   taskId?: string
 //   description?: string
 //   sessionId?: string (time entry ID for session grouping)
+// Auth via Authorization Bearer token
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request)
+
     const formData = await request.formData()
     const file = formData.get('file') as File | null
-    const userId = formData.get('userId') as string | null
-    const userRole = formData.get('userRole') as string | null
     const projectId = formData.get('projectId') as string | null
     const taskId = formData.get('taskId') as string | null
     const description = formData.get('description') as string | null
     const sessionId = formData.get('sessionId') as string | null
 
-    if (!file || !userId) {
-      return NextResponse.json({ error: 'File and userId are required' }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: 'File is required' }, { status: 400 })
     }
 
     // Block client role
-    if (userRole === 'client') {
+    if (auth.role === 'client') {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -46,9 +46,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Screenshot too large (max 5MB)' }, { status: 400 })
     }
 
-    // Fetch user info
+    // Fetch user info from authenticated session
     const user = await db.user.findUnique({
-      where: { id: userId },
+      where: { id: auth.id },
       select: { id: true, name: true, email: true, role: true },
     })
     if (!user) {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const ext = file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : 'webp'
-    const uniqueName = `auto_${userId.slice(0, 8)}_${timestamp}_${crypto.randomUUID().slice(0, 6)}.${ext}`
+    const uniqueName = `auto_${auth.id.slice(0, 8)}_${timestamp}_${crypto.randomUUID().slice(0, 6)}.${ext}`
     const filePath = path.join(UPLOAD_DIR, uniqueName)
 
     const bytes = await file.arrayBuffer()
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     const screenshot = await db.screenshot.create({
       data: {
-        userId,
+        userId: auth.id,
         projectId: projectId || null,
         taskId: taskId || null,
         title,
@@ -115,7 +115,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ screenshot }, { status: 201 })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to auto-capture screenshot'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }

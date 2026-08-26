@@ -68,6 +68,7 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
+  useDroppable,
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -571,6 +572,20 @@ export function TeamProjects() {
   )
 }
 
+// ─── Droppable Column for DnD ─────────────────────────────────
+
+function DroppableColumn({ col, children, isDragOver }: { col: typeof STATUS_COLUMNS[number]; children: React.ReactNode; isDragOver: boolean }) {
+  const { setNodeRef } = useDroppable({ id: col.key })
+  return (
+    <div ref={setNodeRef} className={cn(
+      'space-y-3 rounded-xl p-2 transition-colors duration-200 min-h-[120px]',
+      isDragOver && 'ring-2 ring-primary/30 bg-primary/5'
+    )}>
+      {children}
+    </div>
+  )
+}
+
 // ─── Sortable Task Card for DnD ───────────────────────────────
 
 type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
@@ -846,6 +861,8 @@ export function TeamTasks() {
     const overTask = tasks.find((t) => t.id === overId)
     if (overTask) {
       setDragOverColumn(overTask.status as TaskStatus)
+    } else if (STATUS_COLUMNS.some((c) => c.key === overId)) {
+      setDragOverColumn(overId as TaskStatus)
     }
   }
 
@@ -1336,13 +1353,10 @@ export function TeamTasks() {
             {STATUS_COLUMNS.map((col) => {
               const colTasks = tasks.filter((t) => t.status === col.key)
               return (
-                <div
+                <DroppableColumn
                   key={col.key}
-                  id={col.key}
-                  className={cn(
-                    'space-y-3 rounded-xl p-2 transition-colors duration-200 min-h-[120px]',
-                    dragOverColumn === col.key && 'ring-2 ring-primary/30 bg-primary/5'
-                  )}
+                  col={col}
+                  isDragOver={dragOverColumn === col.key}
                 >
                   <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
                     <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
@@ -1379,7 +1393,7 @@ export function TeamTasks() {
                       </div>
                     </SortableContext>
                   </ScrollArea>
-                </div>
+                </DroppableColumn>
               )
             })}
           </div>

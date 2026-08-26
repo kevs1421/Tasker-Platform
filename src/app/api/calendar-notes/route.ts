@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(notes)
   } catch (error) {
-    console.error('GET /api/calendar-notes error:', error)
     return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 })
   }
 }
@@ -54,7 +53,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(note, { status: 201 })
   } catch (error) {
-    console.error('POST /api/calendar-notes error:', error)
     return NextResponse.json({ error: 'Failed to create note' }, { status: 500 })
   }
 }
@@ -87,7 +85,6 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('PUT /api/calendar-notes error:', error)
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 })
   }
 }

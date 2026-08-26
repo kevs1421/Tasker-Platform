@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  Camera, Trash2, Search, Eye, Download, Filter,
+  Camera, Trash2, Search, Eye, Download,
   Loader2, Image as ImageIcon, BarChart3, Users, Calendar,
   ArrowUpDown, Zap, Settings2, Save, Clock, Shield,
-  ChevronDown, ChevronUp, X,
+  X,
 } from 'lucide-react'
 import { useAuthStore, authHeaders } from '@/stores/auth'
 import type { Screenshot } from '@/types'
@@ -39,7 +39,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 // ─── Animations ──────────────────────────────────────────
 const fadeIn = {
@@ -89,7 +88,7 @@ export function AdminScreenshotReport() {
   const fetchScreenshots = useCallback(async () => {
     if (!user) return
     try {
-      const res = await fetch(`/api/screenshots?userId=${user.id}&admin=true`)
+      const res = await fetch(`/api/screenshots`, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         setScreenshots(data.screenshots || [])
@@ -151,7 +150,7 @@ export function AdminScreenshotReport() {
     if (!deleteTarget || !user) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/screenshots/${deleteTarget.id}?userId=${user.id}&admin=true`, { method: 'DELETE' })
+      const res = await fetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) throw new Error('Delete failed')
       toast.success('Screenshot deleted')
       setDeleteOpen(false)

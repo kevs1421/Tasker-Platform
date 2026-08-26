@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import {
   FolderKanban, UserCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  Check, Plus,
+  Check,
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'

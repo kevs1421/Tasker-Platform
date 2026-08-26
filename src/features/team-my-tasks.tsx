@@ -21,8 +21,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 // lucide-react
 import {
-  CheckCircle2, MessageSquare, ListTodo, CircleDot,
-  Clock, Eye, Circle, CalendarIcon, FolderKanban,
+  CheckCircle2, MessageSquare, ListTodo,
+  Clock, Eye, Circle, CalendarIcon,
   Inbox,
 } from 'lucide-react'
 

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, handleApiError } from '@/lib/api-auth'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireAdmin(request)
     const totalTasks = await db.task.count()
     const completedTasks = await db.task.count({ where: { status: 'done' } })
     const inProgressTasks = await db.task.count({ where: { status: 'in_progress' } })
@@ -18,13 +20,14 @@ export async function GET() {
     const thisWeekCompleted = await db.task.count({ where: { status: 'done', updatedAt: { gte: weekAgo } } })
 
     return NextResponse.json({ stats: { totalTasks, completedTasks, inProgressTasks, inReviewTasks, todoTasks, overdueTasks, totalProjects, activeProjects, totalMembers, totalClients, totalMessages, thisWeekCompleted } })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function PATCH(request: Request) {
   try {
+    await requireAdmin(request)
     const body = await request.json()
     const { userId } = body
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
@@ -38,7 +41,7 @@ export async function PATCH(request: Request) {
       overdue: userTasks.filter(a => a.task.dueDate && new Date(a.task.dueDate) < now && a.task.status !== 'done').length,
     }
     return NextResponse.json({ userStats })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch user stats' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

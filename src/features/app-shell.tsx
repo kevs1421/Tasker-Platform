@@ -268,8 +268,6 @@ function TimeInOutWidget({ userId }: { userId: string }) {
               .then(config => {
                 if (config.autoEnabled) {
                   screenshotSession.start({
-                    userId,
-                    userRole: user.role,
                     projectId: entry.projectId || undefined,
                     taskId: entry.task?.id || undefined,
                     intervalMinutes: config.intervalMinutes || 5,
@@ -416,8 +414,6 @@ function TimeInOutWidget({ userId }: { userId: string }) {
               setCaptureCount(0)
               const interval = config.intervalMinutes || currentInterval
               screenshotSession.start({
-                userId,
-                userRole: user.role,
                 projectId: selectedProjectId || undefined,
                 taskId: selectedTaskId || undefined,
                 intervalMinutes: interval,

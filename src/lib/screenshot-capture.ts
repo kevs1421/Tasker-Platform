@@ -1,100 +1,9 @@
 /**
  * Client-side screenshot capture utility using html2canvas-pro
- * Captures the visible viewport and uploads to the server
+ * Provides the ScreenshotSessionManager class for periodic capture during active sessions
  */
 import html2canvas from 'html2canvas-pro'
-
-interface CaptureOptions {
-  userId: string
-  userRole: string
-  projectId?: string
-  taskId?: string
-  description?: string
-  quality?: number // 0.0 to 1.0, default 0.6
-  onCapturing?: () => void
-  onSuccess?: () => void
-  onError?: (error: string) => void
-}
-
-/**
- * Capture the current viewport as a PNG and upload to server
- */
-export async function captureAndUploadScreenshot(options: CaptureOptions): Promise<void> {
-  const {
-    userId,
-    userRole,
-    projectId,
-    taskId,
-    description,
-    quality = 0.6,
-    onCapturing,
-    onSuccess,
-    onError,
-  } = options
-
-  onCapturing?.()
-
-  try {
-    // Capture the full viewport
-    const canvas = await html2canvas(document.body, {
-      allowTaint: true,
-      useCORS: true,
-      scale: window.devicePixelRatio * 0.5, // reduce resolution for smaller file size
-      width: window.innerWidth,
-      height: window.innerHeight,
-      x: window.scrollX,
-      y: window.scrollY,
-      logging: false,
-      backgroundColor: '#ffffff',
-      imageTimeout: 5000,
-      // Ignore the sidebar and header for cleaner captures
-      ignoreElements: (element: Element) => {
-        // Skip elements that are not visible or are overlay dialogs
-        if (element instanceof HTMLElement) {
-          const style = window.getComputedStyle(element)
-          if (style.opacity === '0' || style.visibility === 'hidden') return true
-        }
-        return false
-      },
-    })
-
-    // Convert canvas to blob
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (b) => {
-          if (b) resolve(b)
-          else reject(new Error('Failed to create image blob'))
-        },
-        'image/png',
-        quality,
-      )
-    })
-
-    // Upload to server
-    const formData = new FormData()
-    formData.append('file', blob, `screenshot_${Date.now()}.png`)
-    formData.append('userId', userId)
-    formData.append('userRole', userRole)
-    if (projectId) formData.append('projectId', projectId)
-    if (taskId) formData.append('taskId', taskId)
-    if (description) formData.append('description', description)
-
-    const res = await fetch('/api/screenshots/auto', {
-      method: 'POST',
-      body: formData,
-    })
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.error || 'Upload failed')
-    }
-
-    onSuccess?.()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Screenshot capture failed'
-    onError?.(msg)
-  }
-}
+import { getAuthToken } from '@/stores/auth'
 
 /**
  * Create a screenshot session manager
@@ -107,8 +16,6 @@ export class ScreenshotSessionManager {
   private lastCaptureTime = 0
 
   // Config
-  private userId = ''
-  private userRole = ''
   private projectId = ''
   private taskId = ''
   private intervalMs = 5 * 60 * 1000 // default 5 min
@@ -123,8 +30,6 @@ export class ScreenshotSessionManager {
  * Start the periodic screenshot session
   */
   start(options: {
-    userId: string
-    userRole: string
     projectId?: string
     taskId?: string
     intervalMinutes: number
@@ -136,8 +41,6 @@ export class ScreenshotSessionManager {
     // Don't start if already running
     if (this.isRunning) this.stop()
 
-    this.userId = options.userId
-    this.userRole = options.userRole
     this.projectId = options.projectId || ''
     this.taskId = options.taskId || ''
     this.intervalMs = Math.max(1 * 60 * 1000, (options.intervalMinutes || 5) * 60 * 1000)
@@ -264,13 +167,13 @@ export class ScreenshotSessionManager {
 
       const formData = new FormData()
       formData.append('file', blob, `session_${Date.now()}.png`)
-      formData.append('userId', this.userId)
-      formData.append('userRole', this.userRole)
       if (this.projectId) formData.append('projectId', this.projectId)
       if (this.taskId) formData.append('taskId', this.taskId)
 
+      const token = getAuthToken()
       const res = await fetch('/api/screenshots/auto', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       })
 

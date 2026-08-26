@@ -27,7 +27,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
-  SquarePen, MessageCirclePlus,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -251,7 +250,7 @@ function NewMessageDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <SquarePen className="h-5 w-5 text-emerald-600" /> New Message
+            <Send className="h-5 w-5 text-emerald-600" /> New Message
           </DialogTitle>
           <DialogDescription>Choose a person to start a conversation</DialogDescription>
         </DialogHeader>
@@ -692,7 +691,7 @@ export function MessagesPanel() {
                 onClick={() => setShowNewMessage(true)}
                 title="New Message"
               >
-                <MessageCirclePlus className="h-4 w-4" />
+                <MessageSquare className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost" size="icon" className="h-8 w-8"
@@ -938,7 +937,7 @@ export function MessagesPanel() {
               </p>
               <div className="flex items-center justify-center gap-2 pt-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowNewMessage(true)}>
-                  <MessageCirclePlus className="h-4 w-4" /> New Message
+                  <MessageSquare className="h-4 w-4" /> New Message
                 </Button>
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCreateGroup(true)}>
                   <Users className="h-4 w-4" /> Create Group

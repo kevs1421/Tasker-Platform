@@ -63,7 +63,6 @@ interface TimeTrackingState {
   setActiveSession: (session: ActiveTimeSession | null) => void
   setClockingIn: (v: boolean) => void
   setClockingOut: (v: boolean) => void
-  setStartTimeMs: (v: number) => void
   setInitialized: (v: boolean) => void
   reset: () => void
 }
@@ -82,7 +81,6 @@ export const useTimeTrackingStore = create<TimeTrackingState>((set) => ({
     }),
   setClockingIn: (v) => set({ clockingIn: v }),
   setClockingOut: (v) => set({ clockingOut: v }),
-  setStartTimeMs: (v) => set({ startTimeMs: v }),
   setInitialized: (v) => set({ initialized: v }),
   reset: () =>
     set({

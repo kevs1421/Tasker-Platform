@@ -2,21 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { unlink } from 'fs/promises'
 import path from 'path'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
-// DELETE /api/screenshots/[id]?userId=xxx — delete a screenshot
+// DELETE /api/screenshots/[id] — delete a screenshot (owner or admin)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth(request)
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    const isAdmin = searchParams.get('admin') === 'true'
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    }
 
     const screenshot = await db.screenshot.findUnique({ where: { id } })
 
@@ -25,7 +20,7 @@ export async function DELETE(
     }
 
     // Only owner or admin can delete
-    if (screenshot.userId !== userId && !isAdmin) {
+    if (screenshot.userId !== auth.id && auth.role !== 'admin') {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -41,7 +36,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to delete screenshot'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }

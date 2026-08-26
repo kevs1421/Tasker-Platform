@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, handleApiError } from '@/lib/api-auth'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireAdmin(request)
     const users = await db.user.findMany({
       select: { id: true, email: true, name: true, phone: true, company: true, avatar: true, role: true, status: true, createdAt: true, _count: { select: { assignedTasks: true, createdTasks: true, sentMessages: true } } },
       orderBy: { createdAt: 'desc' }
     })
     return NextResponse.json({ users })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function PATCH(request: Request) {
   try {
+    await requireAdmin(request)
     const { id, role, status, name, email, phone, company } = await request.json()
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
@@ -41,7 +44,7 @@ export async function PATCH(request: Request) {
     const user = await db.user.update({ where: { id }, data: updateData })
     const { password: _, ...safeUser } = user
     return NextResponse.json({ user: safeUser })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

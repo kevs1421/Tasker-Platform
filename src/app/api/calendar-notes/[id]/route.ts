@@ -27,7 +27,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/calendar-notes/[id] error:', error)
     return NextResponse.json({ error: 'Failed to delete note' }, { status: 500 })
   }
 }

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAdmin(request)
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
 
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     const pendingOnboarding = await db.onboarding.count({ where: { status: 'submitted' } })
     return NextResponse.json({ activities: enrichedActivities, pendingOnboarding })
-  } catch {
-    return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

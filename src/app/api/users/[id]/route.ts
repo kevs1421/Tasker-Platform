@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
-import { requireAdmin, getAuthUser, AuthError } from '@/lib/session'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const auth = await requireAuth(req)
     const { id } = await params
     const user = await db.user.findUnique({
       where: { id },
@@ -12,8 +13,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ user })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
@@ -30,10 +31,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.activityLog.create({ data: { action: 'user_deleted', details: `Deleted user "${user.name}"` } })
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Failed to delete user. They may have related records that need to be removed first.' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -72,9 +70,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return NextResponse.json({ success: true, message: `Password has been reset for "${user.name}"` })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
+    return handleApiError(error)
   }
 }
