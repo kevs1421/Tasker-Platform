@@ -1741,3 +1741,25 @@ Stage Summary:
 - Code quality: 10+ unused imports removed, 10 console statements removed, 3 bug fixes
 - Documentation: Comprehensive DEPLOYMENT.md created
 - Verification: All 4 dashboards verified working (Admin, Team, Client, Login)
+---
+Task ID: video-call-feature
+Agent: main
+
+Work Log:
+- Created VideoCall.tsx component with GMeet-style dark UI (floating panel, minimized view, incoming call overlay)
+- Features: video/audio call buttons, mic/camera/screen toggle, meeting link copy, call timer
+- Created use-video-call.ts hook with WebRTC peer-to-peer via STUN servers
+- Created video-call-service mini-service on port 3005 with Socket.IO signaling
+- Integrated video call buttons into MessagesPanel chat header (direct conversations only)
+- Integrated VideoCallPanel and IncomingCallOverlay into MessagesPanel
+- Fixed Turbopack parser issue with multi-line JSX comments causing 'Unterminated regexp literal'
+- Fixed unbalanced braces after integration
+- Installed socket.io-client dependency
+- Verified: ESLint passes, TypeScript compiles, dev server responds 200
+
+Stage Summary:
+- Files created: src/components/messages/VideoCall.tsx, src/hooks/use-video-call.tsx, mini-services/video-call-service/
+- Files modified: src/components/messages/MessagesPanel.tsx, package.json
+- The video call feature supports: audio/video calls, mic/camera/screen sharing, incoming call overlay, minimized panel, meeting link sharing
+- WebRTC connection uses Google STUN servers for NAT traversal
+- Signaling uses Socket.IO on port 3005 (via gateway)

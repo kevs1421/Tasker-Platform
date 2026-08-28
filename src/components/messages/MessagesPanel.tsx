@@ -28,6 +28,8 @@ import {
 import {
   Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
 } from 'lucide-react'
+import { useVideoCall } from '@/hooks/use-video-call'
+import { VideoCallPanel, VideoCallButtons, IncomingCallOverlay } from './VideoCall'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -483,6 +485,7 @@ export function MessagesPanel() {
   const [showGroupInfo, setShowGroupInfo] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'message' | 'conversation'; id: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const videoCall = useVideoCall(user ?? null)
 
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return
@@ -808,22 +811,31 @@ export function MessagesPanel() {
                       {selectedDirectUser.company ?? selectedDirectUser.email}
                     </p>
                   </div>
-                  <Badge variant="secondary" className={cn('ml-auto text-xs flex-shrink-0', getRoleBadgeClasses(selectedDirectUser.role))}>
+                  <Badge variant="secondary" className={cn('text-xs flex-shrink-0', getRoleBadgeClasses(selectedDirectUser.role))}>
                     {selectedDirectUser.role}
                   </Badge>
                 </>
               ) : null}
 
               {/* Delete conversation button in header */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive flex-shrink-0"
-                onClick={() => setDeleteConfirm({ type: 'conversation', id: '' })}
-                title="Delete conversation"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-0.5 ml-auto">
+                {!isGroupSelected && selectedDirectUser && (
+                  <VideoCallButtons
+                    onVideo={() => videoCall.startCall(selectedDirectUser, 'video')}
+                    onAudio={() => videoCall.startCall(selectedDirectUser, 'audio')}
+                    disabled={videoCall.isInCall}
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                  onClick={() => setDeleteConfirm({ type: 'conversation', id: '' })}
+                  title="Delete conversation"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -969,7 +981,30 @@ export function MessagesPanel() {
         currentUserRole={user?.role ?? ''}
       />
 
-      {/* ─── Delete Confirmation ─────────────────────── */}
+      <VideoCallPanel
+        currentUser={user!}
+        targetUser={videoCall.remoteUser}
+        isInCall={videoCall.isInCall}
+        callType={videoCall.callType}
+        callStatus={videoCall.callStatus}
+        onEnd={videoCall.endCall}
+        onToggleMic={videoCall.toggleMic}
+        onToggleCamera={videoCall.toggleCamera}
+        onToggleScreen={videoCall.toggleScreen}
+        micOn={videoCall.micOn}
+        cameraOn={videoCall.cameraOn}
+        screenOn={videoCall.screenOn}
+      />
+      <AnimatePresence>
+        {videoCall.incomingCall && (
+          <IncomingCallOverlay
+            caller={videoCall.incomingCall.caller}
+            callType={videoCall.incomingCall.callType}
+            onAccept={videoCall.acceptCall}
+            onReject={videoCall.rejectCall}
+          />
+        )}
+      </AnimatePresence>
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
