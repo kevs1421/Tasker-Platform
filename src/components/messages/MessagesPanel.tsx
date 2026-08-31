@@ -29,7 +29,7 @@ import {
   Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
 } from 'lucide-react'
 import { useVideoCall } from '@/hooks/use-video-call'
-import { VideoCallPanel, VideoCallButtons, IncomingCallOverlay } from './VideoCall'
+import { VideoCallPanel, VideoCallButtons, GroupCallButtons, IncomingCallOverlay } from './VideoCall'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -817,8 +817,15 @@ export function MessagesPanel() {
                 </>
               ) : null}
 
-              {/* Delete conversation button in header */}
+              {/* Call and delete buttons in header */}
               <div className="flex items-center gap-0.5 ml-auto">
+                {isGroupSelected && selectedGroup && (
+                  <GroupCallButtons
+                    onVideo={() => videoCall.startGroupCall(selectedGroup.id, selectedGroup.name, 'video')}
+                    onAudio={() => videoCall.startGroupCall(selectedGroup.id, selectedGroup.name, 'audio')}
+                    disabled={videoCall.isInCall}
+                  />
+                )}
                 {!isGroupSelected && selectedDirectUser && (
                   <VideoCallButtons
                     onVideo={() => videoCall.startCall(selectedDirectUser, 'video')}
@@ -994,6 +1001,10 @@ export function MessagesPanel() {
         micOn={videoCall.micOn}
         cameraOn={videoCall.cameraOn}
         screenOn={videoCall.screenOn}
+        remoteScreenOn={videoCall.remoteScreenOn}
+        remoteMicOn={videoCall.remoteMicOn}
+        remoteCameraOn={videoCall.remoteCameraOn}
+        screenShareLabel={videoCall.screenShareLabel}
       />
       <AnimatePresence>
         {videoCall.incomingCall && (

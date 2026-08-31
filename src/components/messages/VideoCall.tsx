@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import {
   Phone, PhoneOff, Mic, MicOff, Video, VideoOff,
   MonitorUp, MonitorOff, Copy, Maximize2, Minimize2,
-  CallEnd, X, UserPlus, MessageSquare,
+  Users, Monitor,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -16,21 +16,12 @@ import type { User } from '@/types'
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-export interface VideoCallState {
-  isInCall: boolean
-  callType: 'audio' | 'video'
-  remoteUser: User | null
-  callStatus: 'ringing' | 'connected' | 'connecting'
-}
-
 interface VideoCallProps {
   currentUser: User
   targetUser: User | null
   isInCall: boolean
   callType: 'audio' | 'video'
   callStatus: 'ringing' | 'connected' | 'connecting'
-  onJoinVideo: () => void
-  onJoinAudio: () => void
   onEnd: () => void
   onToggleMic: () => void
   onToggleCamera: () => void
@@ -38,13 +29,17 @@ interface VideoCallProps {
   micOn: boolean
   cameraOn: boolean
   screenOn: boolean
+  remoteScreenOn: boolean
+  remoteMicOn: boolean
+  remoteCameraOn: boolean
+  screenShareLabel: string
 }
 
 // ─── Incoming Call Overlay ──────────────────────────────────────────────
 
 export function IncomingCallOverlay({
   caller,
- callType,
+  callType,
   onAccept,
   onReject,
 }: {
@@ -92,6 +87,47 @@ export function IncomingCallOverlay({
   )
 }
 
+// ─── Screen Share Banner ───────────────────────────────────────────────
+
+function ScreenShareBanner({
+  isLocal,
+  label,
+  onStop,
+}: {
+  isLocal: boolean
+  label: string
+  onStop: () => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="flex items-center justify-between px-4 py-2 bg-emerald-600 text-white text-sm"
+    >
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
+        <Monitor className="h-4 w-4" />
+        <span className="font-medium">
+          {isLocal ? 'You are sharing your screen' : `${label} is presenting`}
+        </span>
+        {label && isLocal && (
+          <span className="text-white/70 text-xs truncate max-w-[200px]">— {label}</span>
+        )}
+      </div>
+      {isLocal && (
+        <button
+          onClick={onStop}
+          className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md text-sm font-medium transition-colors"
+        >
+          <MonitorOff className="h-3.5 w-3.5" />
+          Stop
+        </button>
+      )}
+    </motion.div>
+  )
+}
+
 // ─── Active Call Floating Panel ─────────────────────────────────────────
 
 export function VideoCallPanel({
@@ -107,13 +143,19 @@ export function VideoCallPanel({
   micOn,
   cameraOn,
   screenOn,
+  remoteScreenOn,
+  remoteMicOn,
+  remoteCameraOn,
+  screenShareLabel,
 }: VideoCallProps) {
   const [isMinimized, setIsMinimized] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [callDuration, setCallDuration] = useState(0)
   const [meetingLink, setMeetingLink] = useState('')
-  const localVideoRef = useRef<HTMLVideoElement>(null)
-  const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const [remoteVideoPresent, setRemoteVideoPresent] = useState(false)
+  const [remoteScreenPresent, setRemoteScreenPresent] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval>>
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // Timer for connected calls
   useEffect(() => {
@@ -134,6 +176,27 @@ export function VideoCallPanel({
     }
   }, [isInCall])
 
+  // Monitor remote video tracks
+  useEffect(() => {
+    if (callStatus !== 'connected') {
+      setRemoteVideoPresent(false)
+      setRemoteScreenPresent(false)
+      return
+    }
+    const checkTracks = setInterval(() => {
+      const remoteVideo = document.querySelector('#remote-video') as HTMLVideoElement
+      const hasVideo = remoteVideo?.srcObject instanceof MediaStream &&
+        (remoteVideo.srcObject as MediaStream).getVideoTracks().some((t) => t.enabled && t.readyState === 'live')
+      setRemoteVideoPresent(!!hasVideo)
+
+      const remoteScreenVideo = document.querySelector('#remote-screen-video') as HTMLVideoElement
+      const hasScreen = remoteScreenVideo?.srcObject instanceof MediaStream &&
+        (remoteScreenVideo.srcObject as MediaStream).getVideoTracks().length > 0
+      setRemoteScreenPresent(!!hasScreen)
+    }, 1000)
+    return () => clearInterval(checkTracks)
+  }, [callStatus])
+
   const copyLink = useCallback(() => {
     if (meetingLink) {
       navigator.clipboard.writeText(meetingLink)
@@ -150,7 +213,27 @@ export function VideoCallPanel({
       : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
+  const toggleFullscreen = useCallback(() => {
+    if (!panelRef.current) return
+    if (!document.fullscreenElement) {
+      panelRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+    }
+  }, [])
+
   if (!isInCall) return null
+
+  const isConnected = callStatus === 'connected'
+  const isRinging = callStatus === 'ringing'
+  const isConnecting = callStatus === 'connecting'
+  const isVideoCall = callType === 'video'
+  const isGroupCall = targetUser?.role === 'team' && targetUser?.id?.startsWith('group-')
+
+  // Whether the main view should show screen content
+  const showLocalScreen = isConnected && screenOn
+  const showRemoteScreen = isConnected && remoteScreenOn && remoteScreenPresent
+  const showScreenContent = showLocalScreen || showRemoteScreen
 
   // ── Minimized view ──
   if (isMinimized) {
@@ -167,27 +250,22 @@ export function VideoCallPanel({
               <div className="flex items-center gap-2 min-w-0">
                 <div className={cn(
                   'h-2.5 w-2.5 rounded-full flex-shrink-0',
-                  callStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
+                  isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
                 )} />
+                {showScreenContent && <MonitorUp className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />}
                 <span className="text-sm font-medium truncate max-w-[120px]">
                   {targetUser.name}
                 </span>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {callStatus === 'connected' ? formatTime(callDuration) : callStatus === 'ringing' ? 'Ringing...' : 'Connecting...'}
+                  {isConnected ? formatTime(callDuration) : isRinging ? 'Ringing...' : 'Connecting...'}
                 </span>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 flex-shrink-0"
-              onClick={() => setIsMinimized(false)}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => setIsMinimized(false)}>
               <Maximize2 className="h-4 w-4" />
             </Button>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost" size="icon"
               className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex-shrink-0"
               onClick={onEnd}
             >
@@ -200,76 +278,183 @@ export function VideoCallPanel({
   }
 
   // ── Full call panel ──
-  const isConnected = callStatus === 'connected'
-  const isRinging = callStatus === 'ringing'
-  const isConnecting = callStatus === 'connecting'
-  const isVideoCall = callType === 'video'
-
   return (
     <AnimatePresence>
       <motion.div
+        ref={panelRef}
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="fixed bottom-6 right-6 z-50"
+        className={cn(
+          'fixed z-50 shadow-2xl border-2 border-slate-700 overflow-hidden',
+          showScreenContent
+            ? 'bottom-4 right-4 left-4 top-4'
+            : 'bottom-6 right-6',
+          showScreenContent
+            ? 'w-auto h-auto'
+            : isVideoCall ? 'w-[560px] h-[420px]' : 'w-[380px] h-[280px]',
+          'rounded-2xl bg-slate-950 text-white',
+          isFullscreen && 'fixed inset-0 !rounded-none !border-0'
+        )}
       >
-        <div className={cn(
-          'rounded-2xl shadow-2xl border overflow-hidden',
-          isVideoCall ? 'w-[520px] h-[400px]' : 'w-[380px] h-[280px]',
-          'bg-slate-950 text-white'
-        )}>
-          {/* ── Call Header ── */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/80 border-b border-white/10">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className={cn(
-                'h-2.5 w-2.5 rounded-full flex-shrink-0',
-                isConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
-              )} />
-              <span className="text-sm font-medium text-white/90 truncate">
-                {targetUser ? targetUser.name : 'Meeting'}
-              </span>
-              <span className="text-xs text-white/50 font-mono">
-                {isConnected
-                  ? formatTime(callDuration)
-                  : isRinging
-                    ? 'Ringing...'
-                    : 'Connecting...'}
-              </span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
-                onClick={copyLink}
-                title="Copy meeting link"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
-                onClick={() => setIsMinimized(true)}
-              >
-                <Minimize2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
+        {/* ── Screen Share Banner ── */}
+        <AnimatePresence>
+          {showLocalScreen && (
+            <ScreenShareBanner
+              isLocal
+              label={screenShareLabel}
+              onStop={onToggleScreen}
+            />
+          )}
+          {showRemoteScreen && !showLocalScreen && (
+            <ScreenShareBanner
+              isLocal={false}
+              label={targetUser?.name ?? 'Participant'}
+              onStop={() => {}}
+            />
+          )}
+        </AnimatePresence>
 
-          {/* ── Video Area ── */}
-          <div className="relative flex-1" style={{ height: isVideoCall ? 'calc(100% - 110px)' : 'calc(100% - 110px)' }}>
-            {/* Remote / Main Video */}
+        {/* ── Call Header ── */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/80 border-b border-white/10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={cn(
+              'h-2.5 w-2.5 rounded-full flex-shrink-0',
+              isConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+            )} />
+            <span className="text-sm font-medium text-white/90 truncate">
+              {targetUser ? targetUser.name : 'Meeting'}
+            </span>
+            {isGroupCall && <Users className="h-3.5 w-3.5 text-white/50" />}
+            <span className="text-xs text-white/50 font-mono">
+              {isConnected ? formatTime(callDuration) : isRinging ? 'Ringing...' : 'Connecting...'}
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+              onClick={copyLink}
+              title="Copy meeting link"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+              onClick={() => setIsMinimized(true)}
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Video Area ── */}
+        <div className="relative" style={{ height: 'calc(100% - 110px - 40px)' }}>
+          {/* ── SCREEN SHARE MAIN VIEW ── */}
+          {showScreenContent ? (
+            <div className="absolute inset-0 bg-slate-900">
+              {/* Local screen share (presenting) */}
+              {showLocalScreen && (
+                <div className="absolute inset-0 flex flex-col">
+                  <div className="flex-1 flex items-center justify-center p-4">
+                    <div className="relative w-full h-full bg-slate-800 rounded-lg overflow-hidden shadow-2xl border border-white/10">
+                      <video
+                        id="local-screen-video"
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-contain bg-black"
+                      />
+                      {/* Stop button overlay */}
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                        <button
+                          onClick={onToggleScreen}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-full text-sm font-medium transition-colors shadow-lg"
+                        >
+                          <MonitorOff className="h-4 w-4" />
+                          Stop sharing
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Remote screen share (viewing) */}
+              {showRemoteScreen && !showLocalScreen && (
+                <div className="absolute inset-0 bg-black flex items-center justify-center p-4">
+                  <div className="relative w-full h-full rounded-lg overflow-hidden">
+                    <video
+                      id="remote-screen-video"
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-contain bg-black"
+                    />
+                    {/* Remote user info when viewing screen */}
+                    <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-lg">
+                      <Avatar className="h-6 w-6">
+                        {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
+                        <AvatarFallback className="bg-slate-600 text-[10px]">
+                          {targetUser ? getInitials(targetUser.name) : '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-xs text-white/80 font-medium">{targetUser?.name ?? 'Participant'}</span>
+                      {!remoteCameraOn && <VideoOff className="h-3 w-3 text-white/50" />}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Picture-in-picture: local camera when presenting screen */}
+              {isVideoCall && showLocalScreen && (
+                <div className="absolute bottom-20 right-4 w-[160px] h-[120px] rounded-xl overflow-hidden shadow-xl border-2 border-white/20 bg-slate-800">
+                  {cameraOn ? (
+                    <video
+                      id="local-video"
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Avatar className="h-10 w-10">
+                        {currentUser?.avatar && <AvatarImage src={currentUser.avatar} />}
+                        <AvatarFallback className="bg-slate-700 text-sm font-semibold">
+                          {getInitials(currentUser.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── NORMAL VIDEO / AUDIO VIEW ── */
             <div className="absolute inset-0 bg-slate-900 flex items-center justify-center">
-              {isVideoCall ? (
+              {/* Remote video */}
+              {isVideoCall && isConnected && (
                 <video
-                  ref={remoteVideoRef}
+                  id="remote-video"
                   autoPlay
                   playsInline
-                  className="w-full h-full object-cover"
-                  style={{ display: isConnected ? 'block' : 'none' }}
+                  className={cn(
+                    'w-full h-full object-cover',
+                    !remoteVideoPresent && 'hidden'
+                  )}
                 />
-              ) : null}
+              )}
+
+              {/* Waiting/connecting state */}
               {!isConnected && (
                 <div className="flex flex-col items-center gap-3">
                   <Avatar className="h-20 w-20">
@@ -297,16 +482,34 @@ export function VideoCallPanel({
                   </div>
                 </div>
               )}
-              {isConnected && isVideoCall && !screenOn && (
+
+              {/* Remote user avatar (camera off or no video) */}
+              {isConnected && isVideoCall && !remoteVideoPresent && !showScreenContent && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-                  <Avatar className="h-24 w-24">
-                    {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
-                    <AvatarFallback className="bg-slate-700 text-3xl font-semibold">
-                      {targetUser ? getInitials(targetUser.name) : '?'}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="flex flex-col items-center gap-2">
+                    <Avatar className="h-24 w-24">
+                      {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
+                      <AvatarFallback className="bg-slate-700 text-3xl font-semibold">
+                        {targetUser ? getInitials(targetUser.name) : '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    {!remoteCameraOn && (
+                      <div className="flex items-center gap-1 text-white/40 text-xs">
+                        <VideoOff className="h-3 w-3" />
+                        <span>Camera off</span>
+                      </div>
+                    )}
+                    {!remoteMicOn && (
+                      <div className="flex items-center gap-1 text-red-400 text-xs">
+                        <MicOff className="h-3 w-3" />
+                        <span>Muted</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {/* Audio call in progress */}
               {isConnected && !isVideoCall && (
                 <div className="flex flex-col items-center gap-3">
                   <div className="h-24 w-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
@@ -316,105 +519,143 @@ export function VideoCallPanel({
                   <p className="text-white/50 text-lg font-mono font-medium">
                     {formatTime(callDuration)}
                   </p>
+                  {!remoteMicOn && (
+                    <div className="flex items-center gap-1 text-red-400 text-xs">
+                      <MicOff className="h-3 w-3" />
+                      <span>{targetUser?.name} is muted</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Local video picture-in-picture */}
+              {isVideoCall && (
+                <div className={cn(
+                  'absolute bottom-3 right-3 rounded-xl overflow-hidden shadow-lg border-2 border-white/20',
+                  cameraOn ? 'w-[140px] h-[105px]' : 'w-[100px] h-[100px]'
+                )}>
+                  {cameraOn ? (
+                    <video
+                      id="local-video"
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+                      <Avatar className="h-10 w-10">
+                        {currentUser?.avatar && <AvatarImage src={currentUser.avatar} />}
+                        <AvatarFallback className="bg-slate-700 text-sm font-semibold">
+                          {getInitials(currentUser.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Controls Bar ── */}
+        <div className={cn(
+          'absolute bottom-0 left-0 right-0 px-4 py-3',
+          'bg-gradient-to-t from-slate-950/90 to-transparent'
+        )}>
+          <div className="flex items-center justify-center gap-2">
+            {/* Mic */}
+            <ControlButton
+              active={micOn}
+              activeIcon={<Mic className="h-4 w-4" />}
+              inactiveIcon={<MicOff className="h-4 w-4" />}
+              onClick={onToggleMic}
+              title={micOn ? 'Mute' : 'Unmute'}
+            />
+
+            {/* Camera (video calls only) */}
+            {isVideoCall && (
+              <ControlButton
+                active={cameraOn}
+                activeIcon={<Video className="h-4 w-4" />}
+                inactiveIcon={<VideoOff className="h-4 w-4" />}
+                onClick={onToggleCamera}
+                title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
+              />
+            )}
+
+            {/* Screen share — with tooltip showing the label */}
+            <div className="relative group">
+              <ControlButton
+                active={screenOn}
+                activeIcon={<MonitorOff className="h-4 w-4" />}
+                inactiveIcon={<MonitorUp className="h-4 w-4" />}
+                onClick={onToggleScreen}
+                title={screenOn ? 'Stop sharing' : 'Share screen'}
+              />
+              {/* Label tooltip */}
+              {screenOn && screenShareLabel && (
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 bg-black text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Sharing: {screenShareLabel}
                 </div>
               )}
             </div>
 
-            {/* Screen share overlay */}
-            {screenOn && isConnected && (
-              <div className="absolute inset-0 bg-slate-800 flex items-center justify-center">
-                <p className="text-white/60 text-sm">Screen sharing active</p>
-              </div>
-            )}
-
-            {/* Local video (picture-in-picture) */}
-            {isVideoCall && (
-              <div className={cn(
-                'absolute bottom-3 right-3 rounded-xl overflow-hidden shadow-lg border-2 border-white/20',
-                cameraOn ? 'w-[140px] h-[105px]' : 'w-[100px] h-[100px]'
-              )}>
-                {cameraOn ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover transform -scale-x-100"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-slate-800 flex items-center justify-center">
-                    <Avatar className="h-10 w-10">
-                      {currentUser?.avatar && <AvatarImage src={currentUser.avatar} />}
-                      <AvatarFallback className="bg-slate-700 text-sm font-semibold">
-                        {getInitials(currentUser.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* End Call */}
+            <button
+              onClick={onEnd}
+              className="h-10 w-10 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg"
+              title="End call"
+            >
+              <PhoneOff className="h-4 w-4" />
+            </button>
           </div>
 
-          {/* ── Controls Bar ── */}
-          <div className="absolute bottom-0 left-0 right-0 px-4 py-3">
-            <div className="flex items-center justify-center gap-2">
-              {/* Mic */}
-              <button
-                onClick={onToggleMic}
-                className={cn(
-                  'h-10 w-10 rounded-full flex items-center justify-center transition-all',
-                  micOn
-                    ? 'bg-white/15 hover:bg-white/25 text-white'
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-                )}
-                title={micOn ? 'Mute' : 'Unmute'}
-              >
-                {micOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-              </button>
-
-              {/* Camera (video calls only) */}
-              {isVideoCall && (
-                <button
-                  onClick={onToggleCamera}
-                  className={cn(
-                    'h-10 w-10 rounded-full flex items-center justify-center transition-all',
-                    cameraOn
-                      ? 'bg-white/15 hover:bg-white/25 text-white'
-                      : 'bg-red-500 hover:bg-red-600 text-white'
-                  )}
-                  title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
-                >
-                  {cameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                </button>
-              )}
-
-              {/* Screen share */}
-              <button
-                onClick={onToggleScreen}
-                className={cn(
-                  'h-10 w-10 rounded-full flex items-center justify-center transition-all',
-                  screenOn
-                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                    : 'bg-white/15 hover:bg-white/25 text-white'
-                )}
-                title={screenOn ? 'Stop sharing' : 'Share screen'}
-              >
-                {screenOn ? <MonitorOff className="h-4 w-4" /> : <MonitorUp className="h-4 w-4" />}
-              </button>
-
-              {/* End Call */}
-              <button
-                onClick={onEnd}
-                className="h-10 w-10 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg"
-                title="End call"
-              >
-                <PhoneOff className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+          {/* Screen share indicator at the bottom */}
+          {screenOn && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex items-center justify-center gap-2 mt-2 text-xs text-emerald-400"
+            >
+              <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>You are presenting</span>
+              {screenShareLabel && <span className="text-white/40">({screenShareLabel})</span>}
+            </motion.div>
+          )}
         </div>
       </motion.div>
     </AnimatePresence>
+  )
+}
+
+// ─── Reusable Control Button ───────────────────────────────────────────
+
+function ControlButton({
+  active,
+  activeIcon,
+  inactiveIcon,
+  onClick,
+  title,
+}: {
+  active: boolean
+  activeIcon: React.ReactNode
+  inactiveIcon: React.ReactNode
+  onClick: () => void
+  title: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'h-10 w-10 rounded-full flex items-center justify-center transition-all',
+        active ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+      )}
+      title={title}
+    >
+      {active ? activeIcon : inactiveIcon}
+    </button>
   )
 }
 
@@ -448,6 +689,43 @@ export function VideoCallButtons({
         onClick={onVideo}
         disabled={disabled}
         title="Video call"
+      >
+        <Video className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
+// ── Group Call Buttons ──
+
+export function GroupCallButtons({
+  onVideo,
+  onAudio,
+  disabled,
+}: {
+  onVideo: () => void
+  onAudio: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+        onClick={onAudio}
+        disabled={disabled}
+        title="Start audio call"
+      >
+        <Phone className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+        onClick={onVideo}
+        disabled={disabled}
+        title="Start video call"
       >
         <Video className="h-4 w-4" />
       </Button>

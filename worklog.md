@@ -1763,3 +1763,52 @@ Stage Summary:
 - The video call feature supports: audio/video calls, mic/camera/screen sharing, incoming call overlay, minimized panel, meeting link sharing
 - WebRTC connection uses Google STUN servers for NAT traversal
 - Signaling uses Socket.IO on port 3005 (via gateway)
+
+---
+Task ID: screen-share-video-call
+Agent: main
+Task: Add screen sharing to video call and group call support
+
+Work Log:
+- Reviewed existing video call code: VideoCall.tsx, use-video-call.ts, video-call-service/index.ts, MessagesPanel.tsx
+- Identified issues: screen share used camera track replacement (wrong), no dedicated screen stream, no remote screen display, group calls not supported
+- Rewrote use-video-call.ts hook with:
+  - Separate localScreenStreamRef for screen share (distinct from camera stream)
+  - PeerState type with remoteStream and remoteScreenStream separation
+  - Screen share adds new track via pc.addTrack() with renegotiation (instead of replaceTrack)
+  - Screen share removal via pc.removeTrack() with renegotiation
+  - Browser stop-sharing auto-detection via screenTrack.onended
+  - New states: remoteScreenOn, remoteMicOn, remoteCameraOn, screenShareLabel
+  - startGroupCall() function for group video/audio calls
+  - Proper cleanup of all streams and video elements on end call
+- Rewrote VideoCall.tsx with:
+  - ScreenShareBanner component (green bar showing who is presenting)
+  - Full-screen screen share view when sharing (local-screen-video element)
+  - Remote screen share view (remote-screen-video element)
+  - Local camera PIP when presenting screen
+  - Fullscreen toggle via Fullscreen API
+  - Remote mic/camera status indicators (muted, camera off)
+  - Screen share label tooltip on control button
+  - Green "You are presenting" indicator at bottom of controls
+  - GroupCallButtons component for group chat headers
+  - ControlButton reusable component for call controls
+- Updated signaling service (video-call-service/index.ts):
+  - call:group-ring event for notifying group members
+  - call:leave-room event for explicit room cleanup
+  - Peer metadata (fromName, fromAvatar) included in signal relay
+  - User-to-socket mapping for reliable targeted delivery
+  - call:peer-joined event with existing peer list
+- Updated MessagesPanel.tsx:
+  - Imported GroupCallButtons
+  - Added group call buttons to group chat header
+  - Passed new screen share props (remoteScreenOn, remoteMicOn, remoteCameraOn, screenShareLabel) to VideoCallPanel
+- Fixed ESLint errors: cleanupPeer hoisting issue, JSX nesting bug
+- Verified: ESLint passes, TypeScript compiles, dev server clean, no runtime errors
+
+Stage Summary:
+- Screen sharing now uses a dedicated MediaStream with separate WebRTC sender (not replacing camera track)
+- Remote screen share is displayed in a full-panel view with presenter name overlay
+- Local screen share shows in full-panel with stop button overlay and local camera PIP
+- Group calls are supported via new GroupCallButtons in group chat headers
+- Signaling service supports group ring and peer metadata
+- Files modified: src/hooks/use-video-call.ts, src/components/messages/VideoCall.tsx, src/components/messages/MessagesPanel.tsx, mini-services/video-call-service/index.ts

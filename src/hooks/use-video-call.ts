@@ -7,16 +7,34 @@ import type { User } from '@/types'
 
 const SIGNAL_URL = '/?XTransformPort=3005'
 
+// ─── Types ────────────────────────────────────────────────────────────
+
+export interface PeerState {
+  userId: string
+  userName: string
+  userAvatar?: string
+  pc: RTCPeerConnection
+  remoteStream: MediaStream
+  remoteScreenStream: MediaStream
+  micOn: boolean
+  cameraOn: boolean
+  screenOn: boolean
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────
+
 export function useVideoCall(currentUser: User | null) {
   const socketRef = useRef<Socket | null>(null)
-  const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const remoteStreamRef = useRef<MediaStream | null>(null)
-  const iceCandidatesRef = useRef<unknown[]>([])
+  const localScreenStreamRef = useRef<MediaStream | null>(null)
+  const peersRef = useRef<Map<string, PeerState>>(new Map())
+  const iceCandidatesRef = useRef<Map<string, unknown[]>>(new Map())
 
-  // Use refs for stable function references inside useEffect
+  // Stable refs for use inside callbacks without stale closures
   const roomIdRef = useRef('')
-  const remoteUserRef = useRef<User | null>(null)
+  const currentUserRef = useRef<User | null>(null)
+  const callTypeRef = useRef<'audio' | 'video'>('video')
+  const isInitiatorRef = useRef(false)
 
   const [isInCall, setIsInCall] = useState(false)
   const [callType, setCallType] = useState<'audio' | 'video'>('video')
@@ -31,21 +49,17 @@ export function useVideoCall(currentUser: User | null) {
   const [micOn, setMicOn] = useState(true)
   const [cameraOn, setCameraOn] = useState(true)
   const [screenOn, setScreenOn] = useState(false)
+  const [remoteScreenOn, setRemoteScreenOn] = useState(false)
+  const [remoteMicOn, setRemoteMicOn] = useState(true)
+  const [remoteCameraOn, setRemoteCameraOn] = useState(true)
+  const [screenShareLabel, setScreenShareLabel] = useState('')
 
-  const syncState = (updates: { roomId?: string; remoteUser?: User | null }) => {
-    if (updates.roomId !== undefined) {
-      setRoomId(updates.roomId)
-      roomIdRef.current = updates.roomId
-    }
-    if (updates.remoteUser !== undefined) {
-      setRemoteUser(updates.remoteUser)
-      remoteUserRef.current = updates.remoteUser
-    }
-  }
+  // Sync refs
+  const syncRoomId = (id: string) => { setRoomId(id); roomIdRef.current = id }
 
-  // ── WebRTC helpers (non-hook, plain functions using refs) ──
+  // ── WebRTC helpers ──
 
-  const doCreatePeerConnection = async (remotePeerId: string, rid: string): Promise<RTCPeerConnection> => {
+  const doCreatePeerConnection = useCallback(async (peerId: string, peerName: string, peerAvatar?: string): Promise<RTCPeerConnection> => {
     const config: RTCConfiguration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -53,69 +67,185 @@ export function useVideoCall(currentUser: User | null) {
       ],
     }
     const pc = new RTCPeerConnection(config)
-    pcRef.current = pc
 
+    const remoteStream = new MediaStream()
+    const remoteScreenStream = new MediaStream()
+
+    // Add local media tracks to peer connection
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         pc.addTrack(track, localStreamRef.current!)
       })
     }
-
-    const remoteStream = new MediaStream()
-    remoteStreamRef.current = remoteStream
+    // Add screen tracks to peer connection (separate sender)
+    if (localScreenStreamRef.current) {
+      localScreenStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localScreenStreamRef.current!)
+      })
+    }
 
     pc.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => remoteStream.addTrack(track))
-      const remoteVideo = document.querySelector('#remote-video') as HTMLVideoElement
-      if (remoteVideo) remoteVideo.srcObject = remoteStream
+      const track = event.track
+      // Screen share tracks from the remote are identified by containing 'screen' in their label
+      // or by the transceiver's mid (we use a dedicated transceiver)
+      if (track.label.toLowerCase().includes('screen') || event.transceiver?.sender?.track?.label.toLowerCase().includes('screen')) {
+        remoteScreenStream.addTrack(track)
+      } else {
+        remoteStream.addTrack(track)
+      }
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
-        socketRef.current.emit('call:signal', { roomId: rid, targetId: remotePeerId, signal: event.candidate.toJSON() })
+        socketRef.current.emit('call:signal', {
+          roomId: roomIdRef.current,
+          targetId: peerId,
+          signal: event.candidate.toJSON(),
+        })
       }
     }
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'connected') setCallStatus('connected')
-      else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        setCallStatus('connected')
+      } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         toast.error('Connection lost')
-        doEndCall()
+        // Direct cleanup instead of calling function to avoid hoisting issue
+        const peer = peersRef.current.get(peerId)
+        if (peer) {
+          peer.remoteStream.getTracks().forEach((t) => t.stop())
+          peer.remoteScreenStream.getTracks().forEach((t) => t.stop())
+          peer.pc.close()
+          peersRef.current.delete(peerId)
+        }
+        iceCandidatesRef.current.delete(peerId)
       }
     }
 
-    return pc
-  }
+    // Store peer state
+    const peerState: PeerState = {
+      userId: peerId,
+      userName: peerName,
+      userAvatar: peerAvatar,
+      pc,
+      remoteStream,
+      remoteScreenStream,
+      micOn: true,
+      cameraOn: true,
+      screenOn: false,
+    }
+    peersRef.current.set(peerId, peerState)
 
-  const doHandleOffer = async (fromId: string, signal: RTCSessionDescriptionInit, rid: string) => {
-    const pc = await doCreatePeerConnection(fromId, rid)
+    return pc
+  }, [])
+
+  const cleanupPeer = useCallback((peerId: string) => {
+    const peer = peersRef.current.get(peerId)
+    if (peer) {
+      peer.remoteStream.getTracks().forEach((t) => t.stop())
+      peer.remoteScreenStream.getTracks().forEach((t) => t.stop())
+      peer.pc.close()
+      peersRef.current.delete(peerId)
+    }
+    // Clear pending ICE candidates
+    iceCandidatesRef.current.delete(peerId)
+  }, [])
+
+  const doHandleOffer = useCallback(async (fromId: string, fromName: string, fromAvatar: string | undefined, signal: RTCSessionDescriptionInit) => {
+    const pc = await doCreatePeerConnection(fromId, fromName, fromAvatar)
     await pc.setRemoteDescription(new RTCSessionDescription(signal))
-    for (const candidate of iceCandidatesRef.current) await pc.addIceCandidate(new RTCIceCandidate(candidate))
-    iceCandidatesRef.current = []
+    // Drain buffered ICE candidates
+    const buffered = iceCandidatesRef.current.get(fromId) || []
+    for (const candidate of buffered) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    }
+    iceCandidatesRef.current.delete(fromId)
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    socketRef.current?.emit('call:signal', { roomId: rid, targetId: fromId, signal: answer })
-  }
+    socketRef.current?.emit('call:signal', { roomId: roomIdRef.current, targetId: fromId, signal: answer })
+  }, [doCreatePeerConnection])
 
-  const doHandleAnswer = async (signal: RTCSessionDescriptionInit) => {
-    if (!pcRef.current) return
-    await pcRef.current.setRemoteDescription(new RTCSessionDescription(signal))
-    for (const candidate of iceCandidatesRef.current) await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-    iceCandidatesRef.current = []
-  }
-
-  const doHandleIceCandidate = async (signal: RTCIceCandidateInit) => {
-    if (pcRef.current?.remoteDescription) await pcRef.current.addIceCandidate(new RTCIceCandidate(signal))
-    else iceCandidatesRef.current.push(signal)
-  }
-
-  const doEndCall = () => {
-    if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); localStreamRef.current = null }
-    if (remoteStreamRef.current) { remoteStreamRef.current.getTracks().forEach((t) => t.stop()); remoteStreamRef.current = null }
-    if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
-    if (socketRef.current && roomIdRef.current) {
-      socketRef.current.emit('call:end', { roomId: roomIdRef.current, targetId: remoteUserRef.current?.id })
+  const doHandleAnswer = useCallback(async (signal: RTCSessionDescriptionInit, fromId: string) => {
+    const peer = peersRef.current.get(fromId)
+    if (!peer) return
+    await peer.pc.setRemoteDescription(new RTCSessionDescription(signal))
+    const buffered = iceCandidatesRef.current.get(fromId) || []
+    for (const candidate of buffered) {
+      await peer.pc.addIceCandidate(new RTCIceCandidate(candidate))
     }
+    iceCandidatesRef.current.delete(fromId)
+  }, [])
+
+  const doHandleIceCandidate = useCallback(async (signal: RTCIceCandidateInit, fromId: string) => {
+    const peer = peersRef.current.get(fromId)
+    if (peer?.pc.remoteDescription) {
+      await peer.pc.addIceCandidate(new RTCIceCandidate(signal))
+    } else {
+      const existing = iceCandidatesRef.current.get(fromId) || []
+      existing.push(signal)
+      iceCandidatesRef.current.set(fromId, existing)
+    }
+  }, [])
+
+  // ── Local Stream Management ──
+
+  const getLocalStream = useCallback(async (type: 'audio' | 'video') => {
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: true,
+        video: type === 'video' ? { width: 640, height: 480, facingMode: 'user' } : false,
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      localStreamRef.current = stream
+      setMicOn(true)
+      setCameraOn(type === 'video')
+      // Attach to video element
+      requestAnimationFrame(() => {
+        const localVideo = document.querySelector('#local-video') as HTMLVideoElement
+        if (localVideo) localVideo.srcObject = stream
+      })
+      return stream
+    } catch {
+      toast.error('Could not access camera/microphone')
+      return null
+    }
+  }, [])
+
+  const doEndCall = useCallback(() => {
+    // Stop all local tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop())
+      localStreamRef.current = null
+    }
+    if (localScreenStreamRef.current) {
+      localScreenStreamRef.current.getTracks().forEach((t) => t.stop())
+      localScreenStreamRef.current = null
+    }
+    // Clean up all peers
+    for (const [peerId] of peersRef.current) {
+      cleanupPeer(peerId)
+    }
+    iceCandidatesRef.current.clear()
+
+    // Leave room via socket
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('call:end', { roomId: roomIdRef.current })
+      socketRef.current.emit('call:leave-room', { roomId: roomIdRef.current })
+    }
+
+    // Clear video elements
+    requestAnimationFrame(() => {
+      const localVideo = document.querySelector('#local-video') as HTMLVideoElement
+      if (localVideo) localVideo.srcObject = null
+      const localScreenVideo = document.querySelector('#local-screen-video') as HTMLVideoElement
+      if (localScreenVideo) localScreenVideo.srcObject = null
+      const remoteVideo = document.querySelector('#remote-video') as HTMLVideoElement
+      if (remoteVideo) remoteVideo.srcObject = null
+      const remoteScreenVideo = document.querySelector('#remote-screen-video') as HTMLVideoElement
+      if (remoteScreenVideo) remoteScreenVideo.srcObject = null
+    })
+
+    // Reset all state
     setIsInCall(false)
     setCallStatus('ringing')
     setRemoteUser(null)
@@ -123,49 +253,43 @@ export function useVideoCall(currentUser: User | null) {
     setMicOn(true)
     setCameraOn(true)
     setScreenOn(false)
+    setRemoteScreenOn(false)
+    setRemoteMicOn(true)
+    setRemoteCameraOn(true)
+    setScreenShareLabel('')
     roomIdRef.current = ''
-    remoteUserRef.current = null
-    iceCandidatesRef.current = []
-  }
+    isInitiatorRef.current = false
+  }, [cleanupPeer])
 
-  const getLocalStream = async (type: 'audio' | 'video') => {
-    try {
-      const constraints: MediaStreamConstraints = { audio: true, video: type === 'video' ? { width: 640, height: 480, facingMode: 'user' } : false }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      localStreamRef.current = stream
-      const localVideo = document.querySelector('#local-video') as HTMLVideoElement
-      if (localVideo) localVideo.srcObject = stream
-      setMicOn(true)
-      setCameraOn(type === 'video')
-      return stream
-    } catch (err) {
-      console.error('Failed to get media:', err)
-      toast.error('Could not access camera/microphone')
-      return null
-    }
-  }
+  // ── Socket connection ──
 
-  // Connect socket on mount
   useEffect(() => {
     if (!currentUser) return
+    currentUserRef.current = currentUser
 
     const socket = io(SIGNAL_URL, {
-      auth: { userId: currentUser.id, userName: currentUser.name, userAvatar: currentUser.avatar || undefined },
+      auth: {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userAvatar: currentUser.avatar || undefined,
+      },
       transports: ['websocket', 'polling'],
     })
     socketRef.current = socket
 
+    // Incoming call
     socket.on('call:incoming', ({ fromId, fromName, fromAvatar, callType: ct, roomId: rid }) => {
       setIncomingCall({
         caller: { id: fromId, name: fromName, avatar: fromAvatar, email: '', role: 'team' as const, status: 'active', createdAt: '', updatedAt: '' },
-        callType: ct, roomId: rid,
+        callType: ct,
+        roomId: rid,
       })
     })
 
-    socket.on('call:accepted', async ({ fromId, roomId: rid }) => {
-      setCallStatus('connected')
-      const pc = await doCreatePeerConnection(fromId, rid)
-      // Create and send offer
+    // Call accepted — initiator creates offer
+    socket.on('call:accepted', async ({ fromId, fromName, fromAvatar, roomId: rid }) => {
+      setCallStatus('connecting')
+      const pc = await doCreatePeerConnection(fromId, fromName, fromAvatar)
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socket.emit('call:signal', { roomId: rid, targetId: fromId, signal: offer })
@@ -174,45 +298,126 @@ export function useVideoCall(currentUser: User | null) {
     socket.on('call:rejected', () => { toast.error('Call rejected'); doEndCall() })
     socket.on('call:ended', () => { toast.info('Call ended'); doEndCall() })
 
-    socket.on('call:signal', async ({ fromId, signal }) => {
-      if (signal.type === 'offer') await doHandleOffer(fromId, signal, roomIdRef.current)
-      else if (signal.type === 'answer') await doHandleAnswer(signal as RTCSessionDescriptionInit)
-      else if (signal.candidate) await doHandleIceCandidate(signal as RTCIceCandidateInit)
+    // WebRTC signaling
+    socket.on('call:signal', async ({ fromId, fromName, fromAvatar, signal }) => {
+      if (signal.type === 'offer') {
+        await doHandleOffer(fromId, fromName, fromAvatar, signal)
+      } else if (signal.type === 'answer') {
+        await doHandleAnswer(signal, fromId)
+      } else if (signal.candidate) {
+        await doHandleIceCandidate(signal, fromId)
+      }
+    })
+
+    // Peer state updates
+    socket.on('call:peer-toggled', ({ peerId, type, isOn }: { peerId: string; type: string; isOn: boolean }) => {
+      if (type === 'mic') setRemoteMicOn(isOn)
+      else if (type === 'camera') setRemoteCameraOn(isOn)
+      else if (type === 'screen') {
+        setRemoteScreenOn(isOn)
+        if (!isOn) {
+          requestAnimationFrame(() => {
+            const el = document.querySelector('#remote-screen-video') as HTMLVideoElement
+            if (el) el.srcObject = null
+          })
+        }
+      }
+    })
+
+    // Peer joined group call
+    socket.on('call:peer-joined', async ({ peerId, peerName, peerAvatar }: { peerId: string; peerName: string; peerAvatar?: string }) => {
+      if (!isInitiatorRef.current) return // Only initiator creates offers to new peers
+      const pc = await doCreatePeerConnection(peerId, peerName, peerAvatar)
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      socket.emit('call:signal', { roomId: roomIdRef.current, targetId: peerId, signal: offer })
+    })
+
+    // Peer left
+    socket.on('call:peer-left', ({ peerId }: { peerId: string }) => {
+      cleanupPeer(peerId)
     })
 
     return () => { socket.disconnect(); socketRef.current = null }
-  }, [currentUser])
+  }, [currentUser, doCreatePeerConnection, doHandleOffer, doHandleAnswer, doHandleIceCandidate, doEndCall, cleanupPeer])
+
+  // ── Attach remote streams to video elements when they change ──
+
+  useEffect(() => {
+    if (!isInCall || callStatus !== 'connected') return
+    const attachInterval = setInterval(() => {
+      for (const [, peer] of peersRef.current) {
+        const remoteVideo = document.querySelector('#remote-video') as HTMLVideoElement
+        if (remoteVideo && peer.remoteStream.getTracks().length > 0 && !remoteVideo.srcObject) {
+          remoteVideo.srcObject = peer.remoteStream
+        }
+        const remoteScreenVideo = document.querySelector('#remote-screen-video') as HTMLVideoElement
+        if (remoteScreenVideo && peer.remoteScreenStream.getTracks().length > 0 && !remoteScreenVideo.srcObject) {
+          remoteScreenVideo.srcObject = peer.remoteScreenStream
+        }
+      }
+    }, 500)
+    return () => clearInterval(attachInterval)
+  }, [isInCall, callStatus])
 
   // ── Public Actions ──
 
   const startCall = useCallback(async (target: User, type: 'audio' | 'video') => {
-    if (!currentUser || !socketRef.current?.connected) { toast.error('Not connected to call service'); return }
+    if (!currentUser || !socketRef.current?.connected) {
+      toast.error('Not connected to call service')
+      return
+    }
+    callTypeRef.current = type
     setCallType(type)
     setRemoteUser(target)
-    remoteUserRef.current = target
     setCallStatus('ringing')
     setIsInCall(true)
+    isInitiatorRef.current = true
     const rid = `${currentUser.id}-${target.id}-${Date.now()}`
-    syncState({ roomId: rid, remoteUser: target })
-    await getLocalStream(type)
+    syncRoomId(rid)
+    const stream = await getLocalStream(type)
+    if (!stream) { setIsInCall(false); return }
     socketRef.current.emit('call:join', { roomId: rid })
     socketRef.current.emit('call:ring', { targetId: target.id, callType: type, roomId: rid })
     toast.info(`Calling ${target.name}...`)
   }, [currentUser, getLocalStream])
 
+  const startGroupCall = useCallback(async (groupId: string, groupName: string, type: 'audio' | 'video') => {
+    if (!currentUser || !socketRef.current?.connected) {
+      toast.error('Not connected to call service')
+      return
+    }
+    callTypeRef.current = type
+    setCallType(type)
+    setRemoteUser({ id: groupId, name: groupName, email: '', role: 'team' as const, status: 'active', createdAt: '', updatedAt: '' })
+    setCallStatus('connecting')
+    setIsInCall(true)
+    isInitiatorRef.current = true
+    const rid = `group-${groupId}-${Date.now()}`
+    syncRoomId(rid)
+    const stream = await getLocalStream(type)
+    if (!stream) { setIsInCall(false); return }
+    socketRef.current.emit('call:join', { roomId: rid })
+    socketRef.current.emit('call:group-ring', { groupId, callType: type, roomId: rid })
+    toast.info(`Starting ${type} call in ${groupName}...`)
+    setCallStatus('connected')
+  }, [currentUser, getLocalStream])
+
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !currentUser || !socketRef.current) return
     const { caller, callType: ct, roomId: rid } = incomingCall
+    callTypeRef.current = ct
     setCallType(ct)
     setRemoteUser(caller)
-    remoteUserRef.current = caller
     setCallStatus('connecting')
     setIsInCall(true)
-    syncState({ roomId: rid, remoteUser: caller })
+    isInitiatorRef.current = false
+    syncRoomId(rid)
     setIncomingCall(null)
-    await getLocalStream(ct)
+    const stream = await getLocalStream(ct)
+    if (!stream) { setIsInCall(false); setIncomingCall(null); return }
     socketRef.current.emit('call:join', { roomId: rid })
-    socketRef.current.emit('call:accept', { targetId: caller.id, roomId: rid })
+    socketRef.current.emit('call:accept', { targetId: caller.id, roomId: rid, userName: currentUser.name, userAvatar: currentUser.avatar })
     setCallStatus('connected')
     toast.success('Call connected')
   }, [incomingCall, currentUser, getLocalStream])
@@ -224,51 +429,127 @@ export function useVideoCall(currentUser: User | null) {
     toast.info('Call rejected')
   }, [incomingCall])
 
-  const endCall = useCallback(() => { doEndCall() }, [])
+  const endCall = useCallback(() => { doEndCall() }, [doEndCall])
 
   const toggleMic = useCallback(() => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0]
-      if (audioTrack) { audioTrack.enabled = !audioTrack.enabled; setMicOn(audioTrack.enabled) }
+    const audioTrack = localStreamRef.current?.getAudioTracks()[0]
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled
+      setMicOn(audioTrack.enabled)
     }
-    if (socketRef.current && roomIdRef.current) socketRef.current.emit('call:toggle-mic', { roomId: roomIdRef.current, isOn: !micOn })
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('call:toggle-mic', { roomId: roomIdRef.current, isOn: !micOn })
+    }
   }, [micOn])
 
   const toggleCamera = useCallback(() => {
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0]
-      if (videoTrack) { videoTrack.enabled = !videoTrack.enabled; setCameraOn(videoTrack.enabled) }
+    const videoTrack = localStreamRef.current?.getVideoTracks()[0]
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled
+      setCameraOn(videoTrack.enabled)
     }
-    if (socketRef.current && roomIdRef.current) socketRef.current.emit('call:toggle-camera', { roomId: roomIdRef.current, isOn: !cameraOn })
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('call:toggle-camera', { roomId: roomIdRef.current, isOn: !cameraOn })
+    }
   }, [cameraOn])
 
   const toggleScreen = useCallback(async () => {
     if (screenOn) {
-      const screenTrack = localStreamRef.current?.getVideoTracks().find((t) => t.label.includes('screen'))
-      if (screenTrack) screenTrack.stop()
-      if (callType === 'video') {
-        try {
-          const camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
-          const camTrack = camStream.getVideoTracks()[0]
-          if (camTrack && pcRef.current) { const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video'); if (sender) sender.replaceTrack(camTrack) }
-          localStreamRef.current?.addTrack(camTrack)
-          const localVideo = document.querySelector('#local-video') as HTMLVideoElement
-          if (localVideo) localVideo.srcObject = localStreamRef.current
-        } catch { /* Camera not available */ }
+      // ── Stop screen share ──
+      if (localScreenStreamRef.current) {
+        localScreenStreamRef.current.getTracks().forEach((t) => t.stop())
+        localScreenStreamRef.current = null
       }
+      // Remove screen share senders from all peer connections
+      for (const [, peer] of peersRef.current) {
+        const senders = peer.pc.getSenders()
+        const screenSender = senders.find((s) => s.track?.label.toLowerCase().includes('screen'))
+        if (screenSender) {
+          peer.pc.removeTrack(screenSender)
+          // Renegotiate to remove the track
+          const offer = await peer.pc.createOffer()
+          await peer.pc.setLocalDescription(offer)
+          socketRef.current?.emit('call:signal', {
+            roomId: roomIdRef.current,
+            targetId: peer.userId,
+            signal: offer,
+          })
+        }
+      }
+      // Clear local screen video element
+      requestAnimationFrame(() => {
+        const el = document.querySelector('#local-screen-video') as HTMLVideoElement
+        if (el) el.srcObject = null
+      })
       setScreenOn(false)
+      setScreenShareLabel('')
+      toast.success('Screen sharing stopped')
     } else {
+      // ── Start screen share ──
       try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' } as MediaTrackConstraints,
+          audio: false,
+        })
         const screenTrack = screenStream.getVideoTracks()[0]
-        if (pcRef.current) { const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video'); if (sender) sender.replaceTrack(screenTrack) }
-        screenTrack.onended = () => setScreenOn(false)
+        localScreenStreamRef.current = screenStream
+        setScreenShareLabel(screenTrack.label || 'Screen')
+
+        // Add screen track to all peer connections as a new sender
+        for (const [, peer] of peersRef.current) {
+          peer.pc.addTrack(screenTrack, screenStream)
+          // Renegotiate to add the new track
+          const offer = await peer.pc.createOffer()
+          await peer.pc.setLocalDescription(offer)
+          socketRef.current?.emit('call:signal', {
+            roomId: roomIdRef.current,
+            targetId: peer.userId,
+            signal: offer,
+          })
+        }
+
+        // Auto-stop when user clicks browser's stop sharing
+        screenTrack.onended = () => {
+          if (localScreenStreamRef.current) {
+            localScreenStreamRef.current.getTracks().forEach((t) => t.stop())
+            localScreenStreamRef.current = null
+          }
+          // Remove from peer connections
+          for (const [, peer] of peersRef.current) {
+            const senders = peer.pc.getSenders()
+            const screenSender = senders.find((s) => s.track?.label.toLowerCase().includes('screen'))
+            if (screenSender) peer.pc.removeTrack(screenSender)
+          }
+          setScreenOn(false)
+          setScreenShareLabel('')
+          socketRef.current?.emit('call:toggle-screen', { roomId: roomIdRef.current, isOn: false })
+          toast.success('Screen sharing stopped')
+        }
+
+        // Attach local screen to video element
+        requestAnimationFrame(() => {
+          const localScreenVideo = document.querySelector('#local-screen-video') as HTMLVideoElement
+          if (localScreenVideo) localScreenVideo.srcObject = screenStream
+        })
+
         setScreenOn(true)
         toast.success('Screen sharing started')
-      } catch { toast.error('Could not share screen') }
+      } catch (err) {
+        if ((err as DOMException).name !== 'AbortError') {
+          toast.error('Could not share screen')
+        }
+      }
     }
-    if (socketRef.current && roomIdRef.current) socketRef.current.emit('call:toggle-screen', { roomId: roomIdRef.current, isOn: !screenOn })
-  }, [screenOn, callType])
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('call:toggle-screen', { roomId: roomIdRef.current, isOn: !screenOn })
+    }
+  }, [screenOn])
 
-  return { isInCall, callType, callStatus, remoteUser, incomingCall, micOn, cameraOn, screenOn, startCall, acceptCall, rejectCall, endCall, toggleMic, toggleCamera, toggleScreen }
+  return {
+    isInCall, callType, callStatus, remoteUser, incomingCall,
+    micOn, cameraOn, screenOn, remoteScreenOn, remoteMicOn, remoteCameraOn,
+    screenShareLabel,
+    startCall, startGroupCall, acceptCall, rejectCall, endCall,
+    toggleMic, toggleCamera, toggleScreen,
+  }
 }
