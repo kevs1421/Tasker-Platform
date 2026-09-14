@@ -35,8 +35,14 @@ export function useVideoCall(currentUser: User | null) {
   const currentUserRef = useRef<User | null>(null)
   const callTypeRef = useRef<'audio' | 'video'>('video')
   const isInitiatorRef = useRef(false)
+  const isInCallRef = useRef(false)
 
   const [isInCall, setIsInCall] = useState(false)
+
+  // Sync isInCallRef for socket handlers
+  useEffect(() => {
+    isInCallRef.current = isInCall
+  }, [isInCall])
   const [callType, setCallType] = useState<'audio' | 'video'>('video')
   const [callStatus, setCallStatus] = useState<'ringing' | 'connected' | 'connecting'>('ringing')
   const [remoteUser, setRemoteUser] = useState<User | null>(null)
@@ -227,7 +233,7 @@ export function useVideoCall(currentUser: User | null) {
     }
     iceCandidatesRef.current.clear()
 
-    // Leave room via socket
+    // Leave room via socket (only if we have a room)
     if (socketRef.current && roomIdRef.current) {
       socketRef.current.emit('call:end', { roomId: roomIdRef.current })
       socketRef.current.emit('call:leave-room', { roomId: roomIdRef.current })
@@ -277,8 +283,16 @@ export function useVideoCall(currentUser: User | null) {
     })
     socketRef.current = socket
 
-    // Incoming call
+    // Incoming call — handle call-in-call by auto-rejecting with busy notification
     socket.on('call:incoming', ({ fromId, fromName, fromAvatar, callType: ct, roomId: rid }) => {
+      // If already on a call, auto-reject and notify both parties
+      if (isInCallRef.current) {
+        // Send busy signal back to caller
+        socket.emit('call:busy', { targetId: fromId, fromName: currentUser.name })
+        // Show notification to user that they missed a call
+        toast.info(`${fromName} tried to call you while you're on another call`)
+        return
+      }
       setIncomingCall({
         caller: { id: fromId, name: fromName, avatar: fromAvatar, email: '', role: 'team' as const, status: 'active', createdAt: '', updatedAt: '' },
         callType: ct,
@@ -296,6 +310,10 @@ export function useVideoCall(currentUser: User | null) {
     })
 
     socket.on('call:rejected', () => { toast.error('Call rejected'); doEndCall() })
+    socket.on('call:busy', ({ fromName }: { fromName: string }) => {
+      toast.error(`${fromName} is on another call`)
+      doEndCall()
+    })
     socket.on('call:ended', () => { toast.info('Call ended'); doEndCall() })
 
     // WebRTC signaling

@@ -1812,3 +1812,31 @@ Stage Summary:
 - Group calls are supported via new GroupCallButtons in group chat headers
 - Signaling service supports group ring and peer metadata
 - Files modified: src/hooks/use-video-call.ts, src/components/messages/VideoCall.tsx, src/components/messages/MessagesPanel.tsx, mini-services/video-call-service/index.ts
+
+---
+Task ID: call-in-call-handling
+Agent: main
+Task: Fix incoming call handling when already on another call
+
+Work Log:
+- Added `isInCallRef` to track call state in socket handlers (avoids stale closure issues)
+- Added `useEffect` to sync `isInCallRef.current` whenever `isInCall` state changes
+- Modified `call:incoming` handler:
+  - Check `isInCallRef.current` before accepting incoming call
+  - If already on call: emit `call:busy` with caller's targetId and user name
+  - Show toast notification: "X tried to call you while you're on another call"
+  - Do NOT set incomingCall state (no overlay shown)
+- Added `call:busy` handler in socket connection:
+  - Display error toast: "X is on another call"
+  - Call `doEndCall()` to clean up ringing state and local media
+- Updated signaling service to handle `call:busy` event:
+  - Relay busy signal back to caller with fromId and fromName
+  - Allows caller to properly end the ringing call
+- Modified `doEndCall()` to handle being in "ringing" state gracefully (added comment that leaving room only happens if room exists)
+
+Stage Summary:
+- When already on a call, incoming calls are automatically rejected
+- Caller receives clear notification: "X is on another call"
+- Recipient sees notification: "X tried to call you while you're on another call"
+- Both parties clean up properly — caller stops ringing, recipient doesn't get new overlay
+- Files modified: src/hooks/use-video-call.ts, mini-services/video-call-service/index.ts

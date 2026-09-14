@@ -121,6 +121,11 @@ io.on('connection', (socket) => {
     io.to(targetId).emit('call:rejected', { fromId: userId })
   })
 
+  // Call busy (recipient already on another call)
+  socket.on('call:busy', ({ targetId, fromName }: { targetId: string; fromName: string }) => {
+    io.to(targetId).emit('call:busy', { fromId: userId, fromName })
+  })
+
   // Call ended
   socket.on('call:end', ({ roomId, targetId }: { roomId?: string; targetId?: string }) => {
     // Leave room
