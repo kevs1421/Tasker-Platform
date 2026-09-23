@@ -1875,3 +1875,38 @@ Stage Summary:
 - UI: Sparkles button in call controls opens background picker panel
 - Supports: None, Blur, 6 presets, custom image upload
 - Browser test: Messages page renders without errors
+
+---
+Task ID: 2
+Agent: main
+Task: Clean up codebase for production deployment - remove debugging code, unused files, orphaned data
+
+Work Log:
+- Deleted orphaned directory: src/components/dashboard/ (9 unused legacy components)
+- Deleted examples/ directory (demo WebSocket server and frontend)
+- Deleted tool-results/, agent-ctx/, download/ directories (dev artifacts)
+- Deleted root PNG screenshot files (~20 files)
+- Deleted db/dev.db, db/custom.db, db/seed.sql (dev database and SQL seed)
+- Removed duplicate /api/auth/login route (consolidated to /api/login)
+- Replaced /api root "Hello World" with proper health check endpoint
+- Removed all console.log/debug/info/warn statements from frontend code
+- Removed console.error from VideoCall.tsx and use-virtual-background.ts
+- Removed console.log from mini-services/video-call-service/index.ts
+- Kept only acceptable server-side console.error in api-auth.ts handleApiError
+- Updated next.config.ts: ignoreBuildErrors=false, reactStrictMode=true, removed allowedDevOrigins
+- Updated prisma/seed.ts: added production guard, added ADMIN_SEED_PASSWORD env var support
+- Updated mini-services CORS: configurable via CORS_ORIGINS env var (falls back to * for dev)
+- Moved prisma and z-ai-web-dev-sdk from dependencies to devDependencies in package.json
+- Updated .gitignore: added tool-results/, agent-ctx/, worklog.md, db/*.db, download/, examples/, screenshots
+- Removed start-dev.sh (dev-only script)
+- Re-populated database with db:push and admin seed only (no demo data)
+- Verified: lint passes clean, dev server compiles without errors, login works, no browser errors
+
+Stage Summary:
+- 9+ orphaned component files deleted
+- All debugging code removed (console.*, demo login, test handlers)
+- Production config hardened (strict mode, no build error ignoring)
+- CORS made configurable for production
+- Database clean - only admin user, no demo data
+- Package.json cleaned - dev deps moved properly
+- Ready for deployment

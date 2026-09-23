@@ -112,8 +112,7 @@ export function useVirtualBackground() {
 
       segmenterRef.current = segmenter
       initializedRef.current = true
-    } catch (err) {
-      console.error('Failed to initialize MediaPipe segmenter:', err)
+    } catch {
       toast.error('Virtual background requires a supported browser')
     } finally {
       setIsLoading(false)

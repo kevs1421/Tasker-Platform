@@ -198,7 +198,6 @@ function VirtualBackgroundPanel({
         toast.error('Failed to apply virtual background')
       }
     } catch (err) {
-      console.error('Virtual background error:', err)
       toast.error('Failed to apply virtual background')
     } finally {
       setApplying(false)

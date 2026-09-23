@@ -1,8 +1,10 @@
 import { Server } from 'socket.io'
 
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean)
+
 const io = new Server({
   cors: {
-    origin: '*',
+    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : '*',
     methods: ['GET', 'POST'],
   },
 })
@@ -187,4 +189,3 @@ io.on('connection', (socket) => {
 })
 
 io.listen(PORT)
-console.log(`[VC] Video call signaling service running on port ${PORT}`)
