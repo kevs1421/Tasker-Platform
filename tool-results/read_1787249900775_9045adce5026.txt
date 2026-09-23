@@ -1,0 +1,940 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback, useRef } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { toast } from 'sonner'
+     6→import { useAuthStore } from '@/stores/auth'
+     7→import type { OnboardingForm, Onboarding } from '@/types'
+     8→import { getInitials, formatRelativeTime, formatDate } from '@/features/route-guard'
+     9→import { cn } from '@/lib/utils'
+    10→
+    11→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Skeleton } from '@/components/ui/skeleton'
+    18→import { Progress } from '@/components/ui/progress'
+    19→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    20→import { Separator } from '@/components/ui/separator'
+    21→import { ScrollArea } from '@/components/ui/scroll-area'
+    22→import {
+    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→} from '@/components/ui/select'
+    25→import {
+    26→  ClipboardList, ChevronLeft, ChevronRight, Building2, Palette, Rocket,
+    27→  FileText, Upload, X, CheckCircle2, XCircle, Clock, Loader2, ArrowLeft,
+    28→  UserCircle, Check, Info,
+    29→} from 'lucide-react'
+    30→
+    31→// ─── Types ──────────────────────────────────────────────────────────────────────
+    32→
+    33→interface UploadedFile {
+    34→  url: string
+    35→  originalName: string
+    36→  filename: string
+    37→  size: number
+    38→  type: string
+    39→}
+    40→
+    41→// ─── Animation Variants ─────────────────────────────────────────────────────────
+    42→
+    43→const fadeSlide = {
+    44→  initial: { opacity: 0, x: 30 },
+    45→  animate: { opacity: 1, x: 0 },
+    46→  exit: { opacity: 0, x: -30 },
+    47→  transition: { duration: 0.3 },
+    48→}
+    49→
+    50→// ─── Step Configuration ────────────────────────────────────────────────────────
+    51→
+    52→const STEP_ICONS = [Building2, Palette, Rocket, FileText]
+    53→const STEP_LABELS = ['Business Info', 'Brand Assets', 'Project Kickoff', 'Documents']
+    54→
+    55→const INDUSTRIES = [
+    56→  'Technology', 'Healthcare', 'Finance', 'Education', 'E-commerce',
+    57→  'Real Estate', 'Manufacturing', 'Media & Entertainment', 'Legal',
+    58→  'Non-Profit', 'Government', 'Consulting', 'Other',
+    59→]
+    60→const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+']
+    61→const BUDGET_RANGES = ['$1k - $5k', '$5k - $15k', '$15k - $50k', '$50k - $100k', '$100k+']
+    62→const TIMELINES = ['1-2 weeks', '2-4 weeks', '1-2 months', '2-3 months', '3-6 months', '6+ months']
+    63→
+    64→// ─── File Upload Zone ───────────────────────────────────────────────────────────
+    65→
+    66→function FileUploadZone({
+    67→  label,
+    68→  required,
+    69→  accept,
+    70→  file,
+    71→  onUpload,
+    72→  onRemove,
+    73→  icon: Icon = Upload,
+    74→  description,
+    75→}: {
+    76→  label: string; required?: boolean; accept?: string
+    77→  file: UploadedFile | null; onUpload: (file: UploadedFile) => void; onRemove: () => void
+    78→  icon?: React.ElementType; description?: string
+    79→}) {
+    80→  const [uploading, setUploading] = useState(false)
+    81→  const inputRef = useRef<HTMLInputElement>(null)
+    82→
+    83→  const handleFile = async (fileObj: File) => {
+    84→    setUploading(true)
+    85→    try {
+    86→      const formData = new FormData()
+    87→      formData.append('file', fileObj)
+    88→      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+    89→      if (!res.ok) {
+    90→        const d = await res.json()
+    91→        throw new Error(d.error || 'Upload failed')
+    92→      }
+    93→      const data = await res.json()
+    94→      onUpload({
+    95→        url: data.url,
+    96→        originalName: data.originalName,
+    97→        filename: data.filename,
+    98→        size: data.size,
+    99→        type: data.type,
+   100→      })
+   101→      toast.success('File uploaded')
+   102→    } catch (e: unknown) {
+   103→      toast.error(e instanceof Error ? e.message : 'Upload failed')
+   104→    } finally {
+   105→      setUploading(false)
+   106→    }
+   107→  }
+   108→
+   109→  const handleDrop = (e: React.DragEvent) => {
+   110→    e.preventDefault()
+   111→    const f = e.dataTransfer.files[0]
+   112→    if (f) handleFile(f)
+   113→  }
+   114→
+   115→  const formatSize = (bytes: number) => {
+   116→    if (bytes < 1024) return `${bytes} B`
+   117→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+   118→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+   119→  }
+   120→
+   121→  return (
+   122→    <div className="space-y-2">
+   123→      <Label className="text-sm font-medium">
+   124→        {label} {required && <span className="text-red-500">*</span>}
+   125→      </Label>
+   126→      {file ? (
+   127→        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   128→          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+   129→            <FileText className="w-5 h-5 text-primary" />
+   130→          </div>
+   131→          <div className="flex-1 min-w-0">
+   132→            <p className="text-sm font-medium truncate">{file.originalName}</p>
+   133→            <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
+   134→          </div>
+   135→          <Button
+   136→            type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+   137→            onClick={onRemove}
+   138→          >
+   139→            <X className="h-4 w-4" />
+   140→          </Button>
+   141→        </div>
+   142→      ) : (
+   143→        <div
+   144→          className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-colors"
+   145→          onClick={() => inputRef.current?.click()}
+   146→          onDragOver={(e) => e.preventDefault()}
+   147→          onDrop={handleDrop}
+   148→        >
+   149→          {uploading ? (
+   150→            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+   151→          ) : (
+   152→            <>
+   153→              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+   154→                <Icon className="w-6 h-6 text-muted-foreground" />
+   155→              </div>
+   156→              <div className="text-center">
+   157→                <p className="text-sm font-medium text-muted-foreground">Click to upload</p>
+   158→                {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+   159→              </div>
+   160→            </>
+   161→          )}
+   162→          <input
+   163→            ref={inputRef}
+   164→            type="file"
+   165→            className="hidden"
+   166→            accept={accept}
+   167→            onChange={(e) => {
+   168→              const f = e.target.files?.[0]
+   169→              if (f) handleFile(f)
+   170→              e.target.value = ''
+   171→            }}
+   172→          />
+   173→        </div>
+   174→      )}
+   175→    </div>
+   176→  )
+   177→}
+   178→
+   179→// ─── Step Indicator Card ────────────────────────────────────────────────────────
+   180→
+   181→function StepCard({
+   182→  step, index, currentStep, isCompleted, onClick,
+   183→}: {
+   184→  step: string; index: number; currentStep: number; isCompleted: boolean; onClick: () => void
+   185→}) {
+   186→  const Icon = STEP_ICONS[index]
+   187→  const isCurrent = index === currentStep
+   188→  const isClickable = isCompleted || index === currentStep
+   189→
+   190→  return (
+   191→    <button
+   192→      type="button"
+   193→      onClick={isClickable ? onClick : undefined}
+   194→      disabled={!isClickable}
+   195→      className={cn(
+   196→        'flex-1 min-w-0 flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl transition-all duration-200 border',
+   197→        isCompleted && 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800',
+   198→        isCurrent && !isCompleted && 'bg-primary/10 border-primary/30',
+   199→        !isCurrent && !isCompleted && 'bg-card border-transparent opacity-50',
+   200→        isClickable && 'cursor-pointer hover:shadow-sm',
+   201→        !isClickable && 'cursor-not-allowed',
+   202→      )}
+   203→    >
+   204→      <div className={cn(
+   205→        'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+   206→        isCompleted && 'bg-emerald-500 text-white',
+   207→        isCurrent && !isCompleted && 'bg-primary text-primary-foreground',
+   208→        !isCurrent && !isCompleted && 'bg-muted text-muted-foreground',
+   209→      )}>
+   210→        {isCompleted ? <Check className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+   211→      </div>
+   212→      <span className={cn(
+   213→        'text-[11px] md:text-xs font-medium text-center leading-tight',
+   214→        isCompleted && 'text-emerald-700 dark:text-emerald-400',
+   215→        isCurrent && !isCompleted && 'text-primary',
+   216→        !isCurrent && !isCompleted && 'text-muted-foreground',
+   217→      )}>
+   218→        {step}
+   219→      </span>
+   220→    </button>
+   221→  )
+   222→}
+   223→
+   224→// ─── Main Component ─────────────────────────────────────────────────────────────
+   225→
+   226→export default function ClientOnboardingWizard() {
+   227→  const { user } = useAuthStore()
+   228→
+   229→  // Form list view state
+   230→  const [forms, setForms] = useState<(OnboardingForm & { _count?: { submissions: number } })[]>([])
+   231→  const [loading, setLoading] = useState(true)
+   232→  const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[]; _count?: { submissions: number } }) | null>(null)
+   233→  const [formLoading, setFormLoading] = useState(false)
+   234→
+   235→  // Wizard state
+   236→  const [currentStep, setCurrentStep] = useState(0)
+   237→  const [responses, setResponses] = useState<Record<string, string>>({})
+   238→  const [files, setFiles] = useState<Record<string, UploadedFile | null>>({})
+   239→  const [submitting, setSubmitting] = useState(false)
+   240→
+   241→  const totalSteps = 4
+   242→
+   243→  const fetchForms = useCallback(async () => {
+   244→    if (!user?.id) return
+   245→    try {
+   246→      const res = await fetch(`/api/onboarding?clientId=${user.id}`)
+   247→      const data = await res.json()
+   248→      setForms(data.forms || [])
+   249→    } catch {
+   250→      toast.error('Failed to load onboarding forms')
+   251→    } finally {
+   252→      setLoading(false)
+   253→    }
+   254→  }, [user?.id])
+   255→
+   256→  useEffect(() => { fetchForms() }, [fetchForms])
+   257→
+   258→  const openForm = async (formId: string) => {
+   259→    setFormLoading(true)
+   260→    try {
+   261→      const res = await fetch(`/api/onboarding/${formId}?clientId=${user?.id}`)
+   262→      const data = await res.json()
+   263→      setSelectedForm(data.form)
+   264→      setCurrentStep(0)
+   265→      setResponses({})
+   266→      setFiles({})
+   267→    } catch {
+   268→      toast.error('Failed to load form')
+   269→    } finally {
+   270→      setFormLoading(false)
+   271→    }
+   272→  }
+   273→
+   274→  const mySubmission = selectedForm?.submissions?.find((s) => s.clientId === user?.id)
+   275→  const isLocked = mySubmission?.status === 'approved' || mySubmission?.status === 'submitted'
+   276→
+   277→  // Load existing responses
+   278→  useEffect(() => {
+   279→    if (mySubmission?.responsesJson) {
+   280→      try {
+   281→        const parsed = JSON.parse(mySubmission.responsesJson)
+   282→        setResponses(parsed.responses || {})
+   283→        setFiles(parsed.files || {})
+   284→      } catch { /* ignore */ }
+   285→    }
+   286→  }, [mySubmission?.id])
+   287→
+   288→  const updateResponse = (name: string, value: string) => {
+   289→    setResponses((prev) => ({ ...prev, [name]: value }))
+   290→  }
+   291→
+   292→  const updateFile = (name: string, file: UploadedFile | null) => {
+   293→    setFiles((prev) => ({ ...prev, [name]: file }))
+   294→  }
+   295→
+   296→  // Validation
+   297→  const isStepValid = (step: number) => {
+   298→    switch (step) {
+   299→      case 0:
+   300→        return !!(responses.businessName?.trim() && responses.businessEmail?.trim())
+   301→      case 1:
+   302→        return !!files.companyLogo
+   303→      case 2:
+   304→        return !!(responses.projectGoals?.trim() && responses.targetAudience?.trim())
+   305→      case 3:
+   306→        return !!(files.contractForm && files.paymentForm && files.workOrderAgreement)
+   307→      default:
+   308→        return true
+   309→    }
+   310→  }
+   311→
+   312→  const currentStepValid = isStepValid(currentStep)
+   313→  const progress = ((currentStep + (currentStepValid ? 1 : 0.5)) / totalSteps) * 100
+   314→
+   315→  const goToStep = (step: number) => {
+   316→    if (isLocked) return
+   317→    if (step <= currentStep) setCurrentStep(step)
+   318→  }
+   319→
+   320→  const handleNext = () => {
+   321→    if (currentStep < totalSteps - 1 && currentStepValid) {
+   322→      setCurrentStep(currentStep + 1)
+   323→    }
+   324→  }
+   325→
+   326→  const handlePrev = () => {
+   327→    if (currentStep > 0) setCurrentStep(currentStep - 1)
+   328→  }
+   329→
+   330→  const handleSubmit = async () => {
+   331→    if (!selectedForm || !user?.id) return
+   332→    setSubmitting(true)
+   333→    try {
+   334→      const submissionData = JSON.stringify({ responses, files })
+   335→      const submissionId = mySubmission?.id
+   336→      const res = await fetch(`/api/onboarding/${submissionId || selectedForm.id}`, {
+   337→        method: 'PATCH',
+   338→        headers: { 'Content-Type': 'application/json' },
+   339→        body: JSON.stringify({
+   340→          action: 'submit',
+   341→          responsesJson: submissionData,
+   342→          ...(submissionId ? {} : { formId: selectedForm.id, clientId: user.id }),
+   343→        }),
+   344→      })
+   345→      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Submission failed') }
+   346→      toast.success('Onboarding submitted successfully!')
+   347→      setSelectedForm(null)
+   348→      fetchForms()
+   349→    } catch {
+   350→      toast.error('Failed to submit onboarding')
+   351→    } finally {
+   352→      setSubmitting(false)
+   353→    }
+   354→  }
+   355→
+   356→  // ─── Render Review Result ───────────────────────────────────
+   357→  const renderReviewBanner = () => {
+   358→    if (!mySubmission) return null
+   359→    if (mySubmission.status === 'approved') return (
+   360→      <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+   361→        <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+   362→        <div>
+   363→          <p className="font-medium text-emerald-800 dark:text-emerald-300">Approved</p>
+   364→          {mySubmission.reviewNotes && <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-1">{mySubmission.reviewNotes}</p>}
+   365→          {mySubmission.reviewedAt && <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">Reviewed {formatRelativeTime(mySubmission.reviewedAt)}</p>}
+   366→        </div>
+   367→      </div>
+   368→    )
+   369→    if (mySubmission.status === 'rejected') return (
+   370→      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+   371→        <XCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+   372→        <div>
+   373→          <p className="font-medium text-red-800 dark:text-red-300">Needs Revision</p>
+   374→          {mySubmission.reviewNotes && <p className="text-sm text-red-700 dark:text-red-400 mt-1">{mySubmission.reviewNotes}</p>}
+   375→          {mySubmission.reviewedAt && <p className="text-xs text-red-600 dark:text-red-500 mt-1">Reviewed {formatRelativeTime(mySubmission.reviewedAt)}</p>}
+   376→        </div>
+   377→      </div>
+   378→    )
+   379→    if (mySubmission.status === 'submitted') return (
+   380→      <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+   381→        <Clock className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+   382→        <div>
+   383→          <p className="font-medium text-amber-800 dark:text-amber-300">Under Review</p>
+   384→          <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Your submission is being reviewed by the team.</p>
+   385→          {mySubmission.submittedAt && <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Submitted {formatRelativeTime(mySubmission.submittedAt)}</p>}
+   386→        </div>
+   387→      </div>
+   388→    )
+   389→    return null
+   390→  }
+   391→
+   392→  // ─── Render Read-Only Review ───────────────────────────────
+   393→  const renderReadOnlyView = () => (
+   394→    <ScrollArea className="max-h-[calc(100vh-20rem)]">
+   395→      <div className="space-y-8 pb-4">
+   396→        {/* Business Info */}
+   397→        <div className="space-y-3">
+   398→          <h3 className="text-base font-semibold flex items-center gap-2">
+   399→            <Building2 className="w-4 h-4 text-primary" /> Business Information
+   400→          </h3>
+   401→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   402→            {([
+   403→              { label: 'Business Name', value: responses.businessName },
+   404→              { label: 'Business Email', value: responses.businessEmail },
+   405→              { label: 'Business Phone', value: responses.businessPhone },
+   406→              { label: 'Business Address', value: responses.businessAddress },
+   407→              { label: 'Industry', value: responses.industry },
+   408→              { label: 'Company Size', value: responses.companySize },
+   409→            ] as const).map((field) => (
+   410→              <div key={field.label} className="space-y-1">
+   411→                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   412→                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   413→              </div>
+   414→            ))}
+   415→          </div>
+   416→        </div>
+   417→
+   418→        <Separator />
+   419→
+   420→        {/* Brand Assets */}
+   421→        <div className="space-y-3">
+   422→          <h3 className="text-base font-semibold flex items-center gap-2">
+   423→            <Palette className="w-4 h-4 text-primary" /> Brand Assets
+   424→          </h3>
+   425→          {files.companyLogo && (
+   426→            <div className="space-y-1">
+   427→              <p className="text-xs font-medium text-muted-foreground">Company Logo</p>
+   428→              <div className="w-20 h-20 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
+   429→                <img src={files.companyLogo.url} alt="Company logo" className="w-full h-full object-contain" />
+   430→              </div>
+   431→            </div>
+   432→          )}
+   433→          {([
+   434→            { label: 'Brand Colors', value: responses.brandColors },
+   435→            { label: 'Typography / Fonts', value: responses.typography },
+   436→          ] as const).map((field) => (
+   437→            <div key={field.label} className="space-y-1">
+   438→              <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   439→              <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   440→            </div>
+   441→          ))}
+   442→          {files.brandGuidelines && (
+   443→            <div className="space-y-1">
+   444→              <p className="text-xs font-medium text-muted-foreground">Brand Guidelines</p>
+   445→              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+   446→                <FileText className="w-4 h-4 text-primary" />
+   447→                <span className="text-sm">{files.brandGuidelines.originalName}</span>
+   448→              </div>
+   449→            </div>
+   450→          )}
+   451→        </div>
+   452→
+   453→        <Separator />
+   454→
+   455→        {/* Project Kickoff */}
+   456→        <div className="space-y-4">
+   457→          <h3 className="text-base font-semibold flex items-center gap-2">
+   458→            <Rocket className="w-4 h-4 text-primary" /> Project Kickoff
+   459→          </h3>
+   460→          <div className="space-y-4">
+   461→            {([
+   462→              { label: 'Project Goals', value: responses.projectGoals },
+   463→              { label: 'Target Audience', value: responses.targetAudience },
+   464→              { label: 'Main Competitors', value: responses.mainCompetitors },
+   465→            ] as const).map((field) => (
+   466→              <div key={field.label} className="space-y-1">
+   467→                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   468→                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px] whitespace-pre-wrap">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   469→              </div>
+   470→            ))}
+   471→          </div>
+   472→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   473→            {([
+   474→              { label: 'Budget Range', value: responses.budgetRange },
+   475→              { label: 'Expected Timeline', value: responses.expectedTimeline },
+   476→            ] as const).map((field) => (
+   477→              <div key={field.label} className="space-y-1">
+   478→                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+   479→                <p className="text-sm p-3 rounded-lg bg-muted/50 border min-h-[40px]">{field.value || <span className="italic text-muted-foreground">Not provided</span>}</p>
+   480→              </div>
+   481→            ))}
+   482→          </div>
+   483→        </div>
+   484→
+   485→        <Separator />
+   486→
+   487→        {/* Documents */}
+   488→        <div className="space-y-4">
+   489→          <h3 className="text-base font-semibold flex items-center gap-2">
+   490→            <FileText className="w-4 h-4 text-primary" /> Submitted Documents
+   491→          </h3>
+   492→          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+   493→            {([
+   494→              { key: 'contractForm', label: 'Contract Form' },
+   495→              { key: 'paymentForm', label: 'Payment Form' },
+   496→              { key: 'workOrderAgreement', label: 'Work Order Agreement' },
+   497→            ] as const).map((doc) => {
+   498→              const f = files[doc.key]
+   499→              return (
+   500→                <div key={doc.key} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   501→                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+   502→                    <FileText className="w-5 h-5 text-primary" />
+   503→                  </div>
+   504→                  <div className="min-w-0 flex-1">
+   505→                    <p className="text-sm font-medium truncate">{doc.label}</p>
+   506→                    {f ? (
+   507→                      <p className="text-xs text-muted-foreground truncate">{f.originalName}</p>
+   508→                    ) : (
+   509→                      <p className="text-xs text-muted-foreground italic">Not uploaded</p>
+   510→                    )}
+   511→                  </div>
+   512→                </div>
+   513→              )
+   514→            })}
+   515→          </div>
+   516→        </div>
+   517→      </div>
+   518→    </ScrollArea>
+   519→  )
+   520→
+   521→  // ─── Step 1: Business Information ─────────────────────────
+   522→  const renderStep1 = () => (
+   523→    <div className="space-y-5">
+   524→      <div className="space-y-2">
+   525→        <h3 className="text-lg font-semibold">Business Information</h3>
+   526→        <p className="text-sm text-muted-foreground">Tell us about your company and business details.</p>
+   527→      </div>
+   528→
+   529→      <div className="space-y-4">
+   530→        <div className="space-y-1.5">
+   531→          <Label htmlFor="businessName" className="text-sm">Business Name <span className="text-red-500">*</span></Label>
+   532→          <Input id="businessName" placeholder="Enter business name" value={responses.businessName || ''} onChange={(e) => updateResponse('businessName', e.target.value)} />
+   533→        </div>
+   534→
+   535→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   536→          <div className="space-y-1.5">
+   537→            <Label htmlFor="businessEmail" className="text-sm">Business Email <span className="text-red-500">*</span></Label>
+   538→            <Input id="businessEmail" type="email" placeholder="name@company.com" value={responses.businessEmail || ''} onChange={(e) => updateResponse('businessEmail', e.target.value)} />
+   539→          </div>
+   540→          <div className="space-y-1.5">
+   541→            <Label htmlFor="businessPhone" className="text-sm">Business Phone</Label>
+   542→            <Input id="businessPhone" placeholder="+1 (555) 000-0000" value={responses.businessPhone || ''} onChange={(e) => updateResponse('businessPhone', e.target.value)} />
+   543→          </div>
+   544→        </div>
+   545→
+   546→        <div className="space-y-1.5">
+   547→          <Label htmlFor="businessAddress" className="text-sm">Business Address</Label>
+   548→          <Input id="businessAddress" placeholder="Enter full business address" value={responses.businessAddress || ''} onChange={(e) => updateResponse('businessAddress', e.target.value)} />
+   549→        </div>
+   550→
+   551→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   552→          <div className="space-y-1.5">
+   553→            <Label className="text-sm">Industry</Label>
+   554→            <Select value={responses.industry || ''} onValueChange={(v) => updateResponse('industry', v)}>
+   555→              <SelectTrigger className="w-full"><SelectValue placeholder="Select industry" /></SelectTrigger>
+   556→              <SelectContent>
+   557→                {INDUSTRIES.map((ind) => <SelectItem key={ind} value={ind}>{ind}</SelectItem>)}
+   558→              </SelectContent>
+   559→            </Select>
+   560→          </div>
+   561→          <div className="space-y-1.5">
+   562→            <Label className="text-sm">Company Size</Label>
+   563→            <Select value={responses.companySize || ''} onValueChange={(v) => updateResponse('companySize', v)}>
+   564→              <SelectTrigger className="w-full"><SelectValue placeholder="Select company size" /></SelectTrigger>
+   565→              <SelectContent>
+   566→                {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s} employees</SelectItem>)}
+   567→              </SelectContent>
+   568→            </Select>
+   569→          </div>
+   570→        </div>
+   571→      </div>
+   572→    </div>
+   573→  )
+   574→
+   575→  // ─── Step 2: Brand Assets ─────────────────────────────────
+   576→  const renderStep2 = () => (
+   577→    <div className="space-y-5">
+   578→      <div className="space-y-2">
+   579→        <h3 className="text-lg font-semibold">Brand Assets</h3>
+   580→        <p className="text-sm text-muted-foreground">Upload your brand materials and specify your visual identity.</p>
+   581→      </div>
+   582→
+   583→      <div className="space-y-5">
+   584→        <FileUploadZone
+   585→          label="Company Logo"
+   586→          required
+   587→          accept="image/*"
+   588→          file={files.companyLogo || null}
+   589→          onUpload={(f) => updateFile('companyLogo', f)}
+   590→          onRemove={() => updateFile('companyLogo', null)}
+   591→          icon={Building2}
+   592→          description="PNG, JPG or SVG. Recommended 512x512px."
+   593→        />
+   594→
+   595→        <div className="space-y-1.5">
+   596→          <Label htmlFor="brandColors" className="text-sm">Brand Colors</Label>
+   597→          <Input id="brandColors" placeholder="e.g., #0142A0, #AA0C5B" value={responses.brandColors || ''} onChange={(e) => updateResponse('brandColors', e.target.value)} />
+   598→        </div>
+   599→
+   600→        <div className="space-y-1.5">
+   601→          <Label htmlFor="typography" className="text-sm">Typography / Fonts</Label>
+   602→          <Input id="typography" placeholder="e.g., Inter, Poppins" value={responses.typography || ''} onChange={(e) => updateResponse('typography', e.target.value)} />
+   603→        </div>
+   604→
+   605→        <FileUploadZone
+   606→          label="Brand Guidelines Document"
+   607→          accept=".pdf,.doc,.docx"
+   608→          file={files.brandGuidelines || null}
+   609→          onUpload={(f) => updateFile('brandGuidelines', f)}
+   610→          onRemove={() => updateFile('brandGuidelines', null)}
+   611→          description="PDF or Word document."
+   612→        />
+   613→      </div>
+   614→    </div>
+   615→  )
+   616→
+   617→  // ─── Step 3: Project Kickoff ──────────────────────────────
+   618→  const renderStep3 = () => (
+   619→    <div className="space-y-5">
+   620→      <div className="space-y-2">
+   621→        <h3 className="text-lg font-semibold">Project Kickoff</h3>
+   622→        <p className="text-sm text-muted-foreground">Help us understand your project goals and requirements.</p>
+   623→      </div>
+   624→
+   625→      <div className="space-y-4">
+   626→        <div className="space-y-1.5">
+   627→          <Label htmlFor="projectGoals" className="text-sm">Project Goals <span className="text-red-500">*</span></Label>
+   628→          <Textarea id="projectGoals" placeholder="Describe your main project goals and objectives" rows={4} value={responses.projectGoals || ''} onChange={(e) => updateResponse('projectGoals', e.target.value)} />
+   629→        </div>
+   630→
+   631→        <div className="space-y-1.5">
+   632→          <Label htmlFor="targetAudience" className="text-sm">Target Audience <span className="text-red-500">*</span></Label>
+   633→          <Textarea id="targetAudience" placeholder="Describe your target audience" rows={3} value={responses.targetAudience || ''} onChange={(e) => updateResponse('targetAudience', e.target.value)} />
+   634→        </div>
+   635→
+   636→        <div className="space-y-1.5">
+   637→          <Label htmlFor="mainCompetitors" className="text-sm">Main Competitors</Label>
+   638→          <Input id="mainCompetitors" placeholder="e.g., Competitor A, Competitor B" value={responses.mainCompetitors || ''} onChange={(e) => updateResponse('mainCompetitors', e.target.value)} />
+   639→        </div>
+   640→
+   641→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   642→          <div className="space-y-1.5">
+   643→            <Label className="text-sm">Budget Range</Label>
+   644→            <Select value={responses.budgetRange || ''} onValueChange={(v) => updateResponse('budgetRange', v)}>
+   645→              <SelectTrigger className="w-full"><SelectValue placeholder="Select budget range" /></SelectTrigger>
+   646→              <SelectContent>
+   647→                {BUDGET_RANGES.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+   648→              </SelectContent>
+   649→            </Select>
+   650→          </div>
+   651→          <div className="space-y-1.5">
+   652→            <Label className="text-sm">Expected Timeline</Label>
+   653→            <Select value={responses.expectedTimeline || ''} onValueChange={(v) => updateResponse('expectedTimeline', v)}>
+   654→              <SelectTrigger className="w-full"><SelectValue placeholder="Select timeline" /></SelectTrigger>
+   655→              <SelectContent>
+   656→                {TIMELINES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   657→              </SelectContent>
+   658→            </Select>
+   659→          </div>
+   660→        </div>
+   661→      </div>
+   662→    </div>
+   663→  )
+   664→
+   665→  // ─── Step 4: Document Submission ──────────────────────────
+   666→  const renderStep4 = () => (
+   667→    <div className="space-y-5">
+   668→      <div className="space-y-2">
+   669→        <h3 className="text-lg font-semibold">Document Submission</h3>
+   670→      </div>
+   671→
+   672→      {/* Info box */}
+   673→      <div className="flex items-start gap-3 p-4 rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800">
+   674→        <Info className="w-5 h-5 text-sky-600 mt-0.5 shrink-0" />
+   675→        <div>
+   676→          <p className="font-medium text-sky-800 dark:text-sky-300 text-sm">Required Documents</p>
+   677→          <p className="text-sm text-sky-700 dark:text-sky-400 mt-0.5">Please upload the following documents to complete your onboarding. All files should be in PDF format.</p>
+   678→        </div>
+   679→      </div>
+   680→
+   681→      <div className="space-y-5">
+   682→        <FileUploadZone
+   683→          label="Contract Form"
+   684→          required
+   685→          accept=".pdf,.doc,.docx"
+   686→          file={files.contractForm || null}
+   687→          onUpload={(f) => updateFile('contractForm', f)}
+   688→          onRemove={() => updateFile('contractForm', null)}
+   689→          icon={FileText}
+   690→          description="Click to upload contract"
+   691→        />
+   692→        <FileUploadZone
+   693→          label="Payment Form"
+   694→          required
+   695→          accept=".pdf,.doc,.docx"
+   696→          file={files.paymentForm || null}
+   697→          onUpload={(f) => updateFile('paymentForm', f)}
+   698→          onRemove={() => updateFile('paymentForm', null)}
+   699→          icon={FileText}
+   700→          description="Click to upload payment form"
+   701→        />
+   702→        <FileUploadZone
+   703→          label="Work Order Agreement"
+   704→          required
+   705→          accept=".pdf,.doc,.docx"
+   706→          file={files.workOrderAgreement || null}
+   707→          onUpload={(f) => updateFile('workOrderAgreement', f)}
+   708→          onRemove={() => updateFile('workOrderAgreement', null)}
+   709→          icon={FileText}
+   710→          description="Click to upload work order"
+   711→        />
+   712→      </div>
+   713→    </div>
+   714→  )
+   715→
+   716→  const stepRenderers = [renderStep1, renderStep2, renderStep3, renderStep4]
+   717→
+   718→  // ─── Form Wizard View ─────────────────────────────────────
+   719→  if (selectedForm) {
+   720→    return (
+   721→      <div className="p-4 md:p-6 space-y-5">
+   722→        {/* Header */}
+   723→        <div className="flex items-center justify-between">
+   724→          <div className="flex items-center gap-3">
+   725→            <Button variant="ghost" size="icon" onClick={() => { setSelectedForm(null); fetchForms() }} className="shrink-0">
+   726→              <ArrowLeft className="w-5 h-5" />
+   727→            </Button>
+   728→            <div className="min-w-0">
+   729→              <h1 className="text-2xl font-bold truncate">Client Onboarding</h1>
+   730→              <p className="text-sm text-muted-foreground truncate">Complete the onboarding process to get started with your project</p>
+   731→            </div>
+   732→          </div>
+   733→        </div>
+   734→
+   735→        {/* Project badge */}
+   736→        {selectedForm.project && (
+   737→          <Badge variant="outline" style={{ borderColor: selectedForm.project.color, color: selectedForm.project.color }}>
+   738→            {selectedForm.project.name}
+   739→          </Badge>
+   740→        )}
+   741→
+   742→        {/* Review banner */}
+   743→        {renderReviewBanner()}
+   744→
+   745→        {/* Status + Progress */}
+   746→        <div className="bg-card border rounded-xl p-4 md:p-5 space-y-4">
+   747→          <div className="flex items-center justify-between">
+   748→            <div className="flex items-center gap-3">
+   749→              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+   750→                <UserCircle className="w-5 h-5 text-muted-foreground" />
+   751→              </div>
+   752→              <div>
+   753→                <p className="text-sm font-medium text-muted-foreground">Onboarding Status</p>
+   754→              </div>
+   755→            </div>
+   756→            <Badge className={cn(
+   757→              mySubmission?.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+   758→              mySubmission?.status === 'submitted' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' :
+   759→              mySubmission?.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+   760→              'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+   761→            )}>
+   762→              {mySubmission?.status === 'approved' ? 'Completed' :
+   763→               mySubmission?.status === 'submitted' ? 'Submitted' :
+   764→               mySubmission?.status === 'rejected' ? 'Revision Needed' :
+   765→               'In Progress'}
+   766→            </Badge>
+   767→          </div>
+   768→          <Progress value={isLocked ? 100 : progress} className="h-2" />
+   769→          <p className="text-xs text-muted-foreground text-right">
+   770→            Step {Math.min(currentStep + 1, totalSteps)} of {totalSteps}
+   771→          </p>
+   772→        </div>
+   773→
+   774→        {/* Step Navigation */}
+   775→        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+   776→          {STEP_LABELS.map((label, i) => (
+   777→            <StepCard
+   778→              key={label}
+   779→              step={label}
+   780→              index={i}
+   781→              currentStep={currentStep}
+   782→              isCompleted={i < currentStep || isLocked}
+   783→              onClick={() => goToStep(i)}
+   784→            />
+   785→          ))}
+   786→        </div>
+   787→
+   788→        {/* Step Content */}
+   789→        <Card>
+   790→          <CardContent className="p-5 md:p-6">
+   791→            {isLocked ? (
+   792→              renderReadOnlyView()
+   793→            ) : (
+   794→              <AnimatePresence mode="wait">
+   795→                <motion.div key={currentStep} {...fadeSlide}>
+   796→                  {stepRenderers[currentStep]()}
+   797→                </motion.div>
+   798→              </AnimatePresence>
+   799→            )}
+   800→          </CardContent>
+   801→        </Card>
+   802→
+   803→        {/* Navigation Buttons */}
+   804→        {!isLocked && (
+   805→          <div className="flex items-center justify-between">
+   806→            <Button
+   807→              variant="outline"
+   808→              onClick={handlePrev}
+   809→              disabled={currentStep === 0}
+   810→            >
+   811→              <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+   812→            </Button>
+   813→
+   814→            <div className="text-sm text-muted-foreground">
+   815→              Step {currentStep + 1} of {totalSteps}
+   816→            </div>
+   817→
+   818→            {currentStep < totalSteps - 1 ? (
+   819→              <Button onClick={handleNext} disabled={!currentStepValid} className="bg-primary hover:bg-primary/90">
+   820→                Next Step <ChevronRight className="w-4 h-4 ml-1" />
+   821→              </Button>
+   822→            ) : (
+   823→              <Button
+   824→                onClick={handleSubmit}
+   825→                disabled={!currentStepValid || submitting}
+   826→                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   827→              >
+   828→                {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+   829→                Submit Onboarding
+   830→              </Button>
+   831→            )}
+   832→          </div>
+   833→        )}
+   834→
+   835→        {formLoading && (
+   836→          <div className="fixed inset-0 bg-background/60 flex items-center justify-center z-50">
+   837→            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+   838→          </div>
+   839→        )}
+   840→      </div>
+   841→    )
+   842→  }
+   843→
+   844→  // ─── Form List View (default) ─────────────────────────────
+   845→  return (
+   846→    <div className="p-4 md:p-6 space-y-6">
+   847→      <div className="flex items-center gap-3">
+   848→        <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+   849→          <ClipboardList className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+   850→        </div>
+   851→        <div>
+   852→          <h1 className="text-2xl font-bold">Onboarding</h1>
+   853→          <p className="text-sm text-muted-foreground">Complete your onboarding forms to get started</p>
+   854→        </div>
+   855→      </div>
+   856→
+   857→      {loading ? (
+   858→        <div className="space-y-4">
+   859→          <Skeleton className="h-8 w-64" />
+   860→          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+   861→            {Array.from({ length: 3 }).map((_, i) => (
+   862→              <Skeleton key={i} className="h-48 rounded-xl" />
+   863→            ))}
+   864→          </div>
+   865→        </div>
+   866→      ) : forms.length === 0 ? (
+   867→        <div className="flex flex-col items-center justify-center py-16 text-center">
+   868→          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   869→            <ClipboardList className="w-8 h-8 text-muted-foreground" />
+   870→          </div>
+   871→          <h3 className="text-lg font-semibold mb-1">No onboarding forms</h3>
+   872→          <p className="text-sm text-muted-foreground max-w-sm">There are no onboarding forms assigned to you yet.</p>
+   873→        </div>
+   874→      ) : (
+   875→        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+   876→          {forms.map((form, i) => {
+   877→            const formWithSubs = form as unknown as { submissions?: Onboarding[] }
+   878→            const submission = formWithSubs.submissions?.find((s: Onboarding) => s.clientId === user?.id)
+   879→            const project = form.project as { color?: string; name?: string } | undefined
+   880→            return (
+   881→              <motion.div
+   882→                key={form.id}
+   883→                initial={{ opacity: 0, y: 16 }}
+   884→                animate={{ opacity: 1, y: 0 }}
+   885→                transition={{ delay: i * 0.05 }}
+   886→              >
+   887→                <Card
+   888→                  className="cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-500"
+   889→                  onClick={() => openForm(form.id)}
+   890→                >
+   891→                  <CardHeader className="pb-3">
+   892→                    <div className="flex items-start justify-between">
+   893→                      <CardTitle className="text-base font-semibold leading-tight">{form.title}</CardTitle>
+   894→                      {project?.name && (
+   895→                        <Badge variant="outline" className="ml-2 shrink-0 text-xs" style={{ borderColor: project.color, color: project.color }}>
+   896→                          {project.name}
+   897→                        </Badge>
+   898→                      )}
+   899→                    </div>
+   900→                  </CardHeader>
+   901→                  <CardContent>
+   902→                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+   903→                      {form.description || 'Complete this onboarding form to proceed with your project.'}
+   904→                    </p>
+   905→                    <div className="flex items-center justify-between">
+   906→                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   907→                        <FileText className="w-3.5 h-3.5" />
+   908→                        <span>{form._count?.submissions || 0} submission{((form._count?.submissions || 0) !== 1) ? 's' : ''}</span>
+   909→                      </div>
+   910→                      {submission && (
+   911→                        <Badge variant="secondary" className={cn(
+   912→                          'text-[10px]',
+   913→                          submission.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+   914→                          submission.status === 'submitted' ? 'bg-sky-100 text-sky-700' :
+   915→                          submission.status === 'rejected' ? 'bg-red-100 text-red-700' :
+   916→                          'bg-amber-100 text-amber-700'
+   917→                        )}>
+   918→                          {submission.status === 'approved' ? 'Completed' :
+   919→                           submission.status === 'submitted' ? 'Submitted' :
+   920→                           submission.status === 'rejected' ? 'Revision Needed' :
+   921→                           'In Progress'}
+   922→                        </Badge>
+   923→                      )}
+   924→                    </div>
+   925→                  </CardContent>
+   926→                </Card>
+   927→              </motion.div>
+   928→            )
+   929→          })}
+   930→        </div>
+   931→      )}
+   932→
+   933→      {formLoading && (
+   934→        <div className="fixed inset-0 bg-background/60 flex items-center justify-center z-50">
+   935→          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+   936→        </div>
+   937→      )}
+   938→    </div>
+   939→  )
+   940→}

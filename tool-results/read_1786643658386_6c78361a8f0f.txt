@@ -1,0 +1,824 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  Camera, Trash2, Search, Eye, Download, Filter,
+     8→  Loader2, Image as ImageIcon, BarChart3, Users, Calendar,
+     9→  ArrowUpDown, Zap, Settings2, Save, Clock, Shield,
+    10→  ChevronDown, ChevronUp, X,
+    11→} from 'lucide-react'
+    12→import { useAuthStore } from '@/stores/auth'
+    13→import type { Screenshot } from '@/types'
+    14→import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
+    15→import { cn } from '@/lib/utils'
+    16→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    17→import { Button } from '@/components/ui/button'
+    18→import { Input } from '@/components/ui/input'
+    19→import { Badge } from '@/components/ui/badge'
+    20→import { Skeleton } from '@/components/ui/skeleton'
+    21→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    22→import { ScrollArea } from '@/components/ui/scroll-area'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Switch } from '@/components/ui/switch'
+    25→import {
+    26→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    27→  DialogDescription, DialogFooter,
+    28→} from '@/components/ui/dialog'
+    29→import {
+    30→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    31→} from '@/components/ui/select'
+    32→import {
+    33→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    34→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    35→} from '@/components/ui/alert-dialog'
+    36→import {
+    37→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    38→} from '@/components/ui/dropdown-menu'
+    39→import {
+    40→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    41→} from '@/components/ui/table'
+    42→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    43→
+    44→// ─── Animations ──────────────────────────────────────────
+    45→const fadeIn = {
+    46→  initial: { opacity: 0, y: 8 },
+    47→  animate: { opacity: 1, y: 0 },
+    48→  transition: { duration: 0.25 },
+    49→}
+    50→const staggerContainer = {
+    51→  initial: {},
+    52→  animate: { transition: { staggerChildren: 0.05 } },
+    53→}
+    54→
+    55→// ─── Helpers ─────────────────────────────────────────────
+    56→function formatFileSize(bytes: number): string {
+    57→  if (bytes < 1024) return `${bytes} B`
+    58→  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    59→  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    60→}
+    61→
+    62→type SortField = 'createdAt' | 'fileSize' | 'userName'
+    63→type SortDir = 'asc' | 'desc'
+    64→
+    65→// ─── Admin Screenshot Report ─────────────────────────────
+    66→export function AdminScreenshotReport() {
+    67→  const { user } = useAuthStore()
+    68→  const [screenshots, setScreenshots] = useState<Screenshot[]>([])
+    69→  const [loading, setLoading] = useState(true)
+    70→  const [search, setSearch] = useState('')
+    71→  const [filterRole, setFilterRole] = useState<string>('all')
+    72→  const [filterUser, setFilterUser] = useState<string>('all')
+    73→  const [filterAuto, setFilterAuto] = useState<string>('all')
+    74→  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+    75→  const [previewOpen, setPreviewOpen] = useState(false)
+    76→  const [previewScreenshot, setPreviewScreenshot] = useState<Screenshot | null>(null)
+    77→  const [deleteOpen, setDeleteOpen] = useState(false)
+    78→  const [deleteTarget, setDeleteTarget] = useState<Screenshot | null>(null)
+    79→  const [deleting, setDeleting] = useState(false)
+    80→  const [sortField, setSortField] = useState<SortField>('createdAt')
+    81→  const [sortDir, setSortDir] = useState<SortDir>('desc')
+    82→
+    83→  // Screenshot config settings
+    84→  const [settingsOpen, setSettingsOpen] = useState(false)
+    85→  const [configEnabled, setConfigEnabled] = useState(true)
+    86→  const [configInterval, setConfigInterval] = useState('5')
+    87→  const [savingConfig, setSavingConfig] = useState(false)
+    88→
+    89→  const fetchScreenshots = useCallback(async () => {
+    90→    if (!user) return
+    91→    try {
+    92→      const res = await fetch(`/api/screenshots?userId=${user.id}&admin=true`)
+    93→      if (res.ok) {
+    94→        const data = await res.json()
+    95→        setScreenshots(data.screenshots || [])
+    96→      }
+    97→    } catch {
+    98→      toast.error('Failed to load screenshot report')
+    99→    } finally {
+   100→      setLoading(false)
+   101→    }
+   102→  }, [user])
+   103→
+   104→  // Fetch config on mount
+   105→  const fetchConfig = useCallback(async () => {
+   106→    if (!user) return
+   107→    try {
+   108→      const res = await fetch(`/api/screenshot-config?userId=${user.id}`)
+   109→      if (res.ok) {
+   110→        const data = await res.json()
+   111→        if (data.isAdmin) {
+   112→          setConfigEnabled(data.autoEnabled)
+   113→          setConfigInterval(String(data.intervalMinutes))
+   114→        }
+   115→      }
+   116→    } catch {
+   117→      // silent
+   118→    }
+   119→  }, [user])
+   120→
+   121→  useEffect(() => { fetchScreenshots(); fetchConfig() }, [fetchScreenshots, fetchConfig])
+   122→
+   123→  // Save screenshot config
+   124→  const handleSaveConfig = async () => {
+   125→    if (!user) return
+   126→    setSavingConfig(true)
+   127→    try {
+   128→      const res = await fetch('/api/screenshot-config', {
+   129→        method: 'PUT',
+   130→        headers: { 'Content-Type': 'application/json' },
+   131→        body: JSON.stringify({
+   132→          userId: user.id,
+   133→          autoEnabled: configEnabled,
+   134→          intervalMinutes: Number(configInterval),
+   135→        }),
+   136→      })
+   137→      if (res.ok) {
+   138→        toast.success('Screenshot settings saved')
+   139→        setSettingsOpen(false)
+   140→      } else {
+   141→        toast.error('Failed to save settings')
+   142→      }
+   143→    } catch {
+   144→      toast.error('Failed to save settings')
+   145→    } finally {
+   146→      setSavingConfig(false)
+   147→    }
+   148→  }
+   149→
+   150→  const handleDelete = async () => {
+   151→    if (!deleteTarget || !user) return
+   152→    setDeleting(true)
+   153→    try {
+   154→      const res = await fetch(`/api/screenshots/${deleteTarget.id}?userId=${user.id}&admin=true`, { method: 'DELETE' })
+   155→      if (!res.ok) throw new Error('Delete failed')
+   156→      toast.success('Screenshot deleted')
+   157→      setDeleteOpen(false)
+   158→      setDeleteTarget(null)
+   159→      fetchScreenshots()
+   160→    } catch {
+   161→      toast.error('Failed to delete screenshot')
+   162→    } finally {
+   163→      setDeleting(false)
+   164→    }
+   165→  }
+   166→
+   167→  const handleSort = (field: SortField) => {
+   168→    if (sortField === field) {
+   169→      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+   170→    } else {
+   171→      setSortField(field)
+   172→      setSortDir('desc')
+   173→    }
+   174→  }
+   175→
+   176→  // Download screenshot
+   177→  const handleDownload = (ss: Screenshot) => {
+   178→    const link = document.createElement('a')
+   179→    link.href = ss.filePath
+   180→    link.download = `${ss.title || 'screenshot'}.png`
+   181→    link.click()
+   182→  }
+   183→
+   184→  // Download all filtered screenshots
+   185→  const handleDownloadAll = () => {
+   186→    filtered.forEach((ss, i) => {
+   187→      setTimeout(() => handleDownload(ss), i * 300)
+   188→    })
+   189→    toast.info(`Downloading ${filtered.length} screenshots...`)
+   190→  }
+   191→
+   192→  // Get unique users for filter
+   193→  const uniqueUsers = Array.from(
+   194→    new Map(screenshots.map(s => [s.userId, { id: s.userId, name: s.user?.name || 'Unknown', role: s.user?.role || '' }])).values()
+   195→  )
+   196→
+   197→  // Group screenshots by date
+   198→  const groupedByDate: { date: string; label: string; screenshots: Screenshot[] }[] = []
+   199→  const filtered = screenshots
+   200→    .filter(s => {
+   201→      if (search.trim()) {
+   202→        const q = search.toLowerCase()
+   203→        if (!(s.title?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.user?.name.toLowerCase().includes(q))) return false
+   204→      }
+   205→      if (filterRole !== 'all' && s.user?.role !== filterRole) return false
+   206→      if (filterUser !== 'all' && s.userId !== filterUser) return false
+   207→      if (filterAuto !== 'all') {
+   208→        if (filterAuto === 'auto' && !s.isAuto) return false
+   209→        if (filterAuto === 'manual' && s.isAuto) return false
+   210→      }
+   211→      return true
+   212→    })
+   213→    .sort((a, b) => {
+   214→      const dir = sortDir === 'asc' ? 1 : -1
+   215→      if (sortField === 'createdAt') return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+   216→      if (sortField === 'fileSize') return dir * (a.fileSize - b.fileSize)
+   217→      if (sortField === 'userName') return dir * (a.user?.name || '').localeCompare(b.user?.name || '')
+   218→      return 0
+   219→    })
+   220→
+   221→  filtered.forEach(ss => {
+   222→    const dateStr = new Date(ss.createdAt).toLocaleDateString()
+   223→    const last = groupedByDate[groupedByDate.length - 1]
+   224→    if (last && last.date === dateStr) {
+   225→      last.screenshots.push(ss)
+   226→    } else {
+   227→      const today = new Date().toDateString()
+   228→      const yesterday = new Date(Date.now() - 86400000).toDateString()
+   229→      let label = formatDate(ss.createdAt)
+   230→      if (new Date(ss.createdAt).toDateString() === today) label = 'Today'
+   231→      else if (new Date(ss.createdAt).toDateString() === yesterday) label = 'Yesterday'
+   232→      groupedByDate.push({ date: dateStr, label, screenshots: [ss] })
+   233→    }
+   234→  })
+   235→
+   236→  // Stats
+   237→  const totalSize = screenshots.reduce((sum, s) => sum + s.fileSize, 0)
+   238→  const todayCount = screenshots.filter(s => {
+   239→    const today = new Date().toDateString()
+   240→    return new Date(s.createdAt).toDateString() === today
+   241→  }).length
+   242→  const thisWeekCount = screenshots.filter(s => {
+   243→    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+   244→    return new Date(s.createdAt).getTime() > weekAgo
+   245→  }).length
+   246→  const autoCount = screenshots.filter(s => s.isAuto).length
+   247→
+   248→  if (loading) {
+   249→    return (
+   250→      <div className="space-y-4">
+   251→        <Skeleton className="h-8 w-48" />
+   252→        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+   253→          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
+   254→        </div>
+   255→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   256→          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-52 rounded-lg" />)}
+   257→        </div>
+   258→      </div>
+   259→    )
+   260→  }
+   261→
+   262→  return (
+   263→    <motion.div {...staggerContainer} initial="initial" animate="animate" className="space-y-4">
+   264→      {/* Header */}
+   265→      <motion.div {...fadeIn} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   266→        <div>
+   267→          <h2 className="text-xl font-bold flex items-center gap-2">
+   268→            <Camera className="w-5 h-5" />
+   269→            Screenshot Report
+   270→          </h2>
+   271→          <p className="text-sm text-muted-foreground">View and manage all screenshot monitoring data</p>
+   272→        </div>
+   273→        <div className="flex items-center gap-2">
+   274→          {/* Settings Button */}
+   275→          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSettingsOpen(true)}>
+   276→            <Settings2 className="w-4 h-4" />
+   277→            Settings
+   278→          </Button>
+   279→          {filtered.length > 0 && (
+   280→            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadAll}>
+   281→              <Download className="w-4 h-4" />
+   282→              Download All
+   283→            </Button>
+   284→          )}
+   285→          <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+   286→            <Button
+   287→              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+   288→              size="sm"
+   289→              className="h-7 px-2.5 text-xs"
+   290→              onClick={() => setViewMode('grid')}
+   291→            >
+   292→              Grid
+   293→            </Button>
+   294→            <Button
+   295→              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+   296→              size="sm"
+   297→              className="h-7 px-2.5 text-xs"
+   298→              onClick={() => setViewMode('list')}
+   299→            >
+   300→              List
+   301→            </Button>
+   302→          </div>
+   303→        </div>
+   304→      </motion.div>
+   305→
+   306→      {/* Stats Cards */}
+   307→      <motion.div {...fadeIn} className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+   308→        <Card>
+   309→          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+   310→            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+   311→              <ImageIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+   312→            </div>
+   313→            <div className="min-w-0">
+   314→              <p className="text-lg sm:text-xl font-bold">{screenshots.length}</p>
+   315→              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">Total</p>
+   316→            </div>
+   317→          </CardContent>
+   318→        </Card>
+   319→        <Card>
+   320→          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+   321→            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+   322→              <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 dark:text-emerald-400" />
+   323→            </div>
+   324→            <div className="min-w-0">
+   325→              <p className="text-lg sm:text-xl font-bold">{todayCount}</p>
+   326→              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">Today</p>
+   327→            </div>
+   328→          </CardContent>
+   329→        </Card>
+   330→        <Card>
+   331→          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+   332→            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+   333→              <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400" />
+   334→            </div>
+   335→            <div className="min-w-0">
+   336→              <p className="text-lg sm:text-xl font-bold">{thisWeekCount}</p>
+   337→              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">This Week</p>
+   338→            </div>
+   339→          </CardContent>
+   340→        </Card>
+   341→        <Card>
+   342→          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+   343→            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+   344→              <Zap className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
+   345→            </div>
+   346→            <div className="min-w-0">
+   347→              <p className="text-lg sm:text-xl font-bold">{autoCount}</p>
+   348→              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">Auto-Captured</p>
+   349→            </div>
+   350→          </CardContent>
+   351→        </Card>
+   352→        <Card className="col-span-2 sm:col-span-1">
+   353→          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+   354→            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center shrink-0">
+   355→              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-rose-600 dark:text-rose-400" />
+   356→            </div>
+   357→            <div className="min-w-0">
+   358→              <p className="text-lg sm:text-xl font-bold">{uniqueUsers.length}</p>
+   359→              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">Contributors</p>
+   360→            </div>
+   361→          </CardContent>
+   362→        </Card>
+   363→      </motion.div>
+   364→
+   365→      {/* Filters */}
+   366→      <motion.div {...fadeIn} className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+   367→        <div className="relative flex-1 max-w-sm">
+   368→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   369→          <Input
+   370→            placeholder="Search by title, description, or user..."
+   371→            value={search}
+   372→            onChange={(e) => setSearch(e.target.value)}
+   373→            className="pl-9 h-9"
+   374→          />
+   375→        </div>
+   376→        <Select value={filterRole} onValueChange={setFilterRole}>
+   377→          <SelectTrigger className="h-9 w-32 sm:w-40">
+   378→            <SelectValue placeholder="All Roles" />
+   379→          </SelectTrigger>
+   380→          <SelectContent>
+   381→            <SelectItem value="all">All Roles</SelectItem>
+   382→            <SelectItem value="admin">Admin</SelectItem>
+   383→            <SelectItem value="team">Team</SelectItem>
+   384→            <SelectItem value="training">Training</SelectItem>
+   385→          </SelectContent>
+   386→        </Select>
+   387→        <Select value={filterUser} onValueChange={setFilterUser}>
+   388→          <SelectTrigger className="h-9 w-36 sm:w-44">
+   389→            <SelectValue placeholder="All Users" />
+   390→          </SelectTrigger>
+   391→          <SelectContent>
+   392→            <SelectItem value="all">All Users</SelectItem>
+   393→            {uniqueUsers.map(u => (
+   394→              <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+   395→            ))}
+   396→          </SelectContent>
+   397→        </Select>
+   398→        <Select value={filterAuto} onValueChange={setFilterAuto}>
+   399→          <SelectTrigger className="h-9 w-32">
+   400→            <SelectValue placeholder="Type" />
+   401→          </SelectTrigger>
+   402→          <SelectContent>
+   403→            <SelectItem value="all">All Types</SelectItem>
+   404→            <SelectItem value="auto">Auto-Captured</SelectItem>
+   405→            <SelectItem value="manual">Manual</SelectItem>
+   406→          </SelectContent>
+   407→        </Select>
+   408→      </motion.div>
+   409→
+   410→      {/* Results count */}
+   411→      <motion.div {...fadeIn} className="flex items-center justify-between text-sm text-muted-foreground">
+   412→        <span>{filtered.length} screenshot{filtered.length !== 1 ? 's' : ''} found</span>
+   413→        <span>Total size: {formatFileSize(totalSize)}</span>
+   414→      </motion.div>
+   415→
+   416→      {/* Empty state */}
+   417→      {filtered.length === 0 ? (
+   418→        <motion.div
+   419→          initial={{ opacity: 0, y: 10 }}
+   420→          animate={{ opacity: 1, y: 0 }}
+   421→          className="flex flex-col items-center justify-center py-16 text-center"
+   422→        >
+   423→          <div className="h-14 w-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+   424→            <Camera className="h-7 w-7 text-slate-400" />
+   425→          </div>
+   426→          <h3 className="text-base font-semibold mb-1">No screenshots found</h3>
+   427→          <p className="text-sm text-muted-foreground max-w-sm">No screenshots match your current filters.</p>
+   428→        </motion.div>
+   429→      ) : viewMode === 'grid' ? (
+   430→        /* Grid View grouped by date */
+   431→        <div className="space-y-6">
+   432→          {groupedByDate.map(group => (
+   433→            <div key={group.date}>
+   434→              <div className="flex items-center gap-3 mb-3">
+   435→                <h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
+   436→                <div className="flex-1 h-px bg-border" />
+   437→                <span className="text-xs text-muted-foreground">{group.screenshots.length} screenshot{group.screenshots.length !== 1 ? 's' : ''}</span>
+   438→              </div>
+   439→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+   440→                {group.screenshots.map((ss) => (
+   441→                  <motion.div key={ss.id} {...fadeIn}>
+   442→                    <Card className="overflow-hidden group hover:shadow-md transition-shadow">
+   443→                      <div
+   444→                        className="relative aspect-video bg-muted cursor-pointer overflow-hidden"
+   445→                        onClick={() => { setPreviewScreenshot(ss); setPreviewOpen(true) }}
+   446→                      >
+   447→                        <img
+   448→                          src={ss.filePath}
+   449→                          alt={ss.title || 'Screenshot'}
+   450→                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+   451→                          loading="lazy"
+   452→                        />
+   453→                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+   454→                          <Eye className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+   455→                        </div>
+   456→                        {ss.project && (
+   457→                          <Badge className="absolute top-2 left-2 text-[10px]" style={{ backgroundColor: ss.project.color || '#f59e0b', color: '#fff' }}>
+   458→                            {ss.project.name}
+   459→                          </Badge>
+   460→                        )}
+   461→                        {ss.isAuto && (
+   462→                          <Badge className="absolute top-2 right-2 text-[10px] bg-purple-500/90 text-white border-0 gap-1">
+   463→                            <Zap className="h-2.5 w-2.5" />
+   464→                            Auto
+   465→                          </Badge>
+   466→                        )}
+   467→                      </div>
+   468→                      <CardContent className="p-3">
+   469→                        <div className="flex items-start justify-between gap-2">
+   470→                          <div className="min-w-0 flex-1">
+   471→                            <p className="text-sm font-medium truncate">{ss.title || 'Untitled'}</p>
+   472→                            <div className="flex items-center gap-2 mt-1.5">
+   473→                              {ss.user && (
+   474→                                <div className="flex items-center gap-1.5">
+   475→                                  <Avatar className="h-4 w-4">
+   476→                                    <AvatarFallback className="text-[8px] bg-slate-200 dark:bg-slate-700">
+   477→                                      {getInitials(ss.user.name)}
+   478→                                    </AvatarFallback>
+   479→                                  </Avatar>
+   480→                                  <span className="text-[11px] text-muted-foreground">{ss.user.name}</span>
+   481→                                </div>
+   482→                              )}
+   483→                            </div>
+   484→                            <div className="flex items-center gap-2 mt-1">
+   485→                              <span className="text-[10px] text-muted-foreground">{formatFileSize(ss.fileSize)}</span>
+   486→                              <span className="text-[10px] text-muted-foreground">•</span>
+   487→                              <span className="text-[10px] text-muted-foreground">{formatRelativeTime(ss.createdAt)}</span>
+   488→                              {ss.user && (
+   489→                                <>
+   490→                                  <span className="text-[10px] text-muted-foreground">•</span>
+   491→                                  <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-4', getRoleBadgeClasses(ss.user.role))}>
+   492→                                    {ss.user.role}
+   493→                                  </Badge>
+   494→                                </>
+   495→                              )}
+   496→                            </div>
+   497→                          </div>
+   498→                          <DropdownMenu>
+   499→                            <DropdownMenuTrigger asChild>
+   500→                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+   501→                                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+   502→                              </Button>
+   503→                            </DropdownMenuTrigger>
+   504→                            <DropdownMenuContent align="end">
+   505→                              <DropdownMenuItem onClick={() => handleDownload(ss)}>
+   506→                                <Download className="w-4 h-4 mr-2" />Download
+   507→                              </DropdownMenuItem>
+   508→                              <DropdownMenuItem
+   509→                                className="text-destructive focus:text-destructive"
+   510→                                onClick={() => { setDeleteTarget(ss); setDeleteOpen(true) }}
+   511→                              >
+   512→                                <Trash2 className="w-4 h-4 mr-2" />Delete
+   513→                              </DropdownMenuItem>
+   514→                            </DropdownMenuContent>
+   515→                          </DropdownMenu>
+   516→                        </div>
+   517→                      </CardContent>
+   518→                    </Card>
+   519→                  </motion.div>
+   520→                ))}
+   521→              </div>
+   522→            </div>
+   523→          ))}
+   524→        </div>
+   525→      ) : (
+   526→        /* List View */
+   527→        <Card>
+   528→          <CardContent className="p-0">
+   529→            <ScrollArea className="max-h-[600px]">
+   530→              <Table>
+   531→                <TableHeader>
+   532→                  <TableRow>
+   533→                    <TableHead className="w-12">Preview</TableHead>
+   534→                    <TableHead>
+   535→                      <button onClick={() => handleSort('createdAt')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+   536→                        Date
+   537→                        <ArrowUpDown className="w-3 h-3" />
+   538→                      </button>
+   539→                    </TableHead>
+   540→                    <TableHead>Title</TableHead>
+   541→                    <TableHead>User</TableHead>
+   542→                    <TableHead>Project</TableHead>
+   543→                    <TableHead>
+   544→                      <button onClick={() => handleSort('fileSize')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+   545→                        Size
+   546→                        <ArrowUpDown className="w-3 h-3" />
+   547→                      </button>
+   548→                    </TableHead>
+   549→                    <TableHead className="w-20"></TableHead>
+   550→                  </TableRow>
+   551→                </TableHeader>
+   552→                <TableBody>
+   553→                  {filtered.map((ss) => (
+   554→                    <TableRow key={ss.id} className="cursor-pointer" onClick={() => { setPreviewScreenshot(ss); setPreviewOpen(true) }}>
+   555→                      <TableCell>
+   556→                        <div className="h-10 w-16 rounded bg-muted overflow-hidden">
+   557→                          <img src={ss.filePath} alt="" className="w-full h-full object-cover" loading="lazy" />
+   558→                        </div>
+   559→                      </TableCell>
+   560→                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+   561→                        {formatDate(ss.createdAt)}
+   562→                      </TableCell>
+   563→                      <TableCell>
+   564→                        <p className="text-sm font-medium truncate max-w-[200px]">{ss.title || 'Untitled'}</p>
+   565→                        {ss.description && (
+   566→                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">{ss.description}</p>
+   567→                        )}
+   568→                        {ss.isAuto && (
+   569→                          <Badge className="mt-1 text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400 border-0 gap-0.5 h-4 px-1">
+   570→                            <Zap className="h-2.5 w-2.5" />
+   571→                            Auto
+   572→                          </Badge>
+   573→                        )}
+   574→                      </TableCell>
+   575→                      <TableCell>
+   576→                        <div className="flex items-center gap-2">
+   577→                          {ss.user && (
+   578→                            <Avatar className="h-6 w-6">
+   579→                              <AvatarFallback className="text-[9px] bg-slate-200 dark:bg-slate-700">
+   580→                                {getInitials(ss.user.name)}
+   581→                              </AvatarFallback>
+   582→                            </Avatar>
+   583→                          )}
+   584→                          <div>
+   585→                            <p className="text-sm">{ss.user?.name || 'Unknown'}</p>
+   586→                            {ss.user && (
+   587→                              <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-4', getRoleBadgeClasses(ss.user.role))}>
+   588→                                {ss.user.role}
+   589→                              </Badge>
+   590→                            )}
+   591→                          </div>
+   592→                        </div>
+   593→                      </TableCell>
+   594→                      <TableCell>
+   595→                        {ss.project ? (
+   596→                          <Badge variant="outline" className="text-[10px]" style={{ borderColor: ss.project.color || undefined }}>
+   597→                            {ss.project.name}
+   598→                          </Badge>
+   599→                        ) : (
+   600→                          <span className="text-xs text-muted-foreground">—</span>
+   601→                        )}
+   602→                      </TableCell>
+   603→                      <TableCell className="text-xs text-muted-foreground">
+   604→                        {formatFileSize(ss.fileSize)}
+   605→                      </TableCell>
+   606→                      <TableCell>
+   607→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   608→                          <Button
+   609→                            variant="ghost"
+   610→                            size="icon"
+   611→                            className="h-7 w-7"
+   612→                            onClick={() => handleDownload(ss)}
+   613→                          >
+   614→                            <Download className="w-3.5 h-3.5 text-muted-foreground" />
+   615→                          </Button>
+   616→                          <Button
+   617→                            variant="ghost"
+   618→                            size="icon"
+   619→                            className="h-7 w-7"
+   620→                            onClick={() => { setDeleteTarget(ss); setDeleteOpen(true) }}
+   621→                          >
+   622→                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+   623→                          </Button>
+   624→                        </div>
+   625→                      </TableCell>
+   626→                    </TableRow>
+   627→                  ))}
+   628→                </TableBody>
+   629→              </Table>
+   630→            </ScrollArea>
+   631→          </CardContent>
+   632→        </Card>
+   633→      )}
+   634→
+   635→      {/* Settings Dialog */}
+   636→      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+   637→        <DialogContent className="sm:max-w-lg">
+   638→          <DialogHeader>
+   639→            <DialogTitle className="flex items-center gap-2">
+   640→              <Settings2 className="w-5 h-5" />
+   641→              Screenshot Monitoring Settings
+   642→            </DialogTitle>
+   643→            <DialogDescription>
+   644→              Configure automatic screenshot capture settings for all users. These settings apply globally when users clock in.
+   645→            </DialogDescription>
+   646→          </DialogHeader>
+   647→          <div className="space-y-6 py-4">
+   648→            {/* Enable/Disable */}
+   649→            <div className="flex items-center justify-between rounded-lg border p-4">
+   650→              <div className="flex items-center gap-3">
+   651→                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+   652→                  <Camera className="h-5 w-5 text-primary" />
+   653→                </div>
+   654→                <div>
+   655→                  <Label className="text-sm font-medium">Auto Screenshot Capture</Label>
+   656→                  <p className="text-xs text-muted-foreground mt-0.5">
+   657→                    Automatically capture screenshots during active time-in sessions
+   658→                  </p>
+   659→                </div>
+   660→              </div>
+   661→              <Switch
+   662→                checked={configEnabled}
+   663→                onCheckedChange={setConfigEnabled}
+   664→              />
+   665→            </div>
+   666→
+   667→            {/* Interval */}
+   668→            <div className={cn('rounded-lg border p-4 space-y-3', !configEnabled && 'opacity-50 pointer-events-none')}>
+   669→              <div className="flex items-center gap-3">
+   670→                <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+   671→                  <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   672→                </div>
+   673→                <div>
+   674→                  <Label className="text-sm font-medium">Capture Interval</Label>
+   675→                  <p className="text-xs text-muted-foreground mt-0.5">
+   676→                    How often to capture screenshots during a session
+   677→                  </p>
+   678→                </div>
+   679→              </div>
+   680→              <Select value={configInterval} onValueChange={setConfigInterval}>
+   681→                <SelectTrigger className="h-9 w-full">
+   682→                  <SelectValue />
+   683→                </SelectTrigger>
+   684→                <SelectContent>
+   685→                  <SelectItem value="1">Every 1 minute</SelectItem>
+   686→                  <SelectItem value="3">Every 3 minutes</SelectItem>
+   687→                  <SelectItem value="5">Every 5 minutes</SelectItem>
+   688→                  <SelectItem value="10">Every 10 minutes</SelectItem>
+   689→                  <SelectItem value="15">Every 15 minutes</SelectItem>
+   690→                  <SelectItem value="30">Every 30 minutes</SelectItem>
+   691→                </SelectContent>
+   692→              </Select>
+   693→              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+   694→                <Shield className="w-3.5 h-3.5 shrink-0" />
+   695→                <span>Screenshots are captured using the user&apos;s browser and stored securely. Only administrators can view all screenshots.</span>
+   696→              </div>
+   697→            </div>
+   698→
+   699→            {/* Info cards */}
+   700→            <div className="grid grid-cols-3 gap-2">
+   701→              <div className="rounded-lg bg-muted/50 p-3 text-center">
+   702→                <p className="text-lg font-bold">{screenshots.length}</p>
+   703→                <p className="text-[10px] text-muted-foreground">Total Stored</p>
+   704→              </div>
+   705→              <div className="rounded-lg bg-muted/50 p-3 text-center">
+   706→                <p className="text-lg font-bold">{formatFileSize(totalSize)}</p>
+   707→                <p className="text-[10px] text-muted-foreground">Storage Used</p>
+   708→              </div>
+   709→              <div className="rounded-lg bg-muted/50 p-3 text-center">
+   710→                <p className="text-lg font-bold">{uniqueUsers.length}</p>
+   711→                <p className="text-[10px] text-muted-foreground">Active Users</p>
+   712→              </div>
+   713→            </div>
+   714→          </div>
+   715→          <DialogFooter>
+   716→            <Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancel</Button>
+   717→            <Button onClick={handleSaveConfig} disabled={savingConfig} className="gap-1.5">
+   718→              {savingConfig && <Loader2 className="w-4 h-4 animate-spin" />}
+   719→              <Save className="w-4 h-4" />
+   720→              Save Settings
+   721→            </Button>
+   722→          </DialogFooter>
+   723→        </DialogContent>
+   724→      </Dialog>
+   725→
+   726→      {/* Preview Dialog */}
+   727→      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+   728→        <DialogContent className="sm:max-w-4xl max-h-[90vh]">
+   729→          <DialogHeader>
+   730→            <DialogTitle className="flex items-center gap-3">
+   731→              {previewScreenshot?.title || 'Screenshot'}
+   732→            </DialogTitle>
+   733→            {previewScreenshot?.user && (
+   734→              <DialogDescription className="flex items-center gap-2">
+   735→                <Avatar className="h-5 w-5">
+   736→                  <AvatarFallback className="text-[9px] bg-slate-200 dark:bg-slate-700">
+   737→                    {getInitials(previewScreenshot.user.name)}
+   738→                  </AvatarFallback>
+   739→                </Avatar>
+   740→                <span>{previewScreenshot.user.name}</span>
+   741→                <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-4', getRoleBadgeClasses(previewScreenshot.user.role))}>
+   742→                  {previewScreenshot.user.role}
+   743→                </Badge>
+   744→                <span>•</span>
+   745→                <span>{formatRelativeTime(previewScreenshot.createdAt)}</span>
+   746→              </DialogDescription>
+   747→            )}
+   748→          </DialogHeader>
+   749→          {previewScreenshot && (
+   750→            <div className="space-y-3">
+   751→              {previewScreenshot.description && (
+   752→                <p className="text-sm text-muted-foreground">{previewScreenshot.description}</p>
+   753→              )}
+   754→              <div className="rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+   755→                <img
+   756→                  src={previewScreenshot.filePath}
+   757→                  alt={previewScreenshot.title || 'Screenshot'}
+   758→                  className="max-w-full max-h-[60vh] object-contain"
+   759→                />
+   760→              </div>
+   761→              <div className="flex items-center justify-between">
+   762→                <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+   763→                  <span>{formatFileSize(previewScreenshot.fileSize)}</span>
+   764→                  <span>•</span>
+   765→                  <span>{formatDate(previewScreenshot.createdAt)}</span>
+   766→                  {previewScreenshot.isAuto && (
+   767→                    <>
+   768→                      <span>•</span>
+   769→                      <Badge className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400 border-0 gap-0.5 h-5 px-1.5">
+   770→                        <Zap className="h-2.5 w-2.5" />
+   771→                        Auto-Captured
+   772→                      </Badge>
+   773→                    </>
+   774→                  )}
+   775→                  {previewScreenshot.project && (
+   776→                    <>
+   777→                      <span>•</span>
+   778→                      <Badge variant="outline" style={{ borderColor: previewScreenshot.project.color || undefined }}>
+   779→                        {previewScreenshot.project.name}
+   780→                      </Badge>
+   781→                    </>
+   782→                  )}
+   783→                  {previewScreenshot.task && (
+   784→                    <>
+   785→                      <span>•</span>
+   786→                      <Badge variant="outline">Task: {previewScreenshot.task.title}</Badge>
+   787→                    </>
+   788→                  )}
+   789→                </div>
+   790→                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleDownload(previewScreenshot)}>
+   791→                  <Download className="w-4 h-4" />
+   792→                  Download
+   793→                </Button>
+   794→              </div>
+   795→            </div>
+   796→          )}
+   797→        </DialogContent>
+   798→      </Dialog>
+   799→
+   800→      {/* Delete Confirmation */}
+   801→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   802→        <AlertDialogContent>
+   803→          <AlertDialogHeader>
+   804→            <AlertDialogTitle>Delete Screenshot</AlertDialogTitle>
+   805→            <AlertDialogDescription>
+   806→              Are you sure you want to delete &quot;{deleteTarget?.title || 'this screenshot'}&quot; uploaded by {deleteTarget?.user?.name || 'a user'}? This action cannot be undone.
+   807→            </AlertDialogDescription>
+   808→          </AlertDialogHeader>
+   809→          <AlertDialogFooter>
+   810→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   811→            <AlertDialogAction
+   812→              className="bg-red-600 hover:bg-red-700 text-white"
+   813→              onClick={handleDelete}
+   814→              disabled={deleting}
+   815→            >
+   816→              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+   817→              Delete
+   818→            </AlertDialogAction>
+   819→          </AlertDialogFooter>
+   820→        </AlertDialogContent>
+   821→      </AlertDialog>
+   822→    </motion.div>
+   823→  )
+   824→}

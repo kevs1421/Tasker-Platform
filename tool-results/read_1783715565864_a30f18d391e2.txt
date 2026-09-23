@@ -1,0 +1,1034 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  FolderKanban, MessageSquare, UserCircle, ArrowLeft,
+     8→  ChevronLeft, Send, CheckCircle2, Clock, Eye, Circle, CheckCircle,
+     9→  Calendar, Users, Loader2, FileText, Shield, Lock, Save,
+    10→  MessageCircle, Check, CheckCheck, Search, ClipboardCheck, Plus,
+    11→  TrendingUp, BarChart3
+    12→} from 'lucide-react'
+    13→import { useAuthStore } from '@/stores/auth'
+    14→import type {
+    15→  User, Project, Task, Message, Comment
+    16→} from '@/types'
+    17→import {
+    18→  getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig,
+    19→  formatDate, formatRelativeTime
+    20→} from '@/features/route-guard'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import { Button } from '@/components/ui/button'
+    23→import { Input } from '@/components/ui/input'
+    24→import { Textarea } from '@/components/ui/textarea'
+    25→import { Badge } from '@/components/ui/badge'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Skeleton } from '@/components/ui/skeleton'
+    28→import { Progress } from '@/components/ui/progress'
+    29→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    30→import { Separator } from '@/components/ui/separator'
+    31→import { ScrollArea } from '@/components/ui/scroll-area'
+    32→import {
+    33→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+    34→  DialogFooter, DialogDescription,
+    35→} from '@/components/ui/dialog'
+    36→import { isBefore, parseISO } from 'date-fns'
+    37→import { cn } from '@/lib/utils'
+    38→import {
+    39→  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
+    40→} from 'recharts'
+    41→
+    42→// ─── Extended project type with task stats ────────────────────
+    43→interface ClientProject extends Project {
+    44→  taskStats?: {
+    45→    todo: number
+    46→    in_progress: number
+    47→    in_review: number
+    48→    done: number
+    49→  }
+    50→  progress?: number
+    51→}
+    52→
+    53→// ─── Animation Variants ──────────────────────────────────────────
+    54→const fadeSlide = {
+    55→  initial: { opacity: 0, y: 12 },
+    56→  animate: { opacity: 1, y: 0 },
+    57→  exit: { opacity: 0, y: -12 },
+    58→  transition: { duration: 0.25 }
+    59→}
+    60→
+    61→// ─── Shared sub-components ───────────────────────────────────────
+    62→
+    63→function PageSkeleton() {
+    64→  return (
+    65→    <div className="space-y-6 p-4 md:p-6">
+    66→      <Skeleton className="h-8 w-64" />
+    67→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    68→        <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+    69→        <Skeleton className="h-80 rounded-xl" />
+    70→      </div>
+    71→      <Skeleton className="h-64 rounded-xl" />
+    72→    </div>
+    73→  )
+    74→}
+    75→
+    76→function PriorityBadge({ priority }: { priority: string }) {
+    77→  const cfg = getPriorityConfig(priority)
+    78→  return (
+    79→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    80→      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor}`} />
+    81→      {cfg.label}
+    82→    </span>
+    83→  )
+    84→}
+    85→
+    86→function StatusBadge({ status }: { status: string }) {
+    87→  const cfg = getStatusConfig(status)
+    88→  const Icon = cfg.icon === 'check' ? CheckCircle2 : cfg.icon === 'clock' ? Clock : cfg.icon === 'eye' ? Eye : Circle
+    89→  return (
+    90→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    91→      <Icon className="w-3 h-3" />
+    92→      {cfg.label}
+    93→    </span>
+    94→  )
+    95→}
+    96→
+    97→function EmptyState({ icon: Icon, title, description }: {
+    98→  icon: React.ElementType; title: string; description: string
+    99→}) {
+   100→  return (
+   101→    <motion.div {...fadeSlide} className="flex flex-col items-center justify-center py-16 text-center">
+   102→      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   103→        <Icon className="w-8 h-8 text-muted-foreground" />
+   104→      </div>
+   105→      <h3 className="text-lg font-semibold mb-1">{title}</h3>
+   106→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+   107→    </motion.div>
+   108→  )
+   109→}
+   110→
+   111→// ═══════════════════════════════════════════════════════════════════
+   112→// CLIENT ONBOARDING (re-exported from wizard component)
+   113→// ═══════════════════════════════════════════════════════════════════
+   114→export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboardingWizard'
+   115→
+   116→// ═══════════════════════════════════════════════════════════════════
+   117→// CLIENT PROJECTS
+   118→// ═══════════════════════════════════════════════════════════════════
+   119→const ONBOARDING_STEPS = [
+   120→  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+   121→  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+   122→  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+   123→  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+   124→]
+   125→
+   126→// ─── Status color constants ──────────────────────────────────────
+   127→const STATUS_COLORS: Record<string, string> = {
+   128→  todo: '#94a3b8',
+   129→  in_progress: '#f59e0b',
+   130→  in_review: '#8b5cf6',
+   131→  done: '#10b981',
+   132→}
+   133→const STATUS_LABELS: Record<string, string> = {
+   134→  todo: 'To Do',
+   135→  in_progress: 'In Progress',
+   136→  in_review: 'In Review',
+   137→  done: 'Done',
+   138→}
+   139→
+   140→// ─── Custom tooltip for charts ──────────────────────────────────
+   141→function CustomBarTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string; color: string }>; label?: string }) {
+   142→  if (!active || !payload?.length) return null
+   143→  return (
+   144→    <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-lg text-sm">
+   145→      <p className="font-medium mb-1">{label}</p>
+   146→      {payload.map((p, i) => (
+   147→        <div key={i} className="flex items-center gap-2">
+   148→          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+   149→          <span className="text-muted-foreground">{STATUS_LABELS[p.dataKey] || p.dataKey}:</span>
+   150→          <span className="font-medium">{p.value}</span>
+   151→        </div>
+   152→      ))}
+   153→    </div>
+   154→  )
+   155→}
+   156→
+   157→export function ClientProjects() {
+   158→  const { user } = useAuthStore()
+   159→  const [projects, setProjects] = useState<ClientProject[]>([])
+   160→  const [loading, setLoading] = useState(true)
+   161→  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+   162→  const [expandedTasks, setExpandedTasks] = useState<Task[]>([])
+   163→  const [taskDetail, setTaskDetail] = useState<(Task & { _count: { comments: number }; comments?: Comment[] }) | null>(null)
+   164→  const [taskDetailLoading, setTaskDetailLoading] = useState(false)
+   165→
+   166→  // Onboarding creation state
+   167→  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false)
+   168→  const [onboardingProjectId, setOnboardingProjectId] = useState<string>('')
+   169→  const [onboardingTitle, setOnboardingTitle] = useState('')
+   170→  const [onboardingDesc, setOnboardingDesc] = useState('')
+   171→  const [onboardingSteps, setOnboardingSteps] = useState<string[]>(ONBOARDING_STEPS.map(s => s.id))
+   172→  const [creatingOnboarding, setCreatingOnboarding] = useState(false)
+   173→
+   174→  const fetchProjects = useCallback(async () => {
+   175→    try {
+   176→      const res = await fetch('/api/projects')
+   177→      const data = await res.json()
+   178→      // Filter to active projects and those the client is a member of
+   179→      const clientProjects = (data.projects || [])
+   180→        .filter((p: Project) => p.status === 'active' && p.members?.some(m => m.userId === user?.id))
+   181→      setProjects(clientProjects)
+   182→    } catch {
+   183→      toast.error('Failed to load projects')
+   184→    } finally {
+   185→      setLoading(false)
+   186→    }
+   187→  }, [user?.id])
+   188→
+   189→  useEffect(() => { fetchProjects() }, [fetchProjects])
+   190→
+   191→  const expandProject = async (projectId: string) => {
+   192→    if (expandedProjectId === projectId) {
+   193→      setExpandedProjectId(null)
+   194→      setExpandedTasks([])
+   195→      return
+   196→    }
+   197→    setExpandedProjectId(projectId)
+   198→    try {
+   199→      const res = await fetch(`/api/projects/${projectId}`)
+   200→      const data = await res.json()
+   201→      setExpandedTasks(data.project?.tasks || [])
+   202→    } catch {
+   203→      toast.error('Failed to load project tasks')
+   204→    }
+   205→  }
+   206→
+   207→  const openTaskDetail = async (taskId: string) => {
+   208→    setTaskDetailLoading(true)
+   209→    setTaskDetail(null)
+   210→    try {
+   211→      const res = await fetch(`/api/tasks/${taskId}`)
+   212→      const data = await res.json()
+   213→      setTaskDetail(data.task)
+   214→    } catch {
+   215→      toast.error('Failed to load task details')
+   216→    } finally {
+   217→      setTaskDetailLoading(false)
+   218→    }
+   219→  }
+   220→
+   221→  const openOnboardingDialog = (projectId: string, projectName: string) => {
+   222→    setOnboardingProjectId(projectId)
+   223→    setOnboardingTitle(`Onboarding - ${projectName}`)
+   224→    setOnboardingDesc('')
+   225→    setOnboardingSteps(ONBOARDING_STEPS.map(s => s.id))
+   226→    setOnboardingDialogOpen(true)
+   227→  }
+   228→
+   229→  const handleCreateOnboarding = async () => {
+   230→    if (!onboardingTitle.trim() || !onboardingProjectId) return
+   231→    setCreatingOnboarding(true)
+   232→    try {
+   233→      const stepsJson = JSON.stringify(
+   234→        onboardingSteps.map(stepId => {
+   235→          const config = ONBOARDING_STEPS.find(s => s.id === stepId)
+   236→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   237→        })
+   238→      )
+   239→      const res = await fetch('/api/onboarding', {
+   240→        method: 'POST',
+   241→        headers: { 'Content-Type': 'application/json' },
+   242→        body: JSON.stringify({
+   243→          title: onboardingTitle.trim(),
+   244→          description: onboardingDesc.trim() || null,
+   245→          stepsJson,
+   246→          projectId: onboardingProjectId,
+   247→          clientId: user?.id || null,
+   248→          status: 'published',
+   249→        }),
+   250→      })
+   251→      if (!res.ok) {
+   252→        const d = await res.json()
+   253→        throw new Error(d.error || 'Failed to create')
+   254→      }
+   255→      toast.success('Onboarding form created successfully')
+   256→      setOnboardingDialogOpen(false)
+   257→    } catch (e: unknown) {
+   258→      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding')
+   259→    } finally {
+   260→      setCreatingOnboarding(false)
+   261→    }
+   262→  }
+   263→
+   264→  const toggleOnboardingStep = (stepId: string) => {
+   265→    setOnboardingSteps(prev =>
+   266→      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId]
+   267→    )
+   268→  }
+   269→
+   270→  // ─── Compute aggregate data for charts ────────────────────────
+   271→  const totalTasksAcrossAll = projects.reduce((sum, p) => sum + (p._count?.tasks || 0), 0)
+   272→  const totalDoneAcrossAll = projects.reduce((sum, p) => sum + (p.taskStats?.done || 0), 0)
+   273→  const overallProgress = totalTasksAcrossAll > 0 ? Math.round((totalDoneAcrossAll / totalTasksAcrossAll) * 100) : 0
+   274→
+   275→  // Data for the bar chart: stacked tasks per project by status
+   276→  const barChartData = projects.map(p => ({
+   277→    name: p.name.length > 12 ? p.name.slice(0, 12) + '…' : p.name,
+   278→    fullName: p.name,
+   279→    todo: p.taskStats?.todo || 0,
+   280→    in_progress: p.taskStats?.in_progress || 0,
+   281→    in_review: p.taskStats?.in_review || 0,
+   282→    done: p.taskStats?.done || 0,
+   283→  }))
+   284→
+   285→  if (loading) return <PageSkeleton />
+   286→
+   287→  return (
+   288→    <div className="p-4 md:p-6 space-y-6">
+   289→      {/* Page Header */}
+   290→      <div className="flex items-center justify-between flex-wrap gap-4">
+   291→        <div className="flex items-center gap-3">
+   292→          <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+   293→            <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+   294→          </div>
+   295→          <div>
+   296→            <h1 className="text-2xl font-bold">My Projects</h1>
+   297→            <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+   298→          </div>
+   299→        </div>
+   300→        {projects.length > 0 && (
+   301→          <div className="flex items-center gap-3 bg-card border rounded-xl px-4 py-2.5 shadow-sm">
+   302→            <TrendingUp className="w-5 h-5 text-emerald-500" />
+   303→            <div>
+   304→              <p className="text-xs text-muted-foreground">Overall Progress</p>
+   305→              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{overallProgress}%</p>
+   306→            </div>
+   307→          </div>
+   308→        )}
+   309→      </div>
+   310→
+   311→      {projects.length === 0 ? (
+   312→        <EmptyState
+   313→          icon={FolderKanban}
+   314→          title="No active projects"
+   315→          description="You don't have any active projects yet."
+   316→        />
+   317→      ) : (
+   318→        <>
+   319→          {/* ─── Charts Section ─────────────────────────────────── */}
+   320→          <div className="grid grid-cols-1 gap-4">
+   321→            {/* Stacked Bar Chart — Tasks per Project by Status */}
+   322→            <motion.div {...fadeSlide}>
+   323→              <Card className="h-full">
+   324→                <CardHeader className="pb-2">
+   325→                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+   326→                    <BarChart3 className="w-4 h-4 text-muted-foreground" />
+   327→                    Project Task Breakdown
+   328→                  </CardTitle>
+   329→                </CardHeader>
+   330→                <CardContent className="pb-4">
+   331→                  <div className="h-64">
+   332→                    <ResponsiveContainer width="100%" height="100%">
+   333→                      <BarChart data={barChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+   334→                        <XAxis
+   335→                          dataKey="name"
+   336→                          tick={{ fontSize: 12 }}
+   337→                          axisLine={false}
+   338→                          tickLine={false}
+   339→                        />
+   340→                        <YAxis
+   341→                          tick={{ fontSize: 12 }}
+   342→                          axisLine={false}
+   343→                          tickLine={false}
+   344→                          allowDecimals={false}
+   345→                        />
+   346→                        <Tooltip content={<CustomBarTooltip />} />
+   347→                        <Bar dataKey="done" stackId="a" fill={STATUS_COLORS.done} radius={[0, 0, 0, 0]} />
+   348→                        <Bar dataKey="in_review" stackId="a" fill={STATUS_COLORS.in_review} />
+   349→                        <Bar dataKey="in_progress" stackId="a" fill={STATUS_COLORS.in_progress} />
+   350→                        <Bar dataKey="todo" stackId="a" fill={STATUS_COLORS.todo} radius={[4, 4, 0, 0]} />
+   351→                      </BarChart>
+   352→                    </ResponsiveContainer>
+   353→                  </div>
+   354→                  {/* Legend */}
+   355→                  <div className="flex flex-wrap items-center justify-center gap-4 mt-3">
+   356→                    {Object.entries(STATUS_LABELS).map(([key, label]) => (
+   357→                      <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   358→                        <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_COLORS[key] }} />
+   359→                        {label}
+   360→                      </div>
+   361→                    ))}
+   362→                  </div>
+   363→                </CardContent>
+   364→              </Card>
+   365→            </motion.div>
+   366→          </div>
+   367→
+   368→          {/* ─── Project Cards ──────────────────────────────────── */}
+   369→          <div className="space-y-4">
+   370→            {projects.map((project, i) => {
+   371→              const projectTasks = expandedProjectId === project.id ? expandedTasks : []
+   372→              const doneTasks = project.taskStats?.done || 0
+   373→              const totalT = project._count?.tasks || 0
+   374→              const pct = project.progress ?? 0
+   375→              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+   376→              const isExpanded = expandedProjectId === project.id
+   377→
+   378→              // Compute progress bar gradient colors
+   379→              const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
+   380→
+   381→              return (
+   382→                <motion.div
+   383→                  key={project.id}
+   384→                  initial={{ opacity: 0, y: 12 }}
+   385→                  animate={{ opacity: 1, y: 0 }}
+   386→                  transition={{ delay: i * 0.05 }}
+   387→                >
+   388→                  <Card
+   389→                    className="cursor-pointer hover:shadow-md transition-all border-l-4"
+   390→                    style={{ borderLeftColor: project.color }}
+   391→                    onClick={() => expandProject(project.id)}
+   392→                  >
+   393→                    <CardContent className="p-4 md:p-5">
+   394→                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   395→                        <div className="min-w-0 flex-1">
+   396→                          <div className="flex items-center gap-2 mb-1">
+   397→                            <h3 className="font-semibold text-base truncate">{project.name}</h3>
+   398→                            <PriorityBadge priority={project.priority} />
+   399→                          </div>
+   400→                          <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+   401→                        </div>
+   402→                        <div className="flex items-center gap-3 shrink-0 text-sm">
+   403→                          {project.dueDate && (
+   404→                            <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+   405→                              <Calendar className="w-3.5 h-3.5" />
+   406→                              {formatDate(project.dueDate)}
+   407→                            </span>
+   408→                          )}
+   409→                          <span className="text-muted-foreground flex items-center gap-1">
+   410→                            <Users className="w-3.5 h-3.5" />
+   411→                            {project._count?.members || 0}
+   412→                          </span>
+   413→                          <Button
+   414→                            size="sm"
+   415→                            variant="outline"
+   416→                            className="h-7 gap-1.5 text-xs"
+   417→                            onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
+   418→                          >
+   419→                            <ClipboardCheck className="w-3.5 h-3.5" />
+   420→                            Onboarding
+   421→                          </Button>
+   422→                        </div>
+   423→                      </div>
+   424→
+   425→                      {/* Progress bar with percentage */}
+   426→                      <div className="mt-3 space-y-1">
+   427→                        <div className="flex items-center justify-between text-xs">
+   428→                          <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
+   429→                          <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+   430→                        </div>
+   431→                        <div className="relative">
+   432→                          <Progress value={pct} className="h-2.5" />
+   433→                          <div
+   434→                            className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
+   435→                            style={{
+   436→                              width: `${pct}%`,
+   437→                              background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+   438→                            }}
+   439→                          />
+   440→                        </div>
+   441→                      </div>
+   442→                    </CardContent>
+   443→                  </Card>
+   444→
+   445→                  {/* Expanded tasks table */}
+   446→                  <AnimatePresence>
+   447→                    {isExpanded && (
+   448→                      <motion.div
+   449→                        initial={{ opacity: 0, height: 0 }}
+   450→                        animate={{ opacity: 1, height: 'auto' }}
+   451→                        exit={{ opacity: 0, height: 0 }}
+   452→                        transition={{ duration: 0.2 }}
+   453→                        className="overflow-hidden"
+   454→                      >
+   455→                        <Card className="mt-2 rounded-t-none">
+   456→                          <CardContent className="p-0">
+   457→                            {projectTasks.length === 0 ? (
+   458→                              <div className="py-8 text-center text-sm text-muted-foreground">
+   459→                                No tasks in this project yet.
+   460→                              </div>
+   461→                            ) : (
+   462→                              <div className="overflow-x-auto">
+   463→                                <table className="w-full text-sm">
+   464→                                  <thead>
+   465→                                    <tr className="border-b bg-muted/50">
+   466→                                      <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
+   467→                                      <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+   468→                                      <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Priority</th>
+   469→                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Due Date</th>
+   470→                                      <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Assignees</th>
+   471→                                    </tr>
+   472→                                  </thead>
+   473→                                  <tbody>
+   474→                                    {projectTasks.map(task => (
+   475→                                      <tr
+   476→                                        key={task.id}
+   477→                                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+   478→                                        onClick={(e) => { e.stopPropagation(); openTaskDetail(task.id) }}
+   479→                                      >
+   480→                                        <td className="p-3">
+   481→                                          <div className="font-medium">{task.title}</div>
+   482→                                          {task.description && (
+   483→                                            <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</div>
+   484→                                          )}
+   485→                                        </td>
+   486→                                        <td className="p-3 hidden md:table-cell"><StatusBadge status={task.status} /></td>
+   487→                                        <td className="p-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
+   488→                                        <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">
+   489→                                          {task.dueDate ? formatDate(task.dueDate) : '—'}
+   490→                                        </td>
+   491→                                        <td className="p-3 hidden lg:table-cell">
+   492→                                          <div className="flex -space-x-2">
+   493→                                            {task.assignees?.slice(0, 3).map(a => (
+   494→                                              <Avatar key={a.id} className="w-6 h-6 border-2 border-background">
+   495→                                                <AvatarFallback className="text-[10px] bg-muted">
+   496→                                                  {getInitials(a.user?.name || '?')}
+   497→                                                </AvatarFallback>
+   498→                                              </Avatar>
+   499→                                            ))}
+   500→                                            {(task.assignees?.length || 0) > 3 && (
+   501→                                              <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background">
+   502→                                                +{(task.assignees?.length || 0) - 3}
+   503→                                              </span>
+   504→                                            )}
+   505→                                          </div>
+   506→                                        </td>
+   507→                                      </tr>
+   508→                                    ))}
+   509→                                  </tbody>
+   510→                                </table>
+   511→                              </div>
+   512→                            )}
+   513→                          </CardContent>
+   514→                        </Card>
+   515→                      </motion.div>
+   516→                    )}
+   517→                  </AnimatePresence>
+   518→                </motion.div>
+   519→              )
+   520→            })}
+   521→          </div>
+   522→        </>
+   523→      )}
+   524→
+   525→      {/* Create Onboarding Dialog */}
+   526→      <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
+   527→        <DialogContent className="sm:max-w-lg">
+   528→          <DialogHeader>
+   529→            <DialogTitle className="flex items-center gap-2">
+   530→              <ClipboardCheck className="w-5 h-5 text-primary" />
+   531→              Create Onboarding
+   532→            </DialogTitle>
+   533→            <DialogDescription>Create an onboarding form for this project</DialogDescription>
+   534→          </DialogHeader>
+   535→          <div className="space-y-4 py-2">
+   536→            <div className="space-y-2">
+   537→              <Label>Title</Label>
+   538→              <Input
+   539→                placeholder="Onboarding form title"
+   540→                value={onboardingTitle}
+   541→                onChange={(e) => setOnboardingTitle(e.target.value)}
+   542→              />
+   543→            </div>
+   544→            <div className="space-y-2">
+   545→              <Label>Description (optional)</Label>
+   546→              <Textarea
+   547→                placeholder="Brief description of the onboarding..."
+   548→                value={onboardingDesc}
+   549→                onChange={(e) => setOnboardingDesc(e.target.value)}
+   550→                rows={2}
+   551→              />
+   552→            </div>
+   553→            <div className="space-y-2">
+   554→              <div className="flex items-center justify-between">
+   555→                <Label>Steps</Label>
+   556→                <span className="text-xs text-muted-foreground">{onboardingSteps.length} / {ONBOARDING_STEPS.length} selected</span>
+   557→              </div>
+   558→              <div className="space-y-2 max-h-48 overflow-y-auto">
+   559→                {ONBOARDING_STEPS.map((step) => {
+   560→                  const isSelected = onboardingSteps.includes(step.id)
+   561→                  return (
+   562→                    <button
+   563→                      key={step.id}
+   564→                      type="button"
+   565→                      onClick={() => toggleOnboardingStep(step.id)}
+   566→                      className={cn(
+   567→                        'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+   568→                        isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+   569→                      )}
+   570→                    >
+   571→                      <div className={cn(
+   572→                        'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+   573→                        isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
+   574→                      )}>
+   575→                        {isSelected && <Check className="w-3 h-3" />}
+   576→                      </div>
+   577→                      <div className="flex-1 min-w-0">
+   578→                        <p className="text-sm font-medium">{step.label}</p>
+   579→                        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+   580→                      </div>
+   581→                    </button>
+   582→                  )
+   583→                })}
+   584→              </div>
+   585→            </div>
+   586→          </div>
+   587→          <DialogFooter>
+   588→            <Button variant="outline" onClick={() => setOnboardingDialogOpen(false)}>Cancel</Button>
+   589→            <Button
+   590→              onClick={handleCreateOnboarding}
+   591→              disabled={creatingOnboarding || !onboardingTitle.trim() || onboardingSteps.length === 0}
+   592→              className="gap-2"
+   593→            >
+   594→              {creatingOnboarding && <Loader2 className="h-4 w-4 animate-spin" />}
+   595→              <Plus className="h-4 w-4" />
+   596→              Create Onboarding
+   597→            </Button>
+   598→          </DialogFooter>
+   599→        </DialogContent>
+   600→      </Dialog>
+   601→
+   602→      {/* Task Detail Dialog */}
+   603→      <Dialog open={!!taskDetail} onOpenChange={(open) => { if (!open) setTaskDetail(null) }}>
+   604→        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+   605→          {taskDetailLoading ? (
+   606→            <div className="p-6 space-y-4">
+   607→              <Skeleton className="h-6 w-3/4" />
+   608→              <Skeleton className="h-4 w-1/2" />
+   609→              <Skeleton className="h-20 w-full" />
+   610→            </div>
+   611→          ) : taskDetail ? (
+   612→            <TaskDetailDialog task={taskDetail} userId={user?.id || ''} onUpdate={() => openTaskDetail(taskDetail.id)} />
+   613→          ) : null}
+   614→        </DialogContent>
+   615→      </Dialog>
+   616→    </div>
+   617→  )
+   618→}
+   619→
+   620→// ─── Task Detail Dialog ─────────────────────────────────────
+   621→function TaskDetailDialog({
+   622→  task, userId, onUpdate
+   623→}: {
+   624→  task: Task & { _count: { comments: number }; comments?: Comment[] }
+   625→  userId: string
+   626→  onUpdate: () => void
+   627→}) {
+   628→  const [comments, setComments] = useState<Comment[]>(task.comments || [])
+   629→  const [newComment, setNewComment] = useState('')
+   630→  const [sendingComment, setSendingComment] = useState(false)
+   631→  const scrollRef = useRef<HTMLDivElement>(null)
+   632→
+   633→  useEffect(() => {
+   634→    if (scrollRef.current) {
+   635→      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+   636→    }
+   637→  }, [comments])
+   638→
+   639→  const sendComment = async () => {
+   640→    if (!newComment.trim()) return
+   641→    setSendingComment(true)
+   642→    try {
+   643→      const res = await fetch('/api/comments', {
+   644→        method: 'POST',
+   645→        headers: { 'Content-Type': 'application/json' },
+   646→        body: JSON.stringify({ content: newComment.trim(), taskId: task.id, userId })
+   647→      })
+   648→      if (!res.ok) throw new Error()
+   649→      const data = await res.json()
+   650→      setComments(prev => [...prev, data.comment])
+   651→      setNewComment('')
+   652→      toast.success('Comment added')
+   653→    } catch {
+   654→      toast.error('Failed to add comment')
+   655→    } finally {
+   656→      setSendingComment(false)
+   657→    }
+   658→  }
+   659→
+   660→  const statusCfg = getStatusConfig(task.status)
+   661→  const priorityCfg = getPriorityConfig(task.priority)
+   662→
+   663→  return (
+   664→    <>
+   665→      <DialogHeader>
+   666→        <div className="flex items-center gap-2 flex-wrap">
+   667→          <DialogTitle className="text-xl">{task.title}</DialogTitle>
+   668→          <StatusBadge status={task.status} />
+   669→          <PriorityBadge priority={task.priority} />
+   670→        </div>
+   671→        {task.project && (
+   672→          <div className="flex items-center gap-2 mt-1">
+   673→            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: task.project.color }} />
+   674→            <span className="text-sm text-muted-foreground">{task.project.name}</span>
+   675→          </div>
+   676→        )}
+   677→      </DialogHeader>
+   678→
+   679→      <ScrollArea className="flex-1 -mx-6 px-6" ref={scrollRef}>
+   680→        <div className="space-y-5 py-4">
+   681→          {/* Description */}
+   682→          {task.description && (
+   683→            <div>
+   684→              <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
+   685→              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
+   686→            </div>
+   687→          )}
+   688→
+   689→          {/* Details Grid */}
+   690→          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+   691→            {task.dueDate && (
+   692→              <div className="space-y-1">
+   693→                <span className="text-xs text-muted-foreground">Due Date</span>
+   694→                <div className="flex items-center gap-1.5 text-sm font-medium">
+   695→                  <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+   696→                  {formatDate(task.dueDate)}
+   697→                </div>
+   698→              </div>
+   699→            )}
+   700→            <div className="space-y-1">
+   701→              <span className="text-xs text-muted-foreground">Assignees</span>
+   702→              <div className="flex items-center gap-1.5">
+   703→                {task.assignees?.map(a => (
+   704→                  <Avatar key={a.id} className="w-6 h-6">
+   705→                    <AvatarFallback className="text-[10px] bg-muted">
+   706→                      {getInitials(a.user?.name || '?')}
+   707→                    </AvatarFallback>
+   708→                  </Avatar>
+   709→                ))}
+   710→                {(!task.assignees || task.assignees.length === 0) && (
+   711→                  <span className="text-sm text-muted-foreground">Unassigned</span>
+   712→                )}
+   713→              </div>
+   714→            </div>
+   715→            <div className="space-y-1">
+   716→              <span className="text-xs text-muted-foreground">Created</span>
+   717→              <span className="text-sm">{formatRelativeTime(task.createdAt)}</span>
+   718→            </div>
+   719→          </div>
+   720→
+   721→          <Separator />
+   722→
+   723→          {/* Comments */}
+   724→          <div className="space-y-3">
+   725→            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+   726→              <MessageCircle className="w-3.5 h-3.5" />
+   727→              Comments ({comments.length})
+   728→            </h4>
+   729→            <div className="space-y-3">
+   730→              {comments.map(comment => (
+   731→                <div key={comment.id} className="flex gap-3">
+   732→                  <Avatar className="w-8 h-8 shrink-0">
+   733→                    <AvatarFallback className="text-xs bg-muted">
+   734→                      {getInitials(comment.user?.name || '?')}
+   735→                    </AvatarFallback>
+   736→                  </Avatar>
+   737→                  <div className="min-w-0 flex-1">
+   738→                    <div className="flex items-center gap-2">
+   739→                      <span className="text-sm font-medium">{comment.user?.name || 'Unknown'}</span>
+   740→                      <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.createdAt)}</span>
+   741→                      {comment.user?.role && (
+   742→                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeClasses(comment.user.role)}`}>
+   743→                          {comment.user.role}
+   744→                        </span>
+   745→                      )}
+   746→                    </div>
+   747→                    <p className="text-sm mt-0.5 whitespace-pre-wrap">{comment.content}</p>
+   748→                  </div>
+   749→                </div>
+   750→              ))}
+   751→              {comments.length === 0 && (
+   752→                <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
+   753→              )}
+   754→            </div>
+   755→          </div>
+   756→        </div>
+   757→      </ScrollArea>
+   758→
+   759→      {/* Comment input */}
+   760→      <div className="border-t pt-4 mt-auto">
+   761→        <div className="flex gap-2">
+   762→          <Input
+   763→            value={newComment}
+   764→            onChange={e => setNewComment(e.target.value)}
+   765→            placeholder="Add a comment..."
+   766→            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() } }}
+   767→          />
+   768→          <Button size="icon" onClick={sendComment} disabled={!newComment.trim() || sendingComment}>
+   769→            {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+   770→          </Button>
+   771→        </div>
+   772→      </div>
+   773→    </>
+   774→  )
+   775→}
+   776→
+   777→// ═══════════════════════════════════════════════════════════════════
+   778→// CLIENT MESSAGES
+   779→// ═══════════════════════════════════════════════════════════════════
+   780→export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesPanel'
+   781→
+   782→// ═══════════════════════════════════════════════════════════════════
+   783→// CLIENT PROFILE
+   784→// ═══════════════════════════════════════════════════════════════════
+   785→export function ClientProfile() {
+   786→  const { user, login } = useAuthStore()
+   787→  const [loading, setLoading] = useState(true)
+   788→  const [saving, setSaving] = useState(false)
+   789→  const [savingPassword, setSavingPassword] = useState(false)
+   790→
+   791→  const [name, setName] = useState('')
+   792→  const [email, setEmail] = useState('')
+   793→  const [phone, setPhone] = useState('')
+   794→  const [company, setCompany] = useState('')
+   795→
+   796→  const [currentPassword, setCurrentPassword] = useState('')
+   797→  const [newPassword, setNewPassword] = useState('')
+   798→  const [confirmPassword, setConfirmPassword] = useState('')
+   799→
+   800→  useEffect(() => {
+   801→    if (!user?.id) return
+   802→    const fetchProfile = async () => {
+   803→      try {
+   804→        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+   805→        const data = await res.json()
+   806→        if (data.user) {
+   807→          setName(data.user.name || '')
+   808→          setEmail(data.user.email || '')
+   809→          setPhone(data.user.phone || '')
+   810→          setCompany(data.user.company || '')
+   811→        }
+   812→      } catch {
+   813→        toast.error('Failed to load profile')
+   814→      } finally {
+   815→        setLoading(false)
+   816→      }
+   817→    }
+   818→    fetchProfile()
+   819→  }, [user?.id])
+   820→
+   821→  const saveProfile = async () => {
+   822→    if (!user?.id) return
+   823→    setSaving(true)
+   824→    try {
+   825→      const res = await fetch('/api/user/profile', {
+   826→        method: 'PATCH',
+   827→        headers: { 'Content-Type': 'application/json' },
+   828→        body: JSON.stringify({ userId: user.id, name, email, phone, company })
+   829→      })
+   830→      if (!res.ok) {
+   831→        const data = await res.json()
+   832→        throw new Error(data.error || 'Failed')
+   833→      }
+   834→      const data = await res.json()
+   835→      toast.success('Profile updated successfully')
+   836→      // Update user in store
+   837→      if (data.user && user) {
+   838→        login({ ...user, name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+   839→      }
+   840→    } catch (e: unknown) {
+   841→      const msg = e instanceof Error ? e.message : 'Failed to update profile'
+   842→      toast.error(msg)
+   843→    } finally {
+   844→      setSaving(false)
+   845→    }
+   846→  }
+   847→
+   848→  const changePassword = async () => {
+   849→    if (!user?.id) return
+   850→    if (!currentPassword || !newPassword || !confirmPassword) {
+   851→      toast.error('Please fill in all password fields')
+   852→      return
+   853→    }
+   854→    if (newPassword !== confirmPassword) {
+   855→      toast.error('New passwords do not match')
+   856→      return
+   857→    }
+   858→    if (newPassword.length < 6) {
+   859→      toast.error('Password must be at least 6 characters')
+   860→      return
+   861→    }
+   862→    setSavingPassword(true)
+   863→    try {
+   864→      const res = await fetch('/api/user/profile', {
+   865→        method: 'PATCH',
+   866→        headers: { 'Content-Type': 'application/json' },
+   867→        body: JSON.stringify({
+   868→          userId: user.id,
+   869→          currentPassword,
+   870→          newPassword
+   871→        })
+   872→      })
+   873→      if (!res.ok) {
+   874→        const data = await res.json()
+   875→        throw new Error(data.error || 'Failed')
+   876→      }
+   877→      toast.success('Password changed successfully')
+   878→      setCurrentPassword('')
+   879→      setNewPassword('')
+   880→      setConfirmPassword('')
+   881→    } catch (e: unknown) {
+   882→      const msg = e instanceof Error ? e.message : 'Failed to change password'
+   883→      toast.error(msg)
+   884→    } finally {
+   885→      setSavingPassword(false)
+   886→    }
+   887→  }
+   888→
+   889→  if (loading) return <PageSkeleton />
+   890→
+   891→  return (
+   892→    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
+   893→      <div className="flex items-center gap-3">
+   894→        <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+   895→          <UserCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+   896→        </div>
+   897→        <div>
+   898→          <h1 className="text-2xl font-bold">Profile Settings</h1>
+   899→          <p className="text-sm text-muted-foreground">Manage your account information</p>
+   900→        </div>
+   901→      </div>
+   902→
+   903→      {/* Profile Card */}
+   904→      <motion.div {...fadeSlide}>
+   905→        <Card>
+   906→          <CardHeader>
+   907→            <div className="flex items-center justify-between">
+   908→              <CardTitle className="text-lg">Personal Information</CardTitle>
+   909→              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+   910→                Client
+   911→              </span>
+   912→            </div>
+   913→            {user?.createdAt && (
+   914→              <p className="text-sm text-muted-foreground">
+   915→                Member since {formatDate(user.createdAt)}
+   916→              </p>
+   917→            )}
+   918→          </CardHeader>
+   919→          <CardContent className="space-y-4">
+   920→            <div className="space-y-2">
+   921→              <Label htmlFor="profile-name">Full Name</Label>
+   922→              <Input
+   923→                id="profile-name"
+   924→                value={name}
+   925→                onChange={e => setName(e.target.value)}
+   926→                placeholder="Your full name"
+   927→              />
+   928→            </div>
+   929→            <div className="space-y-2">
+   930→              <Label htmlFor="profile-email">Email Address</Label>
+   931→              <Input
+   932→                id="profile-email"
+   933→                type="email"
+   934→                value={email}
+   935→                onChange={e => setEmail(e.target.value)}
+   936→                placeholder="your@email.com"
+   937→              />
+   938→            </div>
+   939→            <div className="space-y-2">
+   940→              <Label htmlFor="profile-phone">Phone Number</Label>
+   941→              <Input
+   942→                id="profile-phone"
+   943→                type="tel"
+   944→                value={phone}
+   945→                onChange={e => setPhone(e.target.value)}
+   946→                placeholder="+1 (555) 000-0000"
+   947→              />
+   948→            </div>
+   949→            <div className="space-y-2">
+   950→              <Label htmlFor="profile-company">Company</Label>
+   951→              <Input
+   952→                id="profile-company"
+   953→                value={company}
+   954→                onChange={e => setCompany(e.target.value)}
+   955→                placeholder="Your company name"
+   956→              />
+   957→            </div>
+   958→            <div className="pt-2">
+   959→              <Button onClick={saveProfile} disabled={saving} className="w-full sm:w-auto">
+   960→                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+   961→                Save Changes
+   962→              </Button>
+   963→            </div>
+   964→          </CardContent>
+   965→        </Card>
+   966→      </motion.div>
+   967→
+   968→      {/* Change Password */}
+   969→      <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   970→        <Card>
+   971→          <CardHeader>
+   972→            <CardTitle className="text-lg flex items-center gap-2">
+   973→              <Shield className="w-5 h-5 text-muted-foreground" />
+   974→              Change Password
+   975→            </CardTitle>
+   976→            <p className="text-sm text-muted-foreground">
+   977→              Update your password to keep your account secure
+   978→            </p>
+   979→          </CardHeader>
+   980→          <CardContent className="space-y-4">
+   981→            <div className="space-y-2">
+   982→              <Label htmlFor="current-password">Current Password</Label>
+   983→              <div className="relative">
+   984→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   985→                <Input
+   986→                  id="current-password"
+   987→                  type="password"
+   988→                  value={currentPassword}
+   989→                  onChange={e => setCurrentPassword(e.target.value)}
+   990→                  placeholder="Enter current password"
+   991→                  className="pl-9"
+   992→                />
+   993→              </div>
+   994→            </div>
+   995→            <div className="space-y-2">
+   996→              <Label htmlFor="new-password">New Password</Label>
+   997→              <div className="relative">
+   998→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   999→                <Input
+  1000→                  id="new-password"
+  1001→                  type="password"
+  1002→                  value={newPassword}
+  1003→                  onChange={e => setNewPassword(e.target.value)}
+  1004→                  placeholder="Enter new password"
+  1005→                  className="pl-9"
+  1006→                />
+  1007→              </div>
+  1008→            </div>
+  1009→            <div className="space-y-2">
+  1010→              <Label htmlFor="confirm-password">Confirm New Password</Label>
+  1011→              <div className="relative">
+  1012→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+  1013→                <Input
+  1014→                  id="confirm-password"
+  1015→                  type="password"
+  1016→                  value={confirmPassword}
+  1017→                  onChange={e => setConfirmPassword(e.target.value)}
+  1018→                  placeholder="Confirm new password"
+  1019→                  className="pl-9"
+  1020→                />
+  1021→              </div>
+  1022→            </div>
+  1023→            <div className="pt-2">
+  1024→              <Button onClick={changePassword} disabled={savingPassword} variant="outline" className="w-full sm:w-auto">
+  1025→                {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+  1026→                Change Password
+  1027→              </Button>
+  1028→            </div>
+  1029→          </CardContent>
+  1030→        </Card>
+  1031→      </motion.div>
+  1032→    </div>
+  1033→  )
+  1034→}

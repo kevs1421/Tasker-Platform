@@ -6,12 +6,18 @@ import { toast } from 'sonner'
 import {
   Phone, PhoneOff, Mic, MicOff, Video, VideoOff,
   MonitorUp, MonitorOff, Copy, Maximize2, Minimize2,
-  Users, Monitor,
+  Users, Monitor, ImageIcon, Upload, X, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getInitials } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import {
+  useVirtualBackground,
+  PRESET_BACKGROUNDS,
+  type VirtualBackgroundOption,
+} from '@/hooks/use-virtual-background'
 import type { User } from '@/types'
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -26,6 +32,8 @@ interface VideoCallProps {
   onToggleMic: () => void
   onToggleCamera: () => void
   onToggleScreen: () => void
+  onApplyVirtualBg: (stream: MediaStream) => Promise<void>
+  onRemoveVirtualBg: () => Promise<void>
   micOn: boolean
   cameraOn: boolean
   screenOn: boolean
@@ -33,6 +41,7 @@ interface VideoCallProps {
   remoteMicOn: boolean
   remoteCameraOn: boolean
   screenShareLabel: string
+  localStream: MediaStream | null
 }
 
 // ─── Incoming Call Overlay ──────────────────────────────────────────────
@@ -77,7 +86,7 @@ export function IncomingCallOverlay({
           </button>
           <button
             onClick={onAccept}
-            className="h-14 w-14 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-lg animate-pulse"
+            className="h-14 w-14 rounded-full bg-emerald-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg animate-pulse"
           >
             <Phone className="h-6 w-6" />
           </button>
@@ -128,6 +137,235 @@ function ScreenShareBanner({
   )
 }
 
+// ─── Virtual Background Panel ──────────────────────────────────────────
+
+function VirtualBackgroundPanel({
+  isOpen,
+  onClose,
+  localStream,
+  onApplyVirtualBg,
+  onRemoveVirtualBg,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  localStream: MediaStream | null
+  onApplyVirtualBg: (stream: MediaStream) => Promise<void>
+  onRemoveVirtualBg: () => Promise<void>
+}) {
+  const {
+    selected,
+    isActive,
+    isLoading,
+    allBackgrounds,
+    startProcessing,
+    stopProcessing,
+    switchBackground,
+    uploadCustomBackground,
+  } = useVirtualBackground()
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [applying, setApplying] = useState(false)
+
+  // When user selects a background
+  const handleSelect = useCallback(async (option: VirtualBackgroundOption) => {
+    await switchBackground(option)
+
+    if (option.type === 'none') {
+      // Remove virtual background
+      stopProcessing()
+      await onRemoveVirtualBg()
+      return
+    }
+
+    if (!localStream) return
+
+    setApplying(true)
+    try {
+      // Stop any existing processing first
+      stopProcessing()
+
+      // Start processing with the raw camera stream
+      const processedStream = await startProcessing(localStream)
+      if (processedStream) {
+        await onApplyVirtualBg(processedStream)
+
+        // Also show the processed stream in the local preview
+        requestAnimationFrame(() => {
+          const localVideo = document.querySelector('#local-video') as HTMLVideoElement
+          if (localVideo) localVideo.srcObject = processedStream
+        })
+      } else {
+        toast.error('Failed to apply virtual background')
+      }
+    } catch (err) {
+      console.error('Virtual background error:', err)
+      toast.error('Failed to apply virtual background')
+    } finally {
+      setApplying(false)
+    }
+  }, [switchBackground, localStream, startProcessing, stopProcessing, onApplyVirtualBg, onRemoveVirtualBg])
+
+  // Upload custom background
+  const handleUpload = useCallback(async () => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const option = await uploadCustomBackground(file)
+    if (option) {
+      await handleSelect(option)
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [uploadCustomBackground, handleSelect])
+
+  if (!isOpen) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-[340px] bg-slate-900 border border-white/15 rounded-2xl shadow-2xl overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-violet-400" />
+          <span className="text-sm font-medium text-white">Virtual Background</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="h-6 w-6 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Loading bar */}
+      {isLoading && (
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2 text-xs text-violet-300">
+            <div className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
+            <span>Loading AI segmentation model...</span>
+          </div>
+          <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-violet-500 rounded-full"
+              animate={{ x: ['0%', '100%', '0%'] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ width: '40%' }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Applying bar */}
+      {applying && (
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2 text-xs text-emerald-300">
+            <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Applying virtual background...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Background options grid */}
+      <div className="p-3 grid grid-cols-4 gap-2 max-h-[240px] overflow-y-auto">
+        {allBackgrounds.map((bg) => (
+          <button
+            key={bg.id}
+            onClick={() => handleSelect(bg)}
+            className={cn(
+              'relative group flex flex-col items-center gap-1.5 p-1.5 rounded-xl transition-all',
+              selected.id === bg.id
+                ? 'bg-violet-500/30 ring-2 ring-violet-400'
+                : 'hover:bg-white/10',
+              (isLoading || applying) && 'opacity-50 pointer-events-none'
+            )}
+            disabled={isLoading || applying}
+          >
+            {/* Thumbnail */}
+            <div className={cn(
+              'w-full aspect-video rounded-lg overflow-hidden border',
+              selected.id === bg.id ? 'border-violet-400' : 'border-white/10'
+            )}>
+              {bg.type === 'none' ? (
+                <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+                  <X className="h-4 w-4 text-white/40" />
+                </div>
+              ) : bg.type === 'blur' ? (
+                <div className="w-full h-full bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center backdrop-blur-lg">
+                  <div className="h-4 w-4 rounded-full bg-slate-400/60 blur-[2px]" />
+                </div>
+              ) : bg.thumbnail ? (
+                <img
+                  src={bg.thumbnail}
+                  alt={bg.label}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-slate-700 flex items-center justify-center">
+                  <ImageIcon className="h-3 w-3 text-white/40" />
+                </div>
+              )}
+            </div>
+            {/* Label */}
+            <span className={cn(
+              'text-[10px] leading-tight truncate w-full text-center',
+              selected.id === bg.id ? 'text-violet-300 font-medium' : 'text-white/60'
+            )}>
+              {bg.label}
+            </span>
+            {/* Active indicator */}
+            {selected.id === bg.id && isActive && bg.type !== 'none' && (
+              <div className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+        ))}
+
+        {/* Upload button */}
+        <button
+          onClick={handleUpload}
+          className={cn(
+            'relative flex flex-col items-center gap-1.5 p-1.5 rounded-xl transition-all',
+            'hover:bg-white/10 border border-dashed border-white/15',
+            (isLoading || applying) && 'opacity-50 pointer-events-none'
+          )}
+          disabled={isLoading || applying}
+        >
+          <div className="w-full aspect-video rounded-lg bg-white/5 flex items-center justify-center">
+            <Upload className="h-4 w-4 text-white/40" />
+          </div>
+          <span className="text-[10px] leading-tight text-white/50">Upload</span>
+        </button>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Current status */}
+      {isActive && selected.type !== 'none' && (
+        <div className="px-4 py-2 border-t border-white/10 flex items-center gap-2 text-xs text-emerald-300">
+          <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Virtual background active</span>
+          {selected.type === 'blur' && <span className="text-white/40">— Blur</span>}
+          {selected.type === 'image' && <span className="text-white/40">— {selected.label}</span>}
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
 // ─── Active Call Floating Panel ─────────────────────────────────────────
 
 export function VideoCallPanel({
@@ -140,6 +378,8 @@ export function VideoCallPanel({
   onToggleMic,
   onToggleCamera,
   onToggleScreen,
+  onApplyVirtualBg,
+  onRemoveVirtualBg,
   micOn,
   cameraOn,
   screenOn,
@@ -147,6 +387,7 @@ export function VideoCallPanel({
   remoteMicOn,
   remoteCameraOn,
   screenShareLabel,
+  localStream,
 }: VideoCallProps) {
   const [isMinimized, setIsMinimized] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -154,7 +395,8 @@ export function VideoCallPanel({
   const [meetingLink, setMeetingLink] = useState('')
   const [remoteVideoPresent, setRemoteVideoPresent] = useState(false)
   const [remoteScreenPresent, setRemoteScreenPresent] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval>>
+  const [showBgPanel, setShowBgPanel] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Timer for connected calls
@@ -163,7 +405,7 @@ export function VideoCallPanel({
       timerRef.current = setInterval(() => setCallDuration((p) => p + 1), 1000)
     } else {
       if (timerRef.current) clearInterval(timerRef.current)
-      setCallDuration(0)
+      queueMicrotask(() => setCallDuration(0))
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [callStatus])
@@ -172,15 +414,18 @@ export function VideoCallPanel({
   useEffect(() => {
     if (isInCall) {
       const id = Math.random().toString(36).substring(2, 10)
-      setMeetingLink(`${window.location.origin}/meet/${id}`)
+      // Use microtask to avoid synchronous setState in effect
+      queueMicrotask(() => setMeetingLink(`${window.location.origin}/meet/${id}`))
     }
   }, [isInCall])
 
   // Monitor remote video tracks
   useEffect(() => {
     if (callStatus !== 'connected') {
-      setRemoteVideoPresent(false)
-      setRemoteScreenPresent(false)
+      queueMicrotask(() => {
+        setRemoteVideoPresent(false)
+        setRemoteScreenPresent(false)
+      })
       return
     }
     const checkTracks = setInterval(() => {
@@ -584,22 +829,51 @@ export function VideoCallPanel({
               />
             )}
 
-            {/* Screen share — with tooltip showing the label */}
-            <div className="relative group">
-              <ControlButton
-                active={screenOn}
-                activeIcon={<MonitorOff className="h-4 w-4" />}
-                inactiveIcon={<MonitorUp className="h-4 w-4" />}
-                onClick={onToggleScreen}
-                title={screenOn ? 'Stop sharing' : 'Share screen'}
-              />
-              {/* Label tooltip */}
-              {screenOn && screenShareLabel && (
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 bg-black text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  Sharing: {screenShareLabel}
-                </div>
-              )}
-            </div>
+            {/* Screen share */}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative group">
+                    <ControlButton
+                      active={screenOn}
+                      activeIcon={<MonitorOff className="h-4 w-4" />}
+                      inactiveIcon={<MonitorUp className="h-4 w-4" />}
+                      onClick={onToggleScreen}
+                      title={screenOn ? 'Stop sharing' : 'Share screen'}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {screenOn ? 'Stop sharing' : 'Share screen'}
+                  {screenOn && screenShareLabel && ` — ${screenShareLabel}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Virtual Background (video calls only) */}
+            {isVideoCall && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowBgPanel((p) => !p)}
+                      className={cn(
+                        'h-10 w-10 rounded-full flex items-center justify-center transition-all',
+                        showBgPanel
+                          ? 'bg-violet-500/30 ring-2 ring-violet-400 text-violet-300'
+                          : 'bg-white/15 hover:bg-white/25 text-white'
+                      )}
+                      title="Virtual background"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Virtual background
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
             {/* End Call */}
             <button
@@ -625,6 +899,19 @@ export function VideoCallPanel({
             </motion.div>
           )}
         </div>
+
+        {/* ── Virtual Background Panel ── */}
+        <AnimatePresence>
+          {showBgPanel && (
+            <VirtualBackgroundPanel
+              isOpen={showBgPanel}
+              onClose={() => setShowBgPanel(false)}
+              localStream={localStream}
+              onApplyVirtualBg={onApplyVirtualBg}
+              onRemoveVirtualBg={onRemoveVirtualBg}
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
     </AnimatePresence>
   )

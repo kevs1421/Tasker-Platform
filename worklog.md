@@ -1840,3 +1840,38 @@ Stage Summary:
 - Recipient sees notification: "X tried to call you while you're on another call"
 - Both parties clean up properly — caller stops ringing, recipient doesn't get new overlay
 - Files modified: src/hooks/use-video-call.ts, mini-services/video-call-service/index.ts
+
+---
+Task ID: 1
+Agent: main
+Task: Implement virtual background feature for video calls with theme/background upload support
+
+Work Log:
+- Installed @mediapipe/selfie_segmentation package for person/background segmentation
+- Created use-virtual-background.ts hook that manages MediaPipe selfie segmentation, canvas rendering, and stream processing
+- Generated 6 AI preset background images (office, nature, living-room, gradient, space, beach) using z-ai image-generation CLI
+- Updated use-video-call.ts to support virtual background stream integration:
+  - Added sendStreamRef for tracking the processed (virtual bg) stream
+  - Added applyVirtualBackgroundStream() - replaces video track in peer connections with canvas stream
+  - Added removeVirtualBackgroundStream() - reverts to raw camera track
+  - Added getLocalStreamRef() to expose the raw camera stream for processing
+  - doCreatePeerConnection now uses sendStreamRef (processed) if available, falls back to raw localStream
+- Rewrote VideoCall.tsx to add virtual background UI:
+  - Created VirtualBackgroundPanel component with grid of background options
+  - Added Sparkles icon button in controls bar for video calls
+  - Panel shows: None, Blur, 6 preset images, and Upload custom button
+  - Background switching triggers MediaPipe processing and WebRTC track replacement
+  - Custom image upload supports drag & drop with 5MB limit
+  - Fixed lint errors: timerRef type, setState-in-effect patterns
+- Updated MessagesPanel.tsx to pass new props (onApplyVirtualBg, onRemoveVirtualBg, localStream)
+- Fixed TypeScript strict mode issues (ICE candidate types, timer ref)
+- All lint passes clean, dev server compiles without errors
+
+Stage Summary:
+- Virtual background feature fully integrated into video call system
+- 6 AI-generated preset backgrounds stored in /public/virtual-backgrounds/
+- MediaPipe selfie segmentation processes camera frames on canvas
+- Processed canvas stream replaces raw video track in WebRTC via replaceTrack()
+- UI: Sparkles button in call controls opens background picker panel
+- Supports: None, Blur, 6 presets, custom image upload
+- Browser test: Messages page renders without errors

@@ -1,0 +1,939 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { motion } from 'framer-motion'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import {
+     7→     7→  FolderKanban, UserCircle,
+     8→     8→  Calendar, Users, Loader2, FileText, Shield, Lock, Save,
+     9→     9→  Check, ClipboardCheck, Plus,
+    10→    10→  Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
+    11→    11→} from 'lucide-react'
+    12→    12→import { useAuthStore } from '@/stores/auth'
+    13→    13→import type { User, Project } from '@/types'
+    14→    14→import {
+    15→    15→  getRoleBadgeClasses, getPriorityConfig,
+    16→    16→  formatDate,
+    17→    17→} from '@/features/route-guard'
+    18→    18→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    19→    19→import { Button } from '@/components/ui/button'
+    20→    20→import { Input } from '@/components/ui/input'
+    21→    21→import { Textarea } from '@/components/ui/textarea'
+    22→    22→import { Label } from '@/components/ui/label'
+    23→    23→import { Skeleton } from '@/components/ui/skeleton'
+    24→    24→import { Progress } from '@/components/ui/progress'
+    25→    25→import {
+    26→    26→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    27→    27→  DialogFooter, DialogDescription,
+    28→    28→} from '@/components/ui/dialog'
+    29→    29→import { isBefore, parseISO } from 'date-fns'
+    30→    30→import { cn } from '@/lib/utils'
+    31→    31→
+    32→    32→
+    33→    33→// ─── Extended project type with task stats ────────────────────
+    34→    34→interface ClientProject extends Project {
+    35→    35→  taskStats?: {
+    36→    36→    todo: number
+    37→    37→    in_progress: number
+    38→    38→    in_review: number
+    39→    39→    done: number
+    40→    40→  }
+    41→    41→  progress?: number
+    42→    42→}
+    43→    43→
+    44→    44→// ─── Animation Variants ──────────────────────────────────────────
+    45→    45→const fadeSlide = {
+    46→    46→  initial: { opacity: 0, y: 12 },
+    47→    47→  animate: { opacity: 1, y: 0 },
+    48→    48→  exit: { opacity: 0, y: -12 },
+    49→    49→  transition: { duration: 0.25 }
+    50→    50→}
+    51→    51→
+    52→    52→// ─── Shared sub-components ───────────────────────────────────────
+    53→    53→
+    54→    54→function PageSkeleton() {
+    55→    55→  return (
+    56→    56→    <div className="space-y-6 p-4 md:p-6">
+    57→    57→      <Skeleton className="h-8 w-64" />
+    58→    58→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    59→    59→        <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+    60→    60→        <Skeleton className="h-80 rounded-xl" />
+    61→    61→      </div>
+    62→    62→      <Skeleton className="h-64 rounded-xl" />
+    63→    63→    </div>
+    64→    64→  )
+    65→    65→}
+    66→    66→
+    67→    67→function PriorityBadge({ priority }: { priority: string }) {
+    68→    68→  const cfg = getPriorityConfig(priority)
+    69→    69→  return (
+    70→    70→    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+    71→    71→      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor}`} />
+    72→    72→      {cfg.label}
+    73→    73→    </span>
+    74→    74→  )
+    75→    75→}
+    76→    76→
+    77→    77→function EmptyState({ icon: Icon, title, description }: {
+    78→    78→  icon: React.ElementType; title: string; description: string
+    79→    79→}) {
+    80→    80→  return (
+    81→    81→    <motion.div {...fadeSlide} className="flex flex-col items-center justify-center py-16 text-center">
+    82→    82→      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+    83→    83→        <Icon className="w-8 h-8 text-muted-foreground" />
+    84→    84→      </div>
+    85→    85→      <h3 className="text-lg font-semibold mb-1">{title}</h3>
+    86→    86→      <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+    87→    87→    </motion.div>
+    88→    88→  )
+    89→    89→}
+    90→    90→
+    91→    91→// ═══════════════════════════════════════════════════════════════════
+    92→    92→// CLIENT ONBOARDING (re-exported from wizard component)
+    93→    93→// ═══════════════════════════════════════════════════════════════════
+    94→    94→export { default as ClientOnboarding } from '@/components/onboarding/ClientOnboardingWizard'
+    95→    95→
+    96→    96→// ═══════════════════════════════════════════════════════════════════
+    97→    97→// CLIENT PROJECTS
+    98→    98→// ═══════════════════════════════════════════════════════════════════
+    99→    99→const ONBOARDING_STEPS = [
+   100→   100→  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+   101→   101→  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+   102→   102→  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+   103→   103→  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+   104→   104→]
+   105→   105→
+   106→   106→export function ClientProjects() {
+   107→   107→  const { user } = useAuthStore()
+   108→   108→  const [projects, setProjects] = useState<ClientProject[]>([])
+   109→   109→  const [loading, setLoading] = useState(true)
+   110→   110→
+   111→   111→  // Upload files state
+   112→   112→  const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string; projectId: string }>>([])
+   113→   113→  const [uploading, setUploading] = useState(false)
+   114→   114→  const [uploadDragOver, setUploadDragOver] = useState<string | null>(null) // projectId
+   115→   115→  const [uploadDialogProjectId, setUploadDialogProjectId] = useState<string>('')
+   116→   116→  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+   117→   117→  const fileInputRef = useRef<HTMLInputElement>(null)
+   118→   118→
+   119→   119→  // Onboarding creation state
+   120→   120→  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false)
+   121→   121→  const [onboardingProjectId, setOnboardingProjectId] = useState<string>('')
+   122→   122→  const [onboardingTitle, setOnboardingTitle] = useState('')
+   123→   123→  const [onboardingDesc, setOnboardingDesc] = useState('')
+   124→   124→  const [onboardingSteps, setOnboardingSteps] = useState<string[]>(ONBOARDING_STEPS.map(s => s.id))
+   125→   125→  const [creatingOnboarding, setCreatingOnboarding] = useState(false)
+   126→   126→
+   127→   127→  const fetchProjects = useCallback(async () => {
+   128→   128→    try {
+   129→   129→      const res = await fetch('/api/projects')
+   130→   130→      const data = await res.json()
+   131→   131→      // Filter to active projects and those the client is a member of
+   132→   132→      const clientProjects = (data.projects || [])
+   133→   133→        .filter((p: Project) => p.status === 'active' && p.members?.some(m => m.userId === user?.id))
+   134→   134→      setProjects(clientProjects)
+   135→   135→    } catch {
+   136→   136→      toast.error('Failed to load projects')
+   137→   137→    } finally {
+   138→   138→      setLoading(false)
+   139→   139→    }
+   140→   140→  }, [user?.id])
+   141→   141→
+   142→   142→  // Fetch uploaded files from localStorage
+   143→   143→  const fetchUploadedFiles = useCallback(() => {
+   144→   144→    if (!user) return
+   145→   145→    try {
+   146→   146→      const stored = localStorage.getItem(`client-uploads-${user.id}`)
+   147→   147→      if (stored) setUploadedFiles(JSON.parse(stored))
+   148→   148→    } catch { /* ignore */ }
+   149→   149→  }, [user])
+   150→   150→
+   151→   151→  const saveUploadedFiles = useCallback((files: typeof uploadedFiles) => {
+   152→   152→    if (!user) return
+   153→   153→    localStorage.setItem(`client-uploads-${user.id}`, JSON.stringify(files))
+   154→   154→  }, [user])
+   155→   155→
+   156→   156→  useEffect(() => { fetchProjects(); fetchUploadedFiles() }, [fetchProjects, fetchUploadedFiles])
+   157→   157→
+   158→   158→  // File upload handler — always uploads to the project set in uploadDialogProjectId
+   159→   159→  const handleFileUpload = async (files: FileList | null) => {
+   160→   160→    if (!files || files.length === 0) return
+   161→   161→    if (!uploadDialogProjectId) {
+   162→   162→      toast.error('No project selected')
+   163→   163→      return
+   164→   164→    }
+   165→   165→    setUploading(true)
+   166→   166→    const newFiles: typeof uploadedFiles = []
+   167→   167→    for (let i = 0; i < files.length; i++) {
+   168→   168→      const file = files[i]
+   169→   169→      try {
+   170→   170→        const formData = new FormData()
+   171→   171→        formData.append('file', file)
+   172→   172→        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+   173→   173→        if (!res.ok) {
+   174→   174→          const d = await res.json()
+   175→   175→          throw new Error(d.error || 'Upload failed')
+   176→   176→        }
+   177→   177→        const data = await res.json()
+   178→   178→        newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
+   179→   179→      } catch (e: unknown) {
+   180→   180→        toast.error(`${file.name}: ${e instanceof Error ? e.message : 'Upload failed'}`)
+   181→   181→      }
+   182→   182→    }
+   183→   183→    if (newFiles.length > 0) {
+   184→   184→      const updated = [...uploadedFiles, ...newFiles]
+   185→   185→      setUploadedFiles(updated)
+   186→   186→      saveUploadedFiles(updated)
+   187→   187→      toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+   188→   188→    }
+   189→   189→    setUploading(false)
+   190→   190→    if (fileInputRef.current) fileInputRef.current.value = ''
+   191→   191→  }
+   192→   192→
+   193→   193→  const handleDrop = (e: React.DragEvent, projectId: string) => {
+   194→   194→    e.preventDefault()
+   195→   195→    setUploadDragOver(null)
+   196→   196→    setUploadDialogProjectId(projectId)
+   197→   197→    handleFileUpload(e.dataTransfer.files)
+   198→   198→  }
+   199→   199→
+   200→   200→  const openUploadDialog = (projectId: string) => {
+   201→   201→    setUploadDialogProjectId(projectId)
+   202→   202→    setUploadDialogOpen(true)
+   203→   203→  }
+   204→   204→
+   205→   205→  const deleteUploadedFile = (idx: number) => {
+   206→   206→    const updated = uploadedFiles.filter((_, i) => i !== idx)
+   207→   207→    setUploadedFiles(updated)
+   208→   208→    saveUploadedFiles(updated)
+   209→   209→    toast.success('File removed')
+   210→   210→  }
+   211→   211→
+   212→   212→  const getFileIcon = (type: string) => {
+   213→   213→    if (type.startsWith('image/')) return <ImageIcon className="w-4 h-4 text-emerald-600" />
+   214→   214→    if (type.includes('pdf')) return <FileText className="w-4 h-4 text-red-500" />
+   215→   215→    if (type.includes('word') || type.includes('document')) return <FileText className="w-4 h-4 text-blue-500" />
+   216→   216→    if (type.includes('excel') || type.includes('sheet') || type.includes('spreadsheet')) return <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+   217→   217→    return <File className="w-4 h-4 text-muted-foreground" />
+   218→   218→  }
+   219→   219→
+   220→   220→  const formatFileSize = (bytes: number) => {
+   221→   221→    if (bytes < 1024) return `${bytes} B`
+   222→   222→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+   223→   223→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+   224→   224→  }
+   225→   225→
+   226→   226→  const openOnboardingDialog = (projectId: string, projectName: string) => {
+   227→   227→    setOnboardingProjectId(projectId)
+   228→   228→    setOnboardingTitle(`Onboarding - ${projectName}`)
+   229→   229→    setOnboardingDesc('')
+   230→   230→    setOnboardingSteps(ONBOARDING_STEPS.map(s => s.id))
+   231→   231→    setOnboardingDialogOpen(true)
+   232→   232→  }
+   233→   233→
+   234→   234→  const handleCreateOnboarding = async () => {
+   235→   235→    if (!onboardingTitle.trim() || !onboardingProjectId) return
+   236→   236→    setCreatingOnboarding(true)
+   237→   237→    try {
+   238→   238→      const stepsJson = JSON.stringify(
+   239→   239→        onboardingSteps.map(stepId => {
+   240→   240→          const config = ONBOARDING_STEPS.find(s => s.id === stepId)
+   241→   241→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   242→   242→        })
+   243→   243→      )
+   244→   244→      const res = await fetch('/api/onboarding', {
+   245→   245→        method: 'POST',
+   246→   246→        headers: { 'Content-Type': 'application/json' },
+   247→   247→        body: JSON.stringify({
+   248→   248→          title: onboardingTitle.trim(),
+   249→   249→          description: onboardingDesc.trim() || null,
+   250→   250→          stepsJson,
+   251→   251→          projectId: onboardingProjectId,
+   252→   252→          clientId: user?.id || null,
+   253→   253→          status: 'published',
+   254→   254→        }),
+   255→   255→      })
+   256→   256→      if (!res.ok) {
+   257→   257→        const d = await res.json()
+   258→   258→        throw new Error(d.error || 'Failed to create')
+   259→   259→      }
+   260→   260→      toast.success('Onboarding form created successfully')
+   261→   261→      setOnboardingDialogOpen(false)
+   262→   262→    } catch (e: unknown) {
+   263→   263→      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding')
+   264→   264→    } finally {
+   265→   265→      setCreatingOnboarding(false)
+   266→   266→    }
+   267→   267→  }
+   268→   268→
+   269→   269→  const toggleOnboardingStep = (stepId: string) => {
+   270→   270→    setOnboardingSteps(prev =>
+   271→   271→      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId]
+   272→   272→    )
+   273→   273→  }
+   274→   274→
+   275→   275→  if (loading) return <PageSkeleton />
+   276→   276→
+   277→   277→  return (
+   278→   278→    <div className="p-4 md:p-6 space-y-6">
+   279→   279→      {/* Page Header */}
+   280→   280→      <div className="flex items-center gap-3">
+   281→   281→        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+   282→   282→          <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+   283→   283→        </div>
+   284→   284→        <div>
+   285→   285→          <h1 className="text-2xl font-bold">My Projects</h1>
+   286→   286→          <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+   287→   287→        </div>
+   288→   288→      </div>
+   289→   289→
+   290→   290→      {/* ─── Upload Files Section (hidden input + dialog) ─── */}
+   291→   291→      <input
+   292→   292→        ref={fileInputRef}
+   293→   293→        type="file"
+   294→   294→        multiple
+   295→   295→        accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+   296→   296→        className="hidden"
+   297→   297→        onChange={(e) => { handleFileUpload(e.target.files); setUploadDialogOpen(false) }}
+   298→   298→      />
+   299→   299→      <Dialog open={uploadDialogOpen} onOpenChange={(open) => { if (!open) setUploadDialogOpen(false) }}>
+   300→   300→        <DialogContent className="sm:max-w-md">
+   301→   301→          <DialogHeader>
+   302→   302→            <DialogTitle className="flex items-center gap-2">
+   303→   303→              <Upload className="w-5 h-5 text-primary" />
+   304→   304→              Upload Files
+   305→   305→            </DialogTitle>
+   306→   306→            <DialogDescription>Choose files to upload for this project</DialogDescription>
+   307→   307→          </DialogHeader>
+   308→   308→          <div
+   309→   309→            onDragOver={(e) => { e.preventDefault(); setUploadDragOver('__dialog__') }}
+   310→   310→            onDragLeave={() => setUploadDragOver(null)}
+   311→   311→            onDrop={(e) => {
+   312→   312→              e.preventDefault()
+   313→   313→              setUploadDragOver(null)
+   314→   314→              // Set the project context before handling files
+   315→   315→              const files = e.dataTransfer.files
+   316→   316→              if (files && files.length > 0) {
+   317→   317→                // Use a separate handler for dialog drops
+   318→   318→                void (async () => {
+   319→   319→                  setUploading(true)
+   320→   320→                  const newFiles: typeof uploadedFiles = []
+   321→   321→                  for (let i = 0; i < files.length; i++) {
+   322→   322→                    const file = files[i]
+   323→   323→                    try {
+   324→   324→                      const formData = new FormData()
+   325→   325→                      formData.append('file', file)
+   326→   326→                      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+   327→   327→                      if (!res.ok) {
+   328→   328→                        const d = await res.json()
+   329→   329→                        throw new Error(d.error || 'Upload failed')
+   330→   330→                      }
+   331→   331→                      const data = await res.json()
+   332→   332→                      newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
+   333→   333→                    } catch (err: unknown) {
+   334→   334→                      toast.error(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
+   335→   335→                    }
+   336→   336→                  }
+   337→   337→                  if (newFiles.length > 0) {
+   338→   338→                    const updated = [...uploadedFiles, ...newFiles]
+   339→   339→                    setUploadedFiles(updated)
+   340→   340→                    saveUploadedFiles(updated)
+   341→   341→                    toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
+   342→   342→                  }
+   343→   343→                  setUploading(false)
+   344→   344→                })()
+   345→   345→              }
+   346→   346→            }}
+   347→   347→            onClick={() => fileInputRef.current?.click()}
+   348→   348→            className={cn(
+   349→   349→              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+   350→   350→              uploadDragOver === '__dialog__' ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
+   351→   351→            )}
+   352→   352→          >
+   353→   353→            {uploading ? (
+   354→   354→              <div className="flex flex-col items-center gap-2">
+   355→   355→                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+   356→   356→                <p className="text-sm text-muted-foreground">Uploading...</p>
+   357→   357→              </div>
+   358→   358→            ) : (
+   359→   359→              <div className="flex flex-col items-center gap-2">
+   360→   360→                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+   361→   361→                  <Upload className="w-5 h-5 text-muted-foreground" />
+   362→   362→                </div>
+   363→   363→                <div>
+   364→   364→                  <p className="text-sm font-medium">Drop files here or click to browse</p>
+   365→   365→                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG, PDF, DOC, DOCX, XLS, XLSX and more (max 10MB each)</p>
+   366→   366→                </div>
+   367→   367→              </div>
+   368→   368→            )}
+   369→   369→          </div>
+   370→   370→          <DialogFooter>
+   371→   371→            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Close</Button>
+   372→   372→          </DialogFooter>
+   373→   373→        </DialogContent>
+   374→   374→      </Dialog>
+   375→   375→
+   376→   376→      {/* ─── Project Progress Overview ──────────────────────────── */}
+   377→   377→      {projects.length > 0 && (
+   378→   378→        <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   379→   379→          <Card>
+   380→   380→            <CardHeader className="pb-3">
+   381→   381→              <CardTitle className="text-base flex items-center gap-2">
+   382→   382→                <BarChart3 className="w-4 h-4 text-primary" />
+   383→   383→                Project Progress
+   384→   384→              </CardTitle>
+   385→   385→              <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
+   386→   386→            </CardHeader>
+   387→   387→            <CardContent>
+   388→   388→              <div className="space-y-5">
+   389→   389→                {projects.map((project) => {
+   390→   390→                  const todo = project.taskStats?.todo || 0
+   391→   391→                  const inProgress = project.taskStats?.in_progress || 0
+   392→   392→                  const completed = project.taskStats?.done || 0
+   393→   393→                  const total = todo + inProgress + completed
+   394→   394→                  if (total === 0) return null
+   395→   395→
+   396→   396→                  const todoPct = Math.round((todo / total) * 100)
+   397→   397→                  const inProgressPct = Math.round((inProgress / total) * 100)
+   398→   398→                  const completedPct = Math.round((completed / total) * 100)
+   399→   399→
+   400→   400→                  return (
+   401→   401→                    <div key={project.id} className="space-y-2.5">
+   402→   402→                      <div className="flex items-center justify-between">
+   403→   403→                        <div className="flex items-center gap-2">
+   404→   404→                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
+   405→   405→                          <span className="text-sm font-medium">{project.name}</span>
+   406→   406→                        </div>
+   407→   407→                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{completedPct}%</span>
+   408→   408→                      </div>
+   409→   409→                      {/* Stacked progress bar */}
+   410→   410→                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+   411→   411→                        {todo > 0 && (
+   412→   412→                          <div
+   413→   413→                            className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+   414→   414→                            style={{ width: `${todoPct}%` }}
+   415→   415→                            title={`Not Started: ${todo}`}
+   416→   416→                          />
+   417→   417→                        )}
+   418→   418→                        {inProgress > 0 && (
+   419→   419→                          <div
+   420→   420→                            className="bg-amber-500 transition-all duration-500"
+   421→   421→                            style={{ width: `${inProgressPct}%` }}
+   422→   422→                            title={`In Progress: ${inProgress}`}
+   423→   423→                          />
+   424→   424→                        )}
+   425→   425→                        {completed > 0 && (
+   426→   426→                          <div
+   427→   427→                            className="bg-emerald-500 transition-all duration-500"
+   428→   428→                            style={{ width: `${completedPct}%` }}
+   429→   429→                            title={`Completed: ${completed}`}
+   430→   430→                          />
+   431→   431→                        )}
+   432→   432→                      </div>
+   433→   433→                      {/* Legend */}
+   434→   434→                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   435→   435→                        <span className="flex items-center gap-1.5">
+   436→   436→                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 dark:bg-slate-500" />
+   437→   437→                          Not Started ({todo})
+   438→   438→                        </span>
+   439→   439→                        <span className="flex items-center gap-1.5">
+   440→   440→                          <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
+   441→   441→                          In Progress ({inProgress})
+   442→   442→                        </span>
+   443→   443→                        <span className="flex items-center gap-1.5">
+   444→   444→                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+   445→   445→                          Completed ({completed})
+   446→   446→                        </span>
+   447→   447→                      </div>
+   448→   448→                    </div>
+   449→   449→                  )
+   450→   450→                })}
+   451→   451→              </div>
+   452→   452→            </CardContent>
+   453→   453→          </Card>
+   454→   454→        </motion.div>
+   455→   455→      )}
+   456→   456→
+   457→   457→      {projects.length === 0 ? (
+   458→   458→        <EmptyState
+   459→   459→          icon={FolderKanban}
+   460→   460→          title="No active projects"
+   461→   461→          description="You don't have any active projects yet."
+   462→   462→        />
+   463→   463→      ) : (
+   464→   464→        <>
+   465→   465→          {/* ─── Project Cards ──────────────────────────────────── */}
+   466→   466→          <div className="space-y-4">
+   467→   467→            {projects.map((project, i) => {
+   468→   468→              const doneTasks = project.taskStats?.done || 0
+   469→   469→              const totalT = project._count?.tasks || 0
+   470→   470→              const pct = project.progress ?? 0
+   471→   471→              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+   472→   472→
+   473→   473→              // Compute progress bar gradient colors
+   474→   474→              const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
+   475→   475→
+   476→   476→              // Files for this project only
+   477→   477→              const projectFiles = uploadedFiles.filter(f => f.projectId === project.id)
+   478→   478→
+   479→   479→              return (
+   480→   480→                <motion.div
+   481→   481→                  key={project.id}
+   482→   482→                  initial={{ opacity: 0, y: 12 }}
+   483→   483→                  animate={{ opacity: 1, y: 0 }}
+   484→   484→                  transition={{ delay: i * 0.05 }}
+   485→   485→                >
+   486→   486→                  <Card
+   487→   487→                    className="hover:shadow-md transition-all border-l-4"
+   488→   488→                    style={{ borderLeftColor: project.color }}
+   489→   489→                  >
+   490→   490→                    <CardContent className="p-4 md:p-5">
+   491→   491→                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   492→   492→                        <div className="min-w-0 flex-1">
+   493→   493→                          <div className="flex items-center gap-2 mb-1">
+   494→   494→                            <h3 className="font-semibold text-base truncate">{project.name}</h3>
+   495→   495→                            <PriorityBadge priority={project.priority} />
+   496→   496→                          </div>
+   497→   497→                          <p className="text-sm text-muted-foreground line-clamp-1">{project.description || 'No description'}</p>
+   498→   498→                        </div>
+   499→   499→                        <div className="flex items-center gap-2 shrink-0 text-sm flex-wrap">
+   500→   500→                          {project.dueDate && (
+   501→   501→                            <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+   502→   502→                              <Calendar className="w-3.5 h-3.5" />
+   503→   503→                              {formatDate(project.dueDate)}
+   504→   504→                            </span>
+   505→   505→                          )}
+   506→   506→                          <span className="text-muted-foreground flex items-center gap-1">
+   507→   507→                            <Users className="w-3.5 h-3.5" />
+   508→   508→                            {project._count?.members || 0}
+   509→   509→                          </span>
+   510→   510→                          <Button
+   511→   511→                            size="sm"
+   512→   512→                            variant="outline"
+   513→   513→                            className="h-7 gap-1.5 text-xs"
+   514→   514→                            onClick={(e) => { e.stopPropagation(); openUploadDialog(project.id) }}
+   515→   515→                          >
+   516→   516→                            <Upload className="w-3.5 h-3.5" />
+   517→   517→                            Upload Files
+   518→   518→                          </Button>
+   519→   519→                          <Button
+   520→   520→                            size="sm"
+   521→   521→                            variant="outline"
+   522→   522→                            className="h-7 gap-1.5 text-xs"
+   523→   523→                            onClick={(e) => { e.stopPropagation(); openOnboardingDialog(project.id, project.name) }}
+   524→   524→                          >
+   525→   525→                            <ClipboardCheck className="w-3.5 h-3.5" />
+   526→   526→                            Onboarding
+   527→   527→                          </Button>
+   528→   528→                        </div>
+   529→   529→                      </div>
+   530→   530→
+   531→   531→                      {/* Progress bar with percentage */}
+   532→   532→                      <div className="mt-3 space-y-1">
+   533→   533→                        <div className="flex items-center justify-between text-xs">
+   534→   534→                          <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
+   535→   535→                          <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+   536→   536→                        </div>
+   537→   537→                        <div className="relative">
+   538→   538→                          <Progress value={pct} className="h-2.5" />
+   539→   539→                          <div
+   540→   540→                            className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
+   541→   541→                            style={{
+   542→   542→                              width: `${pct}%`,
+   543→   543→                              background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+   544→   544→                            }}
+   545→   545→                          />
+   546→   546→                        </div>
+   547→   547→                      </div>
+   548→   548→
+   549→   549→                      {/* Per-project uploaded files */}
+   550→   550→                      {projectFiles.length > 0 && (
+   551→   551→                        <div className="mt-4 pt-3 border-t">
+   552→   552→                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+   553→   553→                            Files ({projectFiles.length})
+   554→   554→                          </p>
+   555→   555→                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+   556→   556→                            {projectFiles.map((file, idx) => {
+   557→   557→                              const globalIdx = uploadedFiles.indexOf(file)
+   558→   558→                              return (
+   559→   559→                                <motion.div
+   560→   560→                                  key={file.filename}
+   561→   561→                                  initial={{ opacity: 0, x: -8 }}
+   562→   562→                                  animate={{ opacity: 1, x: 0 }}
+   563→   563→                                  className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/30 group"
+   564→   564→                                >
+   565→   565→                                  <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center shrink-0">
+   566→   566→                                    {getFileIcon(file.type)}
+   567→   567→                                  </div>
+   568→   568→                                  <div className="flex-1 min-w-0">
+   569→   569→                                    <p className="text-xs font-medium truncate">{file.originalName}</p>
+   570→   570→                                    <p className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</p>
+   571→   571→                                  </div>
+   572→   572→                                  <a
+   573→   573→                                    href={file.url}
+   574→   574→                                    download={file.originalName}
+   575→   575→                                    className="p-1 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+   576→   576→                                    onClick={(e) => e.stopPropagation()}
+   577→   577→                                  >
+   578→   578→                                    <Download className="w-3 h-3 text-muted-foreground" />
+   579→   579→                                  </a>
+   580→   580→                                  <button
+   581→   581→                                    onClick={(e) => { e.stopPropagation(); deleteUploadedFile(globalIdx) }}
+   582→   582→                                    className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+   583→   583→                                  >
+   584→   584→                                    <Trash2 className="w-3 h-3 text-red-500" />
+   585→   585→                                  </button>
+   586→   586→                                </motion.div>
+   587→   587→                              )
+   588→   588→                            })}
+   589→   589→                          </div>
+   590→   590→                        </div>
+   591→   591→                      )}
+   592→   592→                    </CardContent>
+   593→   593→                  </Card>
+   594→   594→                </motion.div>
+   595→   595→              )
+   596→   596→            })}
+   597→   597→          </div>
+   598→   598→        </>
+   599→   599→      )}
+   600→   600→
+   601→   601→      {/* Create Onboarding Dialog */}
+   602→   602→      <Dialog open={onboardingDialogOpen} onOpenChange={setOnboardingDialogOpen}>
+   603→   603→        <DialogContent className="sm:max-w-lg">
+   604→   604→          <DialogHeader>
+   605→   605→            <DialogTitle className="flex items-center gap-2">
+   606→   606→              <ClipboardCheck className="w-5 h-5 text-primary" />
+   607→   607→              Create Onboarding
+   608→   608→            </DialogTitle>
+   609→   609→            <DialogDescription>Create an onboarding form for this project</DialogDescription>
+   610→   610→          </DialogHeader>
+   611→   611→          <div className="space-y-4 py-2">
+   612→   612→            <div className="space-y-2">
+   613→   613→              <Label>Title</Label>
+   614→   614→              <Input
+   615→   615→                placeholder="Onboarding form title"
+   616→   616→                value={onboardingTitle}
+   617→   617→                onChange={(e) => setOnboardingTitle(e.target.value)}
+   618→   618→              />
+   619→   619→            </div>
+   620→   620→            <div className="space-y-2">
+   621→   621→              <Label>Description (optional)</Label>
+   622→   622→              <Textarea
+   623→   623→                placeholder="Brief description of the onboarding..."
+   624→   624→                value={onboardingDesc}
+   625→   625→                onChange={(e) => setOnboardingDesc(e.target.value)}
+   626→   626→                rows={2}
+   627→   627→              />
+   628→   628→            </div>
+   629→   629→            <div className="space-y-2">
+   630→   630→              <div className="flex items-center justify-between">
+   631→   631→                <Label>Steps</Label>
+   632→   632→                <span className="text-xs text-muted-foreground">{onboardingSteps.length} / {ONBOARDING_STEPS.length} selected</span>
+   633→   633→              </div>
+   634→   634→              <div className="space-y-2 max-h-48 overflow-y-auto">
+   635→   635→                {ONBOARDING_STEPS.map((step) => {
+   636→   636→                  const isSelected = onboardingSteps.includes(step.id)
+   637→   637→                  return (
+   638→   638→                    <button
+   639→   639→                      key={step.id}
+   640→   640→                      type="button"
+   641→   641→                      onClick={() => toggleOnboardingStep(step.id)}
+   642→   642→                      className={cn(
+   643→   643→                        'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+   644→   644→                        isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+   645→   645→                      )}
+   646→   646→                    >
+   647→   647→                      <div className={cn(
+   648→   648→                        'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+   649→   649→                        isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
+   650→   650→                      )}>
+   651→   651→                        {isSelected && <Check className="w-3 h-3" />}
+   652→   652→                      </div>
+   653→   653→                      <div className="flex-1 min-w-0">
+   654→   654→                        <p className="text-sm font-medium">{step.label}</p>
+   655→   655→                        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+   656→   656→                      </div>
+   657→   657→                    </button>
+   658→   658→                  )
+   659→   659→                })}
+   660→   660→              </div>
+   661→   661→            </div>
+   662→   662→          </div>
+   663→   663→          <DialogFooter>
+   664→   664→            <Button variant="outline" onClick={() => setOnboardingDialogOpen(false)}>Cancel</Button>
+   665→   665→            <Button
+   666→   666→              onClick={handleCreateOnboarding}
+   667→   667→              disabled={creatingOnboarding || !onboardingTitle.trim() || onboardingSteps.length === 0}
+   668→   668→              className="gap-2"
+   669→   669→            >
+   670→   670→              {creatingOnboarding && <Loader2 className="h-4 w-4 animate-spin" />}
+   671→   671→              <Plus className="h-4 w-4" />
+   672→   672→              Create Onboarding
+   673→   673→            </Button>
+   674→   674→          </DialogFooter>
+   675→   675→        </DialogContent>
+   676→   676→      </Dialog>
+   677→   677→
+   678→   678→    </div>
+   679→   679→  )
+   680→   680→}
+   681→   681→
+   682→   682→// ═══════════════════════════════════════════════════════════════════
+   683→   683→// CLIENT MESSAGES
+   684→   684→// ═══════════════════════════════════════════════════════════════════
+   685→   685→export { MessagesPanel as ClientMessages } from '@/components/messages/MessagesPanel'
+   686→   686→
+   687→   687→// ═══════════════════════════════════════════════════════════════════
+   688→   688→// CLIENT PROFILE
+   689→   689→// ═══════════════════════════════════════════════════════════════════
+   690→   690→export function ClientProfile() {
+   691→   691→  const { user, login } = useAuthStore()
+   692→   692→  const [loading, setLoading] = useState(true)
+   693→   693→  const [saving, setSaving] = useState(false)
+   694→   694→  const [savingPassword, setSavingPassword] = useState(false)
+   695→   695→
+   696→   696→  const [name, setName] = useState('')
+   697→   697→  const [email, setEmail] = useState('')
+   698→   698→  const [phone, setPhone] = useState('')
+   699→   699→  const [company, setCompany] = useState('')
+   700→   700→
+   701→   701→  const [currentPassword, setCurrentPassword] = useState('')
+   702→   702→  const [newPassword, setNewPassword] = useState('')
+   703→   703→  const [confirmPassword, setConfirmPassword] = useState('')
+   704→   704→
+   705→   705→  useEffect(() => {
+   706→   706→    if (!user?.id) return
+   707→   707→    const fetchProfile = async () => {
+   708→   708→      try {
+   709→   709→        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+   710→   710→        const data = await res.json()
+   711→   711→        if (data.user) {
+   712→   712→          setName(data.user.name || '')
+   713→   713→          setEmail(data.user.email || '')
+   714→   714→          setPhone(data.user.phone || '')
+   715→   715→          setCompany(data.user.company || '')
+   716→   716→        }
+   717→   717→      } catch {
+   718→   718→        toast.error('Failed to load profile')
+   719→   719→      } finally {
+   720→   720→        setLoading(false)
+   721→   721→      }
+   722→   722→    }
+   723→   723→    fetchProfile()
+   724→   724→  }, [user?.id])
+   725→   725→
+   726→   726→  const saveProfile = async () => {
+   727→   727→    if (!user?.id) return
+   728→   728→    setSaving(true)
+   729→   729→    try {
+   730→   730→      const res = await fetch('/api/user/profile', {
+   731→   731→        method: 'PATCH',
+   732→   732→        headers: { 'Content-Type': 'application/json' },
+   733→   733→        body: JSON.stringify({ userId: user.id, name, email, phone, company })
+   734→   734→      })
+   735→   735→      if (!res.ok) {
+   736→   736→        const data = await res.json()
+   737→   737→        throw new Error(data.error || 'Failed')
+   738→   738→      }
+   739→   739→      const data = await res.json()
+   740→   740→      toast.success('Profile updated successfully')
+   741→   741→      // Update user in store
+   742→   742→      if (data.user && user) {
+   743→   743→        login({ ...user, name: data.user.name, email: data.user.email, phone: data.user.phone, company: data.user.company })
+   744→   744→      }
+   745→   745→    } catch (e: unknown) {
+   746→   746→      const msg = e instanceof Error ? e.message : 'Failed to update profile'
+   747→   747→      toast.error(msg)
+   748→   748→    } finally {
+   749→   749→      setSaving(false)
+   750→   750→    }
+   751→   751→  }
+   752→   752→
+   753→   753→  const changePassword = async () => {
+   754→   754→    if (!user?.id) return
+   755→   755→    if (!currentPassword || !newPassword || !confirmPassword) {
+   756→   756→      toast.error('Please fill in all password fields')
+   757→   757→      return
+   758→   758→    }
+   759→   759→    if (newPassword !== confirmPassword) {
+   760→   760→      toast.error('New passwords do not match')
+   761→   761→      return
+   762→   762→    }
+   763→   763→    if (newPassword.length < 6) {
+   764→   764→      toast.error('Password must be at least 6 characters')
+   765→   765→      return
+   766→   766→    }
+   767→   767→    setSavingPassword(true)
+   768→   768→    try {
+   769→   769→      const res = await fetch('/api/user/profile', {
+   770→   770→        method: 'PATCH',
+   771→   771→        headers: { 'Content-Type': 'application/json' },
+   772→   772→        body: JSON.stringify({
+   773→   773→          userId: user.id,
+   774→   774→          currentPassword,
+   775→   775→          newPassword
+   776→   776→        })
+   777→   777→      })
+   778→   778→      if (!res.ok) {
+   779→   779→        const data = await res.json()
+   780→   780→        throw new Error(data.error || 'Failed')
+   781→   781→      }
+   782→   782→      toast.success('Password changed successfully')
+   783→   783→      setCurrentPassword('')
+   784→   784→      setNewPassword('')
+   785→   785→      setConfirmPassword('')
+   786→   786→    } catch (e: unknown) {
+   787→   787→      const msg = e instanceof Error ? e.message : 'Failed to change password'
+   788→   788→      toast.error(msg)
+   789→   789→    } finally {
+   790→   790→      setSavingPassword(false)
+   791→   791→    }
+   792→   792→  }
+   793→   793→
+   794→   794→  if (loading) return <PageSkeleton />
+   795→   795→
+   796→   796→  return (
+   797→   797→    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
+   798→   798→      <div className="flex items-center gap-3">
+   799→   799→        <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+   800→   800→          <UserCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+   801→   801→        </div>
+   802→   802→        <div>
+   803→   803→          <h1 className="text-2xl font-bold">Profile Settings</h1>
+   804→   804→          <p className="text-sm text-muted-foreground">Manage your account information</p>
+   805→   805→        </div>
+   806→   806→      </div>
+   807→   807→
+   808→   808→      {/* Profile Card */}
+   809→   809→      <motion.div {...fadeSlide}>
+   810→   810→        <Card>
+   811→   811→          <CardHeader>
+   812→   812→            <div className="flex items-center justify-between">
+   813→   813→              <CardTitle className="text-lg">Personal Information</CardTitle>
+   814→   814→              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(user?.role || 'client')}`}>
+   815→   815→                Client
+   816→   816→              </span>
+   817→   817→            </div>
+   818→   818→            {user?.createdAt && (
+   819→   819→              <p className="text-sm text-muted-foreground">
+   820→   820→                Member since {formatDate(user.createdAt)}
+   821→   821→              </p>
+   822→   822→            )}
+   823→   823→          </CardHeader>
+   824→   824→          <CardContent className="space-y-4">
+   825→   825→            <div className="space-y-2">
+   826→   826→              <Label htmlFor="profile-name">Full Name</Label>
+   827→   827→              <Input
+   828→   828→                id="profile-name"
+   829→   829→                value={name}
+   830→   830→                onChange={e => setName(e.target.value)}
+   831→   831→                placeholder="Your full name"
+   832→   832→              />
+   833→   833→            </div>
+   834→   834→            <div className="space-y-2">
+   835→   835→              <Label htmlFor="profile-email">Email Address</Label>
+   836→   836→              <Input
+   837→   837→                id="profile-email"
+   838→   838→                type="email"
+   839→   839→                value={email}
+   840→   840→                onChange={e => setEmail(e.target.value)}
+   841→   841→                placeholder="your@email.com"
+   842→   842→              />
+   843→   843→            </div>
+   844→   844→            <div className="space-y-2">
+   845→   845→              <Label htmlFor="profile-phone">Phone Number</Label>
+   846→   846→              <Input
+   847→   847→                id="profile-phone"
+   848→   848→                type="tel"
+   849→   849→                value={phone}
+   850→   850→                onChange={e => setPhone(e.target.value)}
+   851→   851→                placeholder="+1 (555) 000-0000"
+   852→   852→              />
+   853→   853→            </div>
+   854→   854→            <div className="space-y-2">
+   855→   855→              <Label htmlFor="profile-company">Company</Label>
+   856→   856→              <Input
+   857→   857→                id="profile-company"
+   858→   858→                value={company}
+   859→   859→                onChange={e => setCompany(e.target.value)}
+   860→   860→                placeholder="Your company name"
+   861→   861→              />
+   862→   862→            </div>
+   863→   863→            <div className="pt-2">
+   864→   864→              <Button onClick={saveProfile} disabled={saving} className="w-full sm:w-auto">
+   865→   865→                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+   866→   866→                Save Changes
+   867→   867→              </Button>
+   868→   868→            </div>
+   869→   869→          </CardContent>
+   870→   870→        </Card>
+   871→   871→      </motion.div>
+   872→   872→
+   873→   873→      {/* Change Password */}
+   874→   874→      <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+   875→   875→        <Card>
+   876→   876→          <CardHeader>
+   877→   877→            <CardTitle className="text-lg flex items-center gap-2">
+   878→   878→              <Shield className="w-5 h-5 text-muted-foreground" />
+   879→   879→              Change Password
+   880→   880→            </CardTitle>
+   881→   881→            <p className="text-sm text-muted-foreground">
+   882→   882→              Update your password to keep your account secure
+   883→   883→            </p>
+   884→   884→          </CardHeader>
+   885→   885→          <CardContent className="space-y-4">
+   886→   886→            <div className="space-y-2">
+   887→   887→              <Label htmlFor="current-password">Current Password</Label>
+   888→   888→              <div className="relative">
+   889→   889→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   890→   890→                <Input
+   891→   891→                  id="current-password"
+   892→   892→                  type="password"
+   893→   893→                  value={currentPassword}
+   894→   894→                  onChange={e => setCurrentPassword(e.target.value)}
+   895→   895→                  placeholder="Enter current password"
+   896→   896→                  className="pl-9"
+   897→   897→                />
+   898→   898→              </div>
+   899→   899→            </div>
+   900→   900→            <div className="space-y-2">
+   901→   901→              <Label htmlFor="new-password">New Password</Label>
+   902→   902→              <div className="relative">
+   903→   903→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   904→   904→                <Input
+   905→   905→                  id="new-password"
+   906→   906→                  type="password"
+   907→   907→                  value={newPassword}
+   908→   908→                  onChange={e => setNewPassword(e.target.value)}
+   909→   909→                  placeholder="Enter new password"
+   910→   910→                  className="pl-9"
+   911→   911→                />
+   912→   912→              </div>
+   913→   913→            </div>
+   914→   914→            <div className="space-y-2">
+   915→   915→              <Label htmlFor="confirm-password">Confirm New Password</Label>
+   916→   916→              <div className="relative">
+   917→   917→                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   918→   918→                <Input
+   919→   919→                  id="confirm-password"
+   920→   920→                  type="password"
+   921→   921→                  value={confirmPassword}
+   922→   922→                  onChange={e => setConfirmPassword(e.target.value)}
+   923→   923→                  placeholder="Confirm new password"
+   924→   924→                  className="pl-9"
+   925→   925→                />
+   926→   926→              </div>
+   927→   927→            </div>
+   928→   928→            <div className="pt-2">
+   929→   929→              <Button onClick={changePassword} disabled={savingPassword} variant="outline" className="w-full sm:w-auto">
+   930→   930→                {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+   931→   931→                Change Password
+   932→   932→              </Button>
+   933→   933→            </div>
+   934→   934→          </CardContent>
+   935→   935→        </Card>
+   936→   936→      </motion.div>
+   937→   937→    </div>
+   938→   938→  )
+   939→   939→}

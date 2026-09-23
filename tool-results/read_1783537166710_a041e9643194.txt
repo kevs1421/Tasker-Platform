@@ -1,0 +1,1020 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→import { useAuthStore } from '@/stores/auth'
+     5→import type { Message, User, MessageGroup, GroupMember } from '@/types'
+     6→import { getRoleBadgeClasses, getInitials, formatRelativeTime } from '@/features/route-guard'
+     7→import { cn } from '@/lib/utils'
+     8→import { motion, AnimatePresence } from 'framer-motion'
+     9→import { toast } from 'sonner'
+    10→
+    11→import { Button } from '@/components/ui/button'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Skeleton } from '@/components/ui/skeleton'
+    15→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    16→import { ScrollArea } from '@/components/ui/scroll-area'
+    17→import { Separator } from '@/components/ui/separator'
+    18→import { Checkbox } from '@/components/ui/checkbox'
+    19→import {
+    20→  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+    21→} from '@/components/ui/dialog'
+    22→import {
+    23→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    24→} from '@/components/ui/alert-dialog'
+    25→import {
+    26→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    27→} from '@/components/ui/dropdown-menu'
+    28→import {
+    29→  Search, Send, MessageSquare, Users, Plus, Loader2, CheckCheck, X, UserPlus, Trash2,
+    30→  Pencil, MoreVertical, SquarePen, MessageCirclePlus,
+    31→} from 'lucide-react'
+    32→
+    33→// ─── Types ──────────────────────────────────────────────────────────────────────
+    34→
+    35→interface DirectConversation {
+    36→  type: 'direct'
+    37→  user: User | null
+    38→  lastMessage: Message | null
+    39→  unread: number
+    40→}
+    41→
+    42→interface GroupConversation {
+    43→  type: 'group'
+    44→  group: {
+    45→    id: string; name: string; avatar?: string | null
+    46→    members: { userId: string; user: { id: string; name: string; avatar?: string | null } | null }[]
+    47→    _count: { members: number }
+    48→    createdAt: string; updatedAt: string
+    49→  }
+    50→  lastMessage: Message | null
+    51→  unread: number
+    52→}
+    53→
+    54→type Conversation = DirectConversation | GroupConversation
+    55→
+    56→// ─── Avatar helpers ─────────────────────────────────────────────────────────────
+    57→
+    58→function UserAvatar({ user, size = 'md', className }: { user?: User | null; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+    59→  const sizeMap = { sm: 'h-8 w-8 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-12 w-12 text-sm' }
+    60→  if (!user) return <div className={cn(sizeMap[size], 'rounded-full bg-muted flex items-center justify-center', className)}>?</div>
+    61→  return (
+    62→    <Avatar className={cn(sizeMap[size], className)}>
+    63→      {user.avatar && <AvatarImage src={user.avatar} />}
+    64→      <AvatarFallback className="bg-slate-100 dark:bg-slate-800 font-medium">
+    65→        {getInitials(user.name)}
+    66→      </AvatarFallback>
+    67→    </Avatar>
+    68→  )
+    69→}
+    70→
+    71→function GroupAvatar({ name, size = 'md', className }: { name: string; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+    72→  const sizeMap = { sm: 'h-8 w-8 text-[10px]', md: 'h-10 w-10 text-xs', lg: 'h-12 w-12 text-sm' }
+    73→  return (
+    74→    <div className={cn(sizeMap[size], 'rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center', className)}>
+    75→      <Users className={size === 'sm' ? 'h-3.5 w-3.5 text-violet-600 dark:text-violet-400' : size === 'md' ? 'h-4 w-4 text-violet-600 dark:text-violet-400' : 'h-5 w-5 text-violet-600 dark:text-violet-400'} />
+    76→    </div>
+    77→  )
+    78→}
+    79→
+    80→// ─── Create Group Dialog ───────────────────────────────────────────────────────
+    81→
+    82→function CreateGroupDialog({
+    83→  open, onOpenChange, onCreated, currentUser,
+    84→}: {
+    85→  open: boolean; onOpenChange: (open: boolean) => void;
+    86→  onCreated: (group: MessageGroup) => void; currentUser: User;
+    87→}) {
+    88→  const [name, setName] = useState('')
+    89→  const [users, setUsers] = useState<User[]>([])
+    90→  const [selectedIds, setSelectedIds] = useState<string[]>([])
+    91→  const [creating, setCreating] = useState(false)
+    92→  const [search, setSearch] = useState('')
+    93→  const [loading, setLoading] = useState(false)
+    94→  const openCountRef = useRef(0)
+    95→  const prevIsOpen = useRef(false)
+    96→
+    97→  useEffect(() => {
+    98→    if (open && !prevIsOpen.current) {
+    99→      openCountRef.current++
+   100→    }
+   101→    prevIsOpen.current = open
+   102→  }, [open])
+   103→
+   104→  useEffect(() => {
+   105→    if (!open) return
+   106→    setLoading(true)
+   107→    setName('')
+   108→    setSelectedIds([])
+   109→    setSearch('')
+   110→    fetch('/api/users')
+   111→      .then((r) => r.json())
+   112→      .then((d) => {
+   113→        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+   114→      })
+   115→      .catch(() => {})
+   116→      .finally(() => setLoading(false))
+   117→  // eslint-disable-next-line react-hooks/exhaustive-deps
+   118→  }, [open, currentUser.id, openCountRef.current])
+   119→
+   120→  const toggleUser = (userId: string) => {
+   121→    setSelectedIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId])
+   122→  }
+   123→
+   124→  const handleCreate = async () => {
+   125→    if (!name.trim() || selectedIds.length === 0) return
+   126→    setCreating(true)
+   127→    try {
+   128→      const res = await fetch('/api/message-groups', {
+   129→        method: 'POST',
+   130→        headers: { 'Content-Type': 'application/json' },
+   131→        body: JSON.stringify({ name: name.trim(), createdBy: currentUser.id, memberIds: selectedIds }),
+   132→      })
+   133→      if (!res.ok) throw new Error()
+   134→      const data = await res.json()
+   135→      toast.success('Group created')
+   136→      onCreated(data.group)
+   137→      onOpenChange(false)
+   138→    } catch {
+   139→      toast.error('Failed to create group')
+   140→    } finally {
+   141→      setCreating(false)
+   142→    }
+   143→  }
+   144→
+   145→  const filteredUsers = users.filter(
+   146→    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+   147→  )
+   148→
+   149→  return (
+   150→    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+   151→      <DialogContent className="sm:max-w-md z-[100]">
+   152→        <DialogHeader>
+   153→          <DialogTitle className="flex items-center gap-2">
+   154→            <Users className="h-5 w-5 text-violet-600" /> Create Group
+   155→          </DialogTitle>
+   156→          <DialogDescription>Start a group conversation with team members</DialogDescription>
+   157→        </DialogHeader>
+   158→
+   159→        <div className="space-y-4 py-2">
+   160→          <div>
+   161→            <Input placeholder="Group name..." value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+   162→          </div>
+   163→
+   164→          <div>
+   165→            <div className="relative mb-2">
+   166→              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   167→              <Input placeholder="Search users..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+   168→            </div>
+   169→            <ScrollArea className="max-h-48 rounded-md border">
+   170→              {loading ? (
+   171→                <div className="p-3 space-y-2">
+   172→                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+   173→                </div>
+   174→              ) : filteredUsers.length === 0 ? (
+   175→                <p className="text-sm text-muted-foreground text-center py-4">No users found</p>
+   176→              ) : (
+   177→                <div className="p-1">
+   178→                  {filteredUsers.map((u) => (
+   179→                    <button
+   180→                      key={u.id}
+   181→                      type="button"
+   182→                      className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
+   183→                      onClick={() => toggleUser(u.id)}
+   184→                    >
+   185→                      <Checkbox checked={selectedIds.includes(u.id)} />
+   186→                      <UserAvatar user={u} size="sm" />
+   187→                      <div className="flex-1 min-w-0">
+   188→                        <p className="text-sm font-medium truncate">{u.name}</p>
+   189→                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+   190→                      </div>
+   191→                      <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>{u.role}</Badge>
+   192→                    </button>
+   193→                  ))}
+   194→                </div>
+   195→              )}
+   196→            </ScrollArea>
+   197→            {selectedIds.length > 0 && (
+   198→              <p className="text-xs text-muted-foreground mt-2">{selectedIds.length} member{selectedIds.length > 1 ? 's' : ''} selected</p>
+   199→            )}
+   200→          </div>
+   201→        </div>
+   202→
+   203→        <DialogFooter>
+   204→          <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
+   205→          <Button
+   206→            type="button"
+   207→            onClick={handleCreate} disabled={!name.trim() || selectedIds.length === 0 || creating}
+   208→            className="bg-violet-600 hover:bg-violet-700 text-white"
+   209→          >
+   210→            {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+   211→            Create Group
+   212→          </Button>
+   213→        </DialogFooter>
+   214→      </DialogContent>
+   215→    </Dialog>
+   216→  )
+   217→}
+   218→
+   219→// ─── New Message Dialog ────────────────────────────────────────────────────────
+   220→
+   221→function NewMessageDialog({
+   222→  open, onOpenChange, onUserSelected, currentUser,
+   223→}: {
+   224→  open: boolean; onOpenChange: (open: boolean) => void
+   225→  onUserSelected: (user: User) => void; currentUser: User;
+   226→}) {
+   227→  const [users, setUsers] = useState<User[]>([])
+   228→  const [search, setSearch] = useState('')
+   229→  const [loading, setLoading] = useState(false)
+   230→  const openCountRef = useRef(0)
+   231→  const prevIsOpen = useRef(false)
+   232→
+   233→  useEffect(() => {
+   234→    if (open && !prevIsOpen.current) {
+   235→      openCountRef.current++
+   236→    }
+   237→    prevIsOpen.current = open
+   238→  }, [open])
+   239→
+   240→  useEffect(() => {
+   241→    if (!open) return
+   242→    setLoading(true)
+   243→    fetch('/api/users')
+   244→      .then((r) => r.json())
+   245→      .then((d) => {
+   246→        setUsers((d.users ?? []).filter((u: User) => u.id !== currentUser.id))
+   247→      })
+   248→      .catch(() => {})
+   249→      .finally(() => setLoading(false))
+   250→  // eslint-disable-next-line react-hooks/exhaustive-deps
+   251→  }, [open, currentUser.id, openCountRef.current])
+   252→
+   253→  const filteredUsers = users.filter(
+   254→    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+   255→  )
+   256→
+   257→  return (
+   258→    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+   259→      <DialogContent className="sm:max-w-md z-[100]">
+   260→        <DialogHeader>
+   261→          <DialogTitle className="flex items-center gap-2">
+   262→            <SquarePen className="h-5 w-5 text-emerald-600" /> New Message
+   263→          </DialogTitle>
+   264→          <DialogDescription>Choose a person to start a conversation</DialogDescription>
+   265→        </DialogHeader>
+   266→
+   267→        <div className="space-y-3 py-2">
+   268→          <div className="relative">
+   269→            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   270→            <Input placeholder="Search by name or email..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+   271→          </div>
+   272→          <ScrollArea className="max-h-72 rounded-md border">
+   273→            {loading ? (
+   274→              <div className="p-3 space-y-2">
+   275→                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+   276→              </div>
+   277→            ) : filteredUsers.length === 0 ? (
+   278→              <p className="text-sm text-muted-foreground text-center py-6">No users found</p>
+   279→            ) : (
+   280→              <div className="p-1">
+   281→                {filteredUsers.map((u) => (
+   282→                  <button
+   283→                    key={u.id}
+   284→                    type="button"
+   285→                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors text-left"
+   286→                    onClick={() => { onUserSelected(u); onOpenChange(false) }}
+   287→                  >
+   288→                    <UserAvatar user={u} size="sm" />
+   289→                    <div className="flex-1 min-w-0">
+   290→                      <p className="text-sm font-medium truncate">{u.name}</p>
+   291→                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+   292→                    </div>
+   293→                    <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>{u.role}</Badge>
+   294→                  </button>
+   295→                ))}
+   296→              </div>
+   297→            )}
+   298→          </ScrollArea>
+   299→        </div>
+   300→      </DialogContent>
+   301→    </Dialog>
+   302→  )
+   303→}
+   304→
+   305→// ─── Group Info Dialog ──────────────────────────────────────────────────────────
+   306→
+   307→function GroupInfoDialog({
+   308→  open, onOpenChange, group, currentUserId,
+   309→}: {
+   310→  open: boolean; onOpenChange: (open: boolean) => void
+   311→  group: { id: string; name: string; members?: GroupMember[]; _count?: { members: number } } | null
+   312→  currentUserId: string
+   313→}) {
+   314→  const [members, setMembers] = useState<(GroupMember & { user: User })[]>([])
+   315→  const [users, setUsers] = useState<User[]>([])
+   316→  const [loading, setLoading] = useState(false)
+   317→  const [showAddUser, setShowAddUser] = useState(false)
+   318→  const [search, setSearch] = useState('')
+   319→  const openCountRef = useRef(0)
+   320→  const prevIsOpen = useRef(false)
+   321→
+   322→  useEffect(() => {
+   323→    if (open && !prevIsOpen.current) {
+   324→      openCountRef.current++
+   325→    }
+   326→    prevIsOpen.current = open
+   327→  }, [open])
+   328→
+   329→  useEffect(() => {
+   330→    if (!open || !group) return
+   331→    setLoading(true)
+   332→    setSearch('')
+   333→    setShowAddUser(false)
+   334→    fetch(`/api/message-groups/${group.id}?userId=${currentUserId}`)
+   335→      .then((r) => r.json())
+   336→      .then((d) => {
+   337→        setMembers((d.group?.members ?? []) as (GroupMember & { user: User })[])
+   338→      })
+   339→      .catch(() => {})
+   340→      .finally(() => setLoading(false))
+   341→  // eslint-disable-next-line react-hooks/exhaustive-deps
+   342→  }, [open, group, currentUserId, openCountRef.current])
+   343→
+   344→  const handleAddMember = async (userId: string) => {
+   345→    if (!group) return
+   346→    try {
+   347→      const res = await fetch(`/api/message-groups/${group.id}`, {
+   348→        method: 'PATCH',
+   349→        headers: { 'Content-Type': 'application/json' },
+   350→        body: JSON.stringify({ addMemberIds: [userId] }),
+   351→      })
+   352→      if (!res.ok) throw new Error()
+   353→      const data = await res.json()
+   354→      setMembers(data.group.members ?? [])
+   355→      toast.success('Member added')
+   356→    } catch {
+   357→      toast.error('Failed to add member')
+   358→    }
+   359→  }
+   360→
+   361→  const handleRemoveMember = async (userId: string) => {
+   362→    if (!group) return
+   363→    try {
+   364→      const res = await fetch(`/api/message-groups/${group.id}`, {
+   365→        method: 'PATCH',
+   366→        headers: { 'Content-Type': 'application/json' },
+   367→        body: JSON.stringify({ removeMemberIds: [userId] }),
+   368→      })
+   369→      if (!res.ok) throw new Error()
+   370→      const data = await res.json()
+   371→      setMembers(data.group.members ?? [])
+   372→      toast.success('Member removed')
+   373→    } catch {
+   374→      toast.error('Failed to remove member')
+   375→    }
+   376→  }
+   377→
+   378→  const handleLoadUsers = () => {
+   379→    fetch('/api/users')
+   380→      .then((r) => r.json())
+   381→      .then((d) => {
+   382→        const memberIds = members.map((m) => m.userId)
+   383→        setUsers((d.users ?? []).filter((u: User) => !memberIds.includes(u.id)))
+   384→      })
+   385→      .catch(() => {})
+   386→    setShowAddUser(true)
+   387→  }
+   388→
+   389→  const filteredUsers = users.filter(
+   390→    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+   391→  )
+   392→
+   393→  return (
+   394→    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+   395→      <DialogContent className="sm:max-w-md z-[100]">
+   396→        <DialogHeader>
+   397→          <DialogTitle className="flex items-center gap-2">
+   398→            <Users className="h-5 w-5 text-violet-600" /> Group Info
+   399→          </DialogTitle>
+   400→        </DialogHeader>
+   401→
+   402→        <div className="space-y-4 py-2">
+   403→          {group && (
+   404→            <div className="flex items-center gap-3">
+   405→              <GroupAvatar name={group.name} size="lg" />
+   406→              <div>
+   407→                <p className="font-semibold">{group.name}</p>
+   408→                <p className="text-sm text-muted-foreground">{group._count?.members ?? members.length} members</p>
+   409→              </div>
+   410→            </div>
+   411→          )}
+   412→
+   413→          <Separator />
+   414→
+   415→          <div>
+   416→            <div className="flex items-center justify-between mb-2">
+   417→              <p className="text-sm font-medium">Members</p>
+   418→              {!showAddUser && (
+   419→                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" type="button" onClick={handleLoadUsers}>
+   420→                  <UserPlus className="h-3.5 w-3.5" /> Add
+   421→                </Button>
+   422→              )}
+   423→            </div>
+   424→
+   425→            {showAddUser && (
+   426→              <div className="mb-3 space-y-2">
+   427→                <div className="relative">
+   428→                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   429→                  <Input placeholder="Search users..." className="pl-9 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+   430→                </div>
+   431→                <ScrollArea className="max-h-32 rounded-md border">
+   432→                  <div className="p-1">
+   433→                    {filteredUsers.slice(0, 8).map((u) => (
+   434→                      <button
+   435→                        key={u.id}
+   436→                        type="button"
+   437→                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left"
+   438→                        onClick={() => handleAddMember(u.id)}
+   439→                      >
+   440→                        <UserAvatar user={u} size="sm" />
+   441→                        <div className="flex-1 min-w-0">
+   442→                          <p className="text-sm font-medium truncate">{u.name}</p>
+   443→                        </div>
+   444→                        <UserPlus className="h-4 w-4 text-muted-foreground" />
+   445→                      </button>
+   446→                    ))}
+   447→                  </div>
+   448→                </ScrollArea>
+   449→                <Button variant="ghost" size="sm" className="h-7 text-xs" type="button" onClick={() => setShowAddUser(false)}>Done</Button>
+   450→              </div>
+   451→            )}
+   452→
+   453→            <ScrollArea className="max-h-48 rounded-md border">
+   454→              {loading ? (
+   455→                <div className="p-3 space-y-2">
+   456→                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+   457→                </div>
+   458→              ) : (
+   459→                <div className="p-1">
+   460→                  {members.map((m) => (
+   461→                    <div key={m.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50">
+   462→                      <UserAvatar user={m.user} size="sm" />
+   463→                      <div className="flex-1 min-w-0">
+   464→                        <p className="text-sm font-medium truncate">{m.user?.name ?? 'Unknown'}</p>
+   465→                        <p className="text-xs text-muted-foreground">{m.role === 'admin' ? 'Admin' : 'Member'}</p>
+   466→                      </div>
+   467→                      {m.userId !== currentUserId && (
+   468→                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" type="button" onClick={() => handleRemoveMember(m.userId)}>
+   469→                          <X className="h-3.5 w-3.5" />
+   470→                        </Button>
+   471→                      )}
+   472→                    </div>
+   473→                  ))}
+   474→                </div>
+   475→              )}
+   476→            </ScrollArea>
+   477→          </div>
+   478→        </div>
+   479→      </DialogContent>
+   480→    </Dialog>
+   481→  )
+   482→}
+   483→
+   484→// ─── Main MessagesPanel Component ───────────────────────────────────────────────
+   485→
+   486→export function MessagesPanel() {
+   487→  const { user } = useAuthStore()
+   488→  const [loading, setLoading] = useState(true)
+   489→  const [conversations, setConversations] = useState<Conversation[]>([])
+   490→  const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
+   491→  const [messages, setMessages] = useState<Message[]>([])
+   492→  const [msgText, setMsgText] = useState('')
+   493→  const [sending, setSending] = useState(false)
+   494→  const [msgLoading, setMsgLoading] = useState(false)
+   495→  const [searchQuery, setSearchQuery] = useState('')
+   496→  const [showCreateGroup, setShowCreateGroup] = useState(false)
+   497→  const [showNewMessage, setShowNewMessage] = useState(false)
+   498→  const [showGroupInfo, setShowGroupInfo] = useState(false)
+   499→  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'message' | 'conversation'; id: string } | null>(null)
+   500→  const messagesEndRef = useRef<HTMLDivElement>(null)
+   501→
+   502→  const fetchConversations = useCallback(async () => {
+   503→    if (!user?.id) return
+   504→    setLoading(true)
+   505→    try {
+   506→      const res = await fetch(`/api/messages?userId=${user.id}`)
+   507→      if (!res.ok) throw new Error()
+   508→      const data = await res.json()
+   509→      setConversations(data.conversations ?? [])
+   510→    } catch {
+   511→      toast.error('Failed to load conversations')
+   512→    } finally {
+   513→      setLoading(false)
+   514→    }
+   515→  }, [user?.id])
+   516→
+   517→  useEffect(() => { fetchConversations() }, [fetchConversations])
+   518→
+   519→  useEffect(() => {
+   520→    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+   521→  }, [messages])
+   522→
+   523→  // Determine conversation kind
+   524→  const isGroupSelected = selectedConvo?.type === 'group'
+   525→  const selectedGroup = isGroupSelected ? (selectedConvo as GroupConversation).group : null
+   526→  const selectedDirectUser = !isGroupSelected ? (selectedConvo as DirectConversation | null)?.user : null
+   527→
+   528→  const selectConversation = async (convo: Conversation) => {
+   529→    if (!user?.id) return
+   530→    setSelectedConvo(convo)
+   531→    setMsgText('')
+   532→    setMsgLoading(true)
+   533→
+   534→    try {
+   535→      let url = `/api/messages?userId=${user.id}`
+   536→      if (convo.type === 'group') {
+   537→        url += `&groupId=${convo.group.id}`
+   538→      } else {
+   539→        if (!convo.user) return
+   540→        url += `&otherId=${convo.user.id}`
+   541→      }
+   542→      const res = await fetch(url)
+   543→      if (!res.ok) throw new Error()
+   544→      const data = await res.json()
+   545→      setMessages(data.messages ?? [])
+   546→    } catch {
+   547→      toast.error('Failed to load messages')
+   548→    } finally {
+   549→      setMsgLoading(false)
+   550→    }
+   551→
+   552→    // Clear unread locally
+   553→    setConversations((prev) => prev.map((c) => {
+   554→      if (c.type === 'direct' && convo.type === 'direct' && c.user?.id === convo.user?.id) return { ...c, unread: 0 }
+   555→      if (c.type === 'group' && convo.type === 'group' && c.group.id === convo.group.id) return { ...c, unread: 0 }
+   556→      return c
+   557→    }))
+   558→  }
+   559→
+   560→  const sendMessage = async () => {
+   561→    if (!user?.id || !msgText.trim() || !selectedConvo) return
+   562→
+   563→    setSending(true)
+   564→    const text = msgText.trim()
+   565→    setMsgText('')
+   566→
+   567→    try {
+   568→      const body: Record<string, string> = { content: text, senderId: user.id }
+   569→
+   570→      if (selectedConvo.type === 'group') {
+   571→        body.groupId = selectedConvo.group.id
+   572→      } else {
+   573→        if (!selectedConvo.user) return
+   574→        body.receiverId = selectedConvo.user.id
+   575→      }
+   576→
+   577→      const res = await fetch('/api/messages', {
+   578→        method: 'POST',
+   579→        headers: { 'Content-Type': 'application/json' },
+   580→        body: JSON.stringify(body),
+   581→      })
+   582→      if (!res.ok) throw new Error()
+   583→      const data = await res.json()
+   584→      setMessages((prev) => [...prev, data.message])
+   585→      fetchConversations()
+   586→    } catch {
+   587→      toast.error('Failed to send message')
+   588→      setMsgText(text)
+   589→    } finally {
+   590→      setSending(false)
+   591→    }
+   592→  }
+   593→
+   594→  const handleKeyDown = (e: React.KeyboardEvent) => {
+   595→    if (e.key === 'Enter' && !e.shiftKey) {
+   596→      e.preventDefault()
+   597→      sendMessage()
+   598→    }
+   599→  }
+   600→
+   601→  // Delete a single message
+   602→  const deleteMessage = async (messageId: string) => {
+   603→    if (!user?.id) return
+   604→    try {
+   605→      const res = await fetch(`/api/messages?id=${messageId}&userId=${user.id}`, { method: 'DELETE' })
+   606→      if (!res.ok) throw new Error()
+   607→      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+   608→      toast.success('Message deleted')
+   609→    } catch {
+   610→      toast.error('Failed to delete message')
+   611→    }
+   612→    setDeleteConfirm(null)
+   613→  }
+   614→
+   615→  // Delete an entire conversation
+   616→  const deleteConversation = async () => {
+   617→    if (!user?.id || !selectedConvo || !deleteConfirm) return
+   618→    try {
+   619→      let url = `/api/messages?deleteConversation=true&userId=${user.id}`
+   620→      if (selectedConvo.type === 'group') {
+   621→        url += `&groupId=${selectedConvo.group.id}`
+   622→      } else if (selectedConvo.user) {
+   623→        url += `&otherId=${selectedConvo.user.id}`
+   624→      }
+   625→      const res = await fetch(url, { method: 'DELETE' })
+   626→      if (!res.ok) throw new Error()
+   627→      setSelectedConvo(null)
+   628→      setMessages([])
+   629→      fetchConversations()
+   630→      toast.success('Conversation deleted')
+   631→    } catch {
+   632→      toast.error('Failed to delete conversation')
+   633→    }
+   634→    setDeleteConfirm(null)
+   635→  }
+   636→
+   637→  // Handle selecting a user from New Message dialog
+   638→  const handleNewMessageUser = async (selectedUser: User) => {
+   639→    // Check if a conversation already exists
+   640→    const existing = conversations.find(
+   641→      (c) => c.type === 'direct' && c.user?.id === selectedUser.id
+   642→    )
+   643→    if (existing) {
+   644→      await selectConversation(existing)
+   645→      return
+   646→    }
+   647→    // Create a new direct conversation object and select it
+   648→    const newConvo: DirectConversation = {
+   649→      type: 'direct',
+   650→      user: selectedUser,
+   651→      lastMessage: null,
+   652→      unread: 0,
+   653→    }
+   654→    setSelectedConvo(newConvo)
+   655→    setMessages([])
+   656→  }
+   657→
+   658→  // Filter conversations
+   659→  const filteredConversations = conversations.filter((c) => {
+   660→    if (!searchQuery.trim()) return true
+   661→    const q = searchQuery.toLowerCase()
+   662→    if (c.type === 'direct') return c.user?.name.toLowerCase().includes(q) || c.user?.email.toLowerCase().includes(q)
+   663→    return c.group.name.toLowerCase().includes(q)
+   664→  })
+   665→
+   666→  // Conversation display helpers
+   667→  const getConvoPreview = (c: Conversation) => {
+   668→    if (!c.lastMessage) return 'No messages yet'
+   669→    const senderName = c.lastMessage.senderId === user?.id ? 'You' : (c.lastMessage.sender?.name ?? 'Someone')
+   670→    if (c.type === 'group') return `${senderName}: ${c.lastMessage.content}`
+   671→    return `${c.lastMessage.senderId === user?.id ? 'You: ' : ''}${c.lastMessage.content}`
+   672→  }
+   673→
+   674→  // ── Render ───────────────────────────────────────────────
+   675→
+   676→  const containerHeight = 'h-[calc(100vh-12rem)]'
+   677→
+   678→  if (loading) {
+   679→    return (
+   680→      <div className={cn(containerHeight, 'flex border rounded-lg overflow-hidden')}>
+   681→        <div className="w-80 border-r p-4 space-y-3 flex-shrink-0">
+   682→          <Skeleton className="h-10 w-full" />
+   683→          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+   684→        </div>
+   685→        <div className="flex-1 flex items-center justify-center">
+   686→          <p className="text-muted-foreground text-sm">Select a conversation</p>
+   687→        </div>
+   688→      </div>
+   689→    )
+   690→  }
+   691→
+   692→  return (
+   693→    <motion.div
+   694→      initial={{ opacity: 0, y: 8 }}
+   695→      animate={{ opacity: 1, y: 0 }}
+   696→      className={cn(containerHeight, 'flex border rounded-lg overflow-hidden')}
+   697→    >
+   698→      {/* ─── Conversation List ──────────────────────────── */}
+   699→      <div className="w-80 border-r bg-background flex flex-col flex-shrink-0">
+   700→        <div className="p-3 border-b space-y-2">
+   701→          <div className="flex items-center justify-between">
+   702→            <h2 className="text-lg font-semibold">Messages</h2>
+   703→            <div className="flex items-center gap-1">
+   704→              <Button
+   705→                variant="ghost" size="icon" className="h-8 w-8"
+   706→                onClick={() => setShowNewMessage(true)}
+   707→                title="New Message"
+   708→              >
+   709→                <MessageCirclePlus className="h-4 w-4" />
+   710→              </Button>
+   711→              <Button
+   712→                variant="ghost" size="icon" className="h-8 w-8"
+   713→                onClick={() => setShowCreateGroup(true)}
+   714→                title="Create Group"
+   715→              >
+   716→                <Plus className="h-4 w-4" />
+   717→              </Button>
+   718→            </div>
+   719→          </div>
+   720→          <div className="relative">
+   721→            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   722→            <Input
+   723→              placeholder="Search conversations..."
+   724→              className="pl-9 h-9 text-sm"
+   725→              value={searchQuery}
+   726→              onChange={(e) => setSearchQuery(e.target.value)}
+   727→            />
+   728→          </div>
+   729→        </div>
+   730→        <ScrollArea className="flex-1">
+   731→          <div className="p-1">
+   732→            {filteredConversations.length === 0 && (
+   733→              <p className="text-sm text-muted-foreground text-center py-8">
+   734→                {searchQuery ? 'No matching conversations' : 'No conversations yet'}
+   735→              </p>
+   736→            )}
+   737→            {filteredConversations.map((convo, idx) => {
+   738→              const isSelected =
+   739→                convo.type === 'direct'
+   740→                  ? selectedDirectUser?.id === convo.user?.id
+   741→                  : selectedGroup?.id === convo.group.id
+   742→              return (
+   743→                <div
+   744→                  key={convo.type === 'direct' ? convo.user?.id ?? idx : convo.group.id}
+   745→                  className={cn(
+   746→                    'group flex items-center rounded-md transition-colors',
+   747→                    isSelected ? 'bg-muted' : 'hover:bg-muted/50'
+   748→                  )}
+   749→                >
+   750→                  <button
+   751→                    className="w-full text-left px-3 py-3 flex items-start gap-3 flex-1 min-w-0"
+   752→                    onClick={() => selectConversation(convo)}
+   753→                  >
+   754→                    {convo.type === 'direct' ? (
+   755→                      <UserAvatar user={convo.user} size="md" className="mt-0.5 flex-shrink-0" />
+   756→                    ) : (
+   757→                      <GroupAvatar name={convo.group.name} size="md" className="mt-0.5 flex-shrink-0" />
+   758→                    )}
+   759→                    <div className="flex-1 min-w-0">
+   760→                      <div className="flex items-center justify-between">
+   761→                        <div className="flex items-center gap-1.5 min-w-0">
+   762→                          <span className="text-sm font-medium truncate">{convo.type === 'direct' ? (convo.user?.name ?? 'Unknown') : convo.group.name}</span>
+   763→                          {convo.type === 'group' && (
+   764→                            <Users className="h-3 w-3 text-violet-500 flex-shrink-0" />
+   765→                          )}
+   766→                        </div>
+   767→                        {convo.lastMessage && (
+   768→                          <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
+   769→                            {formatRelativeTime(convo.lastMessage.createdAt)}
+   770→                          </span>
+   771→                        )}
+   772→                      </div>
+   773→                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+   774→                        {getConvoPreview(convo)}
+   775→                      </p>
+   776→                    </div>
+   777→                    {convo.unread > 0 && (
+   778→                      <div className="h-5 w-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-1">
+   779→                        {convo.unread}
+   780→                      </div>
+   781→                    )}
+   782→                  </button>
+   783→                  {/* Delete conversation button — shows on hover */}
+   784→                  <Button
+   785→                    variant="ghost"
+   786→                    size="icon"
+   787→                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 mr-1 mt-1"
+   788→                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'conversation', id: convo.type === 'direct' ? (convo as DirectConversation).user?.id ?? '' : convo.group.id }) }}
+   789→                    title="Delete conversation"
+   790→                  >
+   791→                    <Trash2 className="h-3.5 w-3.5" />
+   792→                  </Button>
+   793→                </div>
+   794→              )
+   795→            })}
+   796→          </div>
+   797→        </ScrollArea>
+   798→      </div>
+   799→
+   800→      {/* ─── Chat Area ─────────────────────────────────── */}
+   801→      <div className="flex-1 flex flex-col bg-background">
+   802→        {selectedConvo ? (
+   803→          <>
+   804→            {/* Chat Header */}
+   805→            <div className="p-3 border-b flex items-center gap-3">
+   806→              {isGroupSelected ? (
+   807→                <button onClick={() => setShowGroupInfo(true)} className="flex items-center gap-3 hover:bg-muted/50 rounded-md px-1 -ml-1 py-0.5 transition-colors">
+   808→                  <GroupAvatar name={selectedGroup!.name} size="md" />
+   809→                  <div className="min-w-0">
+   810→                    <p className="text-sm font-medium flex items-center gap-1.5">
+   811→                      {selectedGroup!.name}
+   812→                      <Users className="h-3.5 w-3.5 text-violet-500" />
+   813→                    </p>
+   814→                    <p className="text-xs text-muted-foreground">{selectedGroup!._count.members} members</p>
+   815→                  </div>
+   816→                </button>
+   817→              ) : selectedDirectUser ? (
+   818→                <>
+   819→                  <UserAvatar user={selectedDirectUser} size="md" />
+   820→                  <div className="min-w-0">
+   821→                    <p className="text-sm font-medium truncate">{selectedDirectUser.name}</p>
+   822→                    <p className="text-xs text-muted-foreground truncate">
+   823→                      {selectedDirectUser.company ?? selectedDirectUser.email}
+   824→                    </p>
+   825→                  </div>
+   826→                  <Badge variant="secondary" className={cn('ml-auto text-xs flex-shrink-0', getRoleBadgeClasses(selectedDirectUser.role))}>
+   827→                    {selectedDirectUser.role}
+   828→                  </Badge>
+   829→                </>
+   830→              ) : null}
+   831→
+   832→              {/* Delete conversation button in header */}
+   833→              <Button
+   834→                variant="ghost"
+   835→                size="icon"
+   836→                className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive flex-shrink-0"
+   837→                onClick={() => setDeleteConfirm({ type: 'conversation', id: '' })}
+   838→                title="Delete conversation"
+   839→              >
+   840→                <Trash2 className="h-4 w-4" />
+   841→              </Button>
+   842→            </div>
+   843→
+   844→            {/* Messages */}
+   845→            <ScrollArea className="flex-1 p-4">
+   846→              <div className="space-y-3 max-w-2xl mx-auto">
+   847→                {msgLoading ? (
+   848→                  <div className="space-y-3">
+   849→                    {Array.from({ length: 4 }).map((_, i) => (
+   850→                      <div key={i} className={cn('flex gap-2.5', i % 2 === 0 ? '' : 'justify-end')}>
+   851→                        <Skeleton className="h-10 w-48 rounded-2xl" />
+   852→                      </div>
+   853→                    ))}
+   854→                  </div>
+   855→                ) : messages.length === 0 ? (
+   856→                  <div className="flex flex-col items-center justify-center h-full text-center py-8">
+   857→                    <MessageSquare className="h-10 w-10 text-muted-foreground/30 mb-3" />
+   858→                    <p className="text-sm text-muted-foreground">
+   859→                      {isGroupSelected ? 'No messages yet. Start the conversation!' : 'No messages yet. Say hello!'}
+   860→                    </p>
+   861→                  </div>
+   862→                ) : (
+   863→                  messages.map((msg, idx) => {
+   864→                    const isSent = msg.senderId === user?.id
+   865→                    return (
+   866→                      <motion.div
+   867→                        key={msg.id}
+   868→                        initial={{ opacity: 0, y: 5 }}
+   869→                        animate={{ opacity: 1, y: 0 }}
+   870→                        transition={{ delay: Math.min(idx * 0.015, 0.2) }}
+   871→                        className={cn('group/msg flex gap-2.5', isSent ? 'justify-end' : 'justify-start')}
+   872→                      >
+   873→                        {!isSent && (
+   874→                          <UserAvatar user={msg.sender} size="sm" className="mt-auto" />
+   875→                        )}
+   876→                        <div className={cn('max-w-[70%]', isSent ? 'text-right' : '')}>
+   877→                          {isGroupSelected && !isSent && (
+   878→                            <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
+   879→                              {msg.sender?.name ?? 'Unknown'}
+   880→                            </p>
+   881→                          )}
+   882→                          <div className="relative">
+   883→                            <div className={cn(
+   884→                              'inline-block rounded-2xl px-4 py-2.5 text-sm',
+   885→                              isSent
+   886→                                ? 'bg-emerald-600 text-white rounded-br-md'
+   887→                                : 'bg-muted rounded-bl-md',
+   888→                            )}>
+   889→                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+   890→                            </div>
+   891→                            {/* Delete message button — shows on hover */}
+   892→                            <Button
+   893→                              variant="ghost"
+   894→                              size="icon"
+   895→                              className={cn(
+   896→                                'h-6 w-6 absolute opacity-0 group-hover/msg:opacity-100 transition-opacity',
+   897→                                isSent
+   898→                                  ? '-left-8 top-1/2 -translate-y-1/2'
+   899→                                  : '-right-8 top-1/2 -translate-y-1/2'
+   900→                              )}
+   901→                              onClick={() => setDeleteConfirm({ type: 'message', id: msg.id })}
+   902→                              title="Delete message"
+   903→                            >
+   904→                              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+   905→                            </Button>
+   906→                          </div>
+   907→                          <div className={cn(
+   908→                            'flex items-center gap-1 mt-1 text-[10px] text-muted-foreground',
+   909→                            isSent ? 'justify-end' : 'justify-start'
+   910→                          )}>
+   911→                            <span>{formatRelativeTime(msg.createdAt)}</span>
+   912→                            {isSent && msg.read && <CheckCheck className="w-3 h-3" />}
+   913→                          </div>
+   914→                        </div>
+   915→                      </motion.div>
+   916→                    )
+   917→                  })
+   918→                )}
+   919→                <div ref={messagesEndRef} />
+   920→              </div>
+   921→            </ScrollArea>
+   922→
+   923→            {/* Message Input */}
+   924→            <div className="p-3 border-t">
+   925→              <div className="flex gap-2 max-w-2xl mx-auto">
+   926→                <Input
+   927→                  placeholder={isGroupSelected ? `Message ${selectedGroup!.name}...` : 'Type a message...'}
+   928→                  value={msgText}
+   929→                  onChange={(e) => setMsgText(e.target.value)}
+   930→                  onKeyDown={handleKeyDown}
+   931→                  className="flex-1"
+   932→                />
+   933→                <Button
+   934→                  onClick={sendMessage}
+   935→                  disabled={!msgText.trim() || sending}
+   936→                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+   937→                >
+   938→                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+   939→                </Button>
+   940→              </div>
+   941→            </div>
+   942→          </>
+   943→        ) : (
+   944→          <div className="flex-1 flex items-center justify-center">
+   945→            <div className="text-center space-y-3">
+   946→              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+   947→                <MessageSquare className="h-8 w-8 text-muted-foreground" />
+   948→              </div>
+   949→              <h3 className="font-semibold text-lg">Select a conversation</h3>
+   950→              <p className="text-sm text-muted-foreground max-w-xs">
+   951→                Choose a conversation from the sidebar, or start a new one.
+   952→              </p>
+   953→              <div className="flex items-center justify-center gap-2 pt-2">
+   954→                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowNewMessage(true)}>
+   955→                  <MessageCirclePlus className="h-4 w-4" /> New Message
+   956→                </Button>
+   957→                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCreateGroup(true)}>
+   958→                  <Users className="h-4 w-4" /> Create Group
+   959→                </Button>
+   960→              </div>
+   961→            </div>
+   962→          </div>
+   963→        )}
+   964→      </div>
+   965→
+   966→      {/* ─── Dialogs ──────────────────────────────────── */}
+   967→      <CreateGroupDialog
+   968→        open={showCreateGroup}
+   969→        onOpenChange={setShowCreateGroup}
+   970→        onCreated={() => { fetchConversations(); setShowCreateGroup(false) }}
+   971→        currentUser={user!}
+   972→      />
+   973→      <NewMessageDialog
+   974→        open={showNewMessage}
+   975→        onOpenChange={setShowNewMessage}
+   976→        onUserSelected={handleNewMessageUser}
+   977→        currentUser={user!}
+   978→      />
+   979→      <GroupInfoDialog
+   980→        open={showGroupInfo}
+   981→        onOpenChange={setShowGroupInfo}
+   982→        group={selectedGroup ? { id: selectedGroup.id, name: selectedGroup.name, _count: selectedGroup._count } : null}
+   983→        currentUserId={user?.id ?? ''}
+   984→      />
+   985→
+   986→      {/* ─── Delete Confirmation ─────────────────────── */}
+   987→      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
+   988→        <AlertDialogContent>
+   989→          <AlertDialogHeader>
+   990→            <AlertDialogTitle>
+   991→              {deleteConfirm?.type === 'message' ? 'Delete Message' : 'Delete Conversation'}
+   992→            </AlertDialogTitle>
+   993→            <AlertDialogDescription>
+   994→              {deleteConfirm?.type === 'message'
+   995→                ? 'Are you sure you want to delete this message? This action cannot be undone.'
+   996→                : 'Are you sure you want to delete this entire conversation? All messages will be permanently removed. This action cannot be undone.'
+   997→              }
+   998→            </AlertDialogDescription>
+   999→          </AlertDialogHeader>
+  1000→          <AlertDialogFooter>
+  1001→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1002→            <AlertDialogAction
+  1003→              className="bg-destructive text-white hover:bg-destructive/90"
+  1004→              onClick={() => {
+  1005→                if (!deleteConfirm) return
+  1006→                if (deleteConfirm.type === 'message') {
+  1007→                  deleteMessage(deleteConfirm.id)
+  1008→                } else {
+  1009→                  deleteConversation()
+  1010→                }
+  1011→              }}
+  1012→            >
+  1013→              Delete
+  1014→            </AlertDialogAction>
+  1015→          </AlertDialogFooter>
+  1016→        </AlertDialogContent>
+  1017→      </AlertDialog>
+  1018→    </motion.div>
+  1019→  )
+  1020→}

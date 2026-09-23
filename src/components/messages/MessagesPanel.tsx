@@ -998,6 +998,8 @@ export function MessagesPanel() {
         onToggleMic={videoCall.toggleMic}
         onToggleCamera={videoCall.toggleCamera}
         onToggleScreen={videoCall.toggleScreen}
+        onApplyVirtualBg={videoCall.applyVirtualBackgroundStream}
+        onRemoveVirtualBg={videoCall.removeVirtualBackgroundStream}
         micOn={videoCall.micOn}
         cameraOn={videoCall.cameraOn}
         screenOn={videoCall.screenOn}
@@ -1005,6 +1007,7 @@ export function MessagesPanel() {
         remoteMicOn={videoCall.remoteMicOn}
         remoteCameraOn={videoCall.remoteCameraOn}
         screenShareLabel={videoCall.screenShareLabel}
+        localStream={videoCall.getLocalStreamRef()}
       />
       <AnimatePresence>
         {videoCall.incomingCall && (

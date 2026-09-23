@@ -28,7 +28,10 @@ export function useVideoCall(currentUser: User | null) {
   const localStreamRef = useRef<MediaStream | null>(null)
   const localScreenStreamRef = useRef<MediaStream | null>(null)
   const peersRef = useRef<Map<string, PeerState>>(new Map())
-  const iceCandidatesRef = useRef<Map<string, unknown[]>>(new Map())
+  const iceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
+
+  // The stream that we actually send to peers (may be virtual-bg processed)
+  const sendStreamRef = useRef<MediaStream | null>(null)
 
   // Stable refs for use inside callbacks without stale closures
   const roomIdRef = useRef('')
@@ -78,9 +81,12 @@ export function useVideoCall(currentUser: User | null) {
     const remoteScreenStream = new MediaStream()
 
     // Add local media tracks to peer connection
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!)
+    // Use sendStreamRef (which may be the virtual background processed stream)
+    // if available, otherwise use the raw localStream
+    const streamToAdd = sendStreamRef.current || localStreamRef.current
+    if (streamToAdd) {
+      streamToAdd.getTracks().forEach((track) => {
+        pc.addTrack(track, streamToAdd)
       })
     }
     // Add screen tracks to peer connection (separate sender)
@@ -226,6 +232,11 @@ export function useVideoCall(currentUser: User | null) {
     if (localScreenStreamRef.current) {
       localScreenStreamRef.current.getTracks().forEach((t) => t.stop())
       localScreenStreamRef.current = null
+    }
+    // Stop virtual background send stream tracks (these are canvas-captured, not raw)
+    if (sendStreamRef.current) {
+      sendStreamRef.current.getTracks().forEach((t) => t.stop())
+      sendStreamRef.current = null
     }
     // Clean up all peers
     for (const [peerId] of peersRef.current) {
@@ -563,11 +574,93 @@ export function useVideoCall(currentUser: User | null) {
     }
   }, [screenOn])
 
+  // ── Virtual Background: replace the video track sent to peers ──
+
+  /**
+   * Apply a virtual background processed stream.
+   * This replaces the video track in all peer connections with the
+   * processed canvas track, while keeping the raw audio track.
+   */
+  const applyVirtualBackgroundStream = useCallback(async (processedStream: MediaStream) => {
+    sendStreamRef.current = processedStream
+
+    // Get the processed video track
+    const processedVideoTrack = processedStream.getVideoTracks()[0]
+    if (!processedVideoTrack) return
+
+    // Replace the video track in all peer connections
+    for (const [, peer] of peersRef.current) {
+      const senders = peer.pc.getSenders()
+      const videoSender = senders.find((s) => {
+        const track = s.track
+        return track && track.kind === 'video' && !track.label.toLowerCase().includes('screen')
+      })
+      if (videoSender) {
+        try {
+          await videoSender.replaceTrack(processedVideoTrack)
+        } catch {
+          // replaceTrack may fail if codecs don't match; fall back to renegotiation
+          peer.pc.removeTrack(videoSender)
+          peer.pc.addTrack(processedVideoTrack, processedStream)
+          const offer = await peer.pc.createOffer()
+          await peer.pc.setLocalDescription(offer)
+          socketRef.current?.emit('call:signal', {
+            roomId: roomIdRef.current,
+            targetId: peer.userId,
+            signal: offer,
+          })
+        }
+      }
+    }
+  }, [])
+
+  /**
+   * Remove virtual background — switch back to the raw camera track.
+   */
+  const removeVirtualBackgroundStream = useCallback(async () => {
+    sendStreamRef.current = null
+
+    const rawVideoTrack = localStreamRef.current?.getVideoTracks()[0]
+    if (!rawVideoTrack) return
+
+    // Replace back to the raw video track in all peer connections
+    for (const [, peer] of peersRef.current) {
+      const senders = peer.pc.getSenders()
+      const videoSender = senders.find((s) => {
+        const track = s.track
+        return track && track.kind === 'video' && !track.label.toLowerCase().includes('screen')
+      })
+      if (videoSender) {
+        try {
+          await videoSender.replaceTrack(rawVideoTrack)
+        } catch {
+          // Fall back to renegotiation
+          peer.pc.removeTrack(videoSender)
+          if (localStreamRef.current) {
+            peer.pc.addTrack(rawVideoTrack, localStreamRef.current)
+          }
+          const offer = await peer.pc.createOffer()
+          await peer.pc.setLocalDescription(offer)
+          socketRef.current?.emit('call:signal', {
+            roomId: roomIdRef.current,
+            targetId: peer.userId,
+            signal: offer,
+          })
+        }
+      }
+    }
+  }, [])
+
+  // Expose the raw local stream for virtual background processing
+  const getLocalStreamRef = useCallback(() => localStreamRef.current, [])
+
   return {
     isInCall, callType, callStatus, remoteUser, incomingCall,
     micOn, cameraOn, screenOn, remoteScreenOn, remoteMicOn, remoteCameraOn,
     screenShareLabel,
     startCall, startGroupCall, acceptCall, rejectCall, endCall,
     toggleMic, toggleCamera, toggleScreen,
+    applyVirtualBackgroundStream, removeVirtualBackgroundStream,
+    getLocalStreamRef,
   }
 }

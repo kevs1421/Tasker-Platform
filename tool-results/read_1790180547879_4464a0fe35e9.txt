@@ -1,0 +1,735 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import {
+     7→     7→  Phone, PhoneOff, Mic, MicOff, Video, VideoOff,
+     8→     8→  MonitorUp, MonitorOff, Copy, Maximize2, Minimize2,
+     9→     9→  Users, Monitor,
+    10→    10→} from 'lucide-react'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    13→    13→import { getInitials } from '@/features/route-guard'
+    14→    14→import { cn } from '@/lib/utils'
+    15→    15→import type { User } from '@/types'
+    16→    16→
+    17→    17→// ─── Types ──────────────────────────────────────────────────────────────
+    18→    18→
+    19→    19→interface VideoCallProps {
+    20→    20→  currentUser: User
+    21→    21→  targetUser: User | null
+    22→    22→  isInCall: boolean
+    23→    23→  callType: 'audio' | 'video'
+    24→    24→  callStatus: 'ringing' | 'connected' | 'connecting'
+    25→    25→  onEnd: () => void
+    26→    26→  onToggleMic: () => void
+    27→    27→  onToggleCamera: () => void
+    28→    28→  onToggleScreen: () => void
+    29→    29→  micOn: boolean
+    30→    30→  cameraOn: boolean
+    31→    31→  screenOn: boolean
+    32→    32→  remoteScreenOn: boolean
+    33→    33→  remoteMicOn: boolean
+    34→    34→  remoteCameraOn: boolean
+    35→    35→  screenShareLabel: string
+    36→    36→}
+    37→    37→
+    38→    38→// ─── Incoming Call Overlay ──────────────────────────────────────────────
+    39→    39→
+    40→    40→export function IncomingCallOverlay({
+    41→    41→  caller,
+    42→    42→  callType,
+    43→    43→  onAccept,
+    44→    44→  onReject,
+    45→    45→}: {
+    46→    46→  caller: User
+    47→    47→  callType: 'audio' | 'video'
+    48→    48→  onAccept: () => void
+    49→    49→  onReject: () => void
+    50→    50→}) {
+    51→    51→  return (
+    52→    52→    <motion.div
+    53→    53→      initial={{ opacity: 0, scale: 0.95 }}
+    54→    54→      animate={{ opacity: 1, scale: 1 }}
+    55→    55→      exit={{ opacity: 0, scale: 0.95 }}
+    56→    56→      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    57→    57→    >
+    58→    58→      <div className="bg-card rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center border">
+    59→    59→        <div className="mb-6">
+    60→    60→          <Avatar className="h-20 w-20 mx-auto mb-4">
+    61→    61→            {caller.avatar && <AvatarImage src={caller.avatar} />}
+    62→    62→            <AvatarFallback className="bg-slate-200 dark:bg-slate-700 text-2xl font-semibold">
+    63→    63→              {getInitials(caller.name)}
+    64→    64→            </AvatarFallback>
+    65→    65→          </Avatar>
+    66→    66→          <h2 className="text-xl font-semibold text-foreground">{caller.name}</h2>
+    67→    67→          <p className="text-sm text-muted-foreground mt-1">
+    68→    68→            {callType === 'video' ? 'Incoming video call...' : 'Incoming audio call...'}
+    69→    69→          </p>
+    70→    70→        </div>
+    71→    71→        <div className="flex items-center justify-center gap-6">
+    72→    72→          <button
+    73→    73→            onClick={onReject}
+    74→    74→            className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg"
+    75→    75→          >
+    76→    76→            <PhoneOff className="h-6 w-6" />
+    77→    77→          </button>
+    78→    78→          <button
+    79→    79→            onClick={onAccept}
+    80→    80→            className="h-14 w-14 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-lg animate-pulse"
+    81→    81→          >
+    82→    82→            <Phone className="h-6 w-6" />
+    83→    83→          </button>
+    84→    84→        </div>
+    85→    85→      </div>
+    86→    86→    </motion.div>
+    87→    87→  )
+    88→    88→}
+    89→    89→
+    90→    90→// ─── Screen Share Banner ───────────────────────────────────────────────
+    91→    91→
+    92→    92→function ScreenShareBanner({
+    93→    93→  isLocal,
+    94→    94→  label,
+    95→    95→  onStop,
+    96→    96→}: {
+    97→    97→  isLocal: boolean
+    98→    98→  label: string
+    99→    99→  onStop: () => void
+   100→   100→}) {
+   101→   101→  return (
+   102→   102→    <motion.div
+   103→   103→      initial={{ opacity: 0, y: -10 }}
+   104→   104→      animate={{ opacity: 1, y: 0 }}
+   105→   105→      exit={{ opacity: 0, y: -10 }}
+   106→   106→      className="flex items-center justify-between px-4 py-2 bg-emerald-600 text-white text-sm"
+   107→   107→    >
+   108→   108→      <div className="flex items-center gap-2">
+   109→   109→        <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
+   110→   110→        <Monitor className="h-4 w-4" />
+   111→   111→        <span className="font-medium">
+   112→   112→          {isLocal ? 'You are sharing your screen' : `${label} is presenting`}
+   113→   113→        </span>
+   114→   114→        {label && isLocal && (
+   115→   115→          <span className="text-white/70 text-xs truncate max-w-[200px]">— {label}</span>
+   116→   116→        )}
+   117→   117→      </div>
+   118→   118→      {isLocal && (
+   119→   119→        <button
+   120→   120→          onClick={onStop}
+   121→   121→          className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md text-sm font-medium transition-colors"
+   122→   122→        >
+   123→   123→          <MonitorOff className="h-3.5 w-3.5" />
+   124→   124→          Stop
+   125→   125→        </button>
+   126→   126→      )}
+   127→   127→    </motion.div>
+   128→   128→  )
+   129→   129→}
+   130→   130→
+   131→   131→// ─── Active Call Floating Panel ─────────────────────────────────────────
+   132→   132→
+   133→   133→export function VideoCallPanel({
+   134→   134→  currentUser,
+   135→   135→  targetUser,
+   136→   136→  isInCall,
+   137→   137→  callType,
+   138→   138→  callStatus,
+   139→   139→  onEnd,
+   140→   140→  onToggleMic,
+   141→   141→  onToggleCamera,
+   142→   142→  onToggleScreen,
+   143→   143→  micOn,
+   144→   144→  cameraOn,
+   145→   145→  screenOn,
+   146→   146→  remoteScreenOn,
+   147→   147→  remoteMicOn,
+   148→   148→  remoteCameraOn,
+   149→   149→  screenShareLabel,
+   150→   150→}: VideoCallProps) {
+   151→   151→  const [isMinimized, setIsMinimized] = useState(false)
+   152→   152→  const [isFullscreen, setIsFullscreen] = useState(false)
+   153→   153→  const [callDuration, setCallDuration] = useState(0)
+   154→   154→  const [meetingLink, setMeetingLink] = useState('')
+   155→   155→  const [remoteVideoPresent, setRemoteVideoPresent] = useState(false)
+   156→   156→  const [remoteScreenPresent, setRemoteScreenPresent] = useState(false)
+   157→   157→  const timerRef = useRef<ReturnType<typeof setInterval>>
+   158→   158→  const panelRef = useRef<HTMLDivElement>(null)
+   159→   159→
+   160→   160→  // Timer for connected calls
+   161→   161→  useEffect(() => {
+   162→   162→    if (callStatus === 'connected') {
+   163→   163→      timerRef.current = setInterval(() => setCallDuration((p) => p + 1), 1000)
+   164→   164→    } else {
+   165→   165→      if (timerRef.current) clearInterval(timerRef.current)
+   166→   166→      setCallDuration(0)
+   167→   167→    }
+   168→   168→    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+   169→   169→  }, [callStatus])
+   170→   170→
+   171→   171→  // Generate meeting link
+   172→   172→  useEffect(() => {
+   173→   173→    if (isInCall) {
+   174→   174→      const id = Math.random().toString(36).substring(2, 10)
+   175→   175→      setMeetingLink(`${window.location.origin}/meet/${id}`)
+   176→   176→    }
+   177→   177→  }, [isInCall])
+   178→   178→
+   179→   179→  // Monitor remote video tracks
+   180→   180→  useEffect(() => {
+   181→   181→    if (callStatus !== 'connected') {
+   182→   182→      setRemoteVideoPresent(false)
+   183→   183→      setRemoteScreenPresent(false)
+   184→   184→      return
+   185→   185→    }
+   186→   186→    const checkTracks = setInterval(() => {
+   187→   187→      const remoteVideo = document.querySelector('#remote-video') as HTMLVideoElement
+   188→   188→      const hasVideo = remoteVideo?.srcObject instanceof MediaStream &&
+   189→   189→        (remoteVideo.srcObject as MediaStream).getVideoTracks().some((t) => t.enabled && t.readyState === 'live')
+   190→   190→      setRemoteVideoPresent(!!hasVideo)
+   191→   191→
+   192→   192→      const remoteScreenVideo = document.querySelector('#remote-screen-video') as HTMLVideoElement
+   193→   193→      const hasScreen = remoteScreenVideo?.srcObject instanceof MediaStream &&
+   194→   194→        (remoteScreenVideo.srcObject as MediaStream).getVideoTracks().length > 0
+   195→   195→      setRemoteScreenPresent(!!hasScreen)
+   196→   196→    }, 1000)
+   197→   197→    return () => clearInterval(checkTracks)
+   198→   198→  }, [callStatus])
+   199→   199→
+   200→   200→  const copyLink = useCallback(() => {
+   201→   201→    if (meetingLink) {
+   202→   202→      navigator.clipboard.writeText(meetingLink)
+   203→   203→      toast.success('Meeting link copied!')
+   204→   204→    }
+   205→   205→  }, [meetingLink])
+   206→   206→
+   207→   207→  const formatTime = (seconds: number) => {
+   208→   208→    const h = Math.floor(seconds / 3600)
+   209→   209→    const m = Math.floor((seconds % 3600) / 60)
+   210→   210→    const s = seconds % 60
+   211→   211→    return h > 0
+   212→   212→      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+   213→   213→      : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+   214→   214→  }
+   215→   215→
+   216→   216→  const toggleFullscreen = useCallback(() => {
+   217→   217→    if (!panelRef.current) return
+   218→   218→    if (!document.fullscreenElement) {
+   219→   219→      panelRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+   220→   220→    } else {
+   221→   221→      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+   222→   222→    }
+   223→   223→  }, [])
+   224→   224→
+   225→   225→  if (!isInCall) return null
+   226→   226→
+   227→   227→  const isConnected = callStatus === 'connected'
+   228→   228→  const isRinging = callStatus === 'ringing'
+   229→   229→  const isConnecting = callStatus === 'connecting'
+   230→   230→  const isVideoCall = callType === 'video'
+   231→   231→  const isGroupCall = targetUser?.role === 'team' && targetUser?.id?.startsWith('group-')
+   232→   232→
+   233→   233→  // Whether the main view should show screen content
+   234→   234→  const showLocalScreen = isConnected && screenOn
+   235→   235→  const showRemoteScreen = isConnected && remoteScreenOn && remoteScreenPresent
+   236→   236→  const showScreenContent = showLocalScreen || showRemoteScreen
+   237→   237→
+   238→   238→  // ── Minimized view ──
+   239→   239→  if (isMinimized) {
+   240→   240→    return (
+   241→   241→      <AnimatePresence>
+   242→   242→        <motion.div
+   243→   243→          initial={{ opacity: 0, y: 40, scale: 0.9 }}
+   244→   244→          animate={{ opacity: 1, y: 0, scale: 1 }}
+   245→   245→          exit={{ opacity: 0, y: 40, scale: 0.9 }}
+   246→   246→          className="fixed bottom-6 right-6 z-50"
+   247→   247→        >
+   248→   248→          <div className="flex items-center gap-2 bg-card border rounded-2xl shadow-2xl px-3 py-2.5 pr-1.5">
+   249→   249→            {targetUser && (
+   250→   250→              <div className="flex items-center gap-2 min-w-0">
+   251→   251→                <div className={cn(
+   252→   252→                  'h-2.5 w-2.5 rounded-full flex-shrink-0',
+   253→   253→                  isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
+   254→   254→                )} />
+   255→   255→                {showScreenContent && <MonitorUp className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />}
+   256→   256→                <span className="text-sm font-medium truncate max-w-[120px]">
+   257→   257→                  {targetUser.name}
+   258→   258→                </span>
+   259→   259→                <span className="text-xs text-muted-foreground font-mono">
+   260→   260→                  {isConnected ? formatTime(callDuration) : isRinging ? 'Ringing...' : 'Connecting...'}
+   261→   261→                </span>
+   262→   262→              </div>
+   263→   263→            )}
+   264→   264→            <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => setIsMinimized(false)}>
+   265→   265→              <Maximize2 className="h-4 w-4" />
+   266→   266→            </Button>
+   267→   267→            <Button
+   268→   268→              variant="ghost" size="icon"
+   269→   269→              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex-shrink-0"
+   270→   270→              onClick={onEnd}
+   271→   271→            >
+   272→   272→              <PhoneOff className="h-4 w-4" />
+   273→   273→            </Button>
+   274→   274→          </div>
+   275→   275→        </motion.div>
+   276→   276→      </AnimatePresence>
+   277→   277→    )
+   278→   278→  }
+   279→   279→
+   280→   280→  // ── Full call panel ──
+   281→   281→  return (
+   282→   282→    <AnimatePresence>
+   283→   283→      <motion.div
+   284→   284→        ref={panelRef}
+   285→   285→        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+   286→   286→        animate={{ opacity: 1, scale: 1, y: 0 }}
+   287→   287→        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+   288→   288→        className={cn(
+   289→   289→          'fixed z-50 shadow-2xl border-2 border-slate-700 overflow-hidden',
+   290→   290→          showScreenContent
+   291→   291→            ? 'bottom-4 right-4 left-4 top-4'
+   292→   292→            : 'bottom-6 right-6',
+   293→   293→          showScreenContent
+   294→   294→            ? 'w-auto h-auto'
+   295→   295→            : isVideoCall ? 'w-[560px] h-[420px]' : 'w-[380px] h-[280px]',
+   296→   296→          'rounded-2xl bg-slate-950 text-white',
+   297→   297→          isFullscreen && 'fixed inset-0 !rounded-none !border-0'
+   298→   298→        )}
+   299→   299→      >
+   300→   300→        {/* ── Screen Share Banner ── */}
+   301→   301→        <AnimatePresence>
+   302→   302→          {showLocalScreen && (
+   303→   303→            <ScreenShareBanner
+   304→   304→              isLocal
+   305→   305→              label={screenShareLabel}
+   306→   306→              onStop={onToggleScreen}
+   307→   307→            />
+   308→   308→          )}
+   309→   309→          {showRemoteScreen && !showLocalScreen && (
+   310→   310→            <ScreenShareBanner
+   311→   311→              isLocal={false}
+   312→   312→              label={targetUser?.name ?? 'Participant'}
+   313→   313→              onStop={() => {}}
+   314→   314→            />
+   315→   315→          )}
+   316→   316→        </AnimatePresence>
+   317→   317→
+   318→   318→        {/* ── Call Header ── */}
+   319→   319→        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/80 border-b border-white/10">
+   320→   320→          <div className="flex items-center gap-2.5 min-w-0">
+   321→   321→            <div className={cn(
+   322→   322→              'h-2.5 w-2.5 rounded-full flex-shrink-0',
+   323→   323→              isConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+   324→   324→            )} />
+   325→   325→            <span className="text-sm font-medium text-white/90 truncate">
+   326→   326→              {targetUser ? targetUser.name : 'Meeting'}
+   327→   327→            </span>
+   328→   328→            {isGroupCall && <Users className="h-3.5 w-3.5 text-white/50" />}
+   329→   329→            <span className="text-xs text-white/50 font-mono">
+   330→   330→              {isConnected ? formatTime(callDuration) : isRinging ? 'Ringing...' : 'Connecting...'}
+   331→   331→            </span>
+   332→   332→          </div>
+   333→   333→          <div className="flex items-center gap-0.5">
+   334→   334→            <Button
+   335→   335→              variant="ghost" size="icon"
+   336→   336→              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+   337→   337→              onClick={copyLink}
+   338→   338→              title="Copy meeting link"
+   339→   339→            >
+   340→   340→              <Copy className="h-3.5 w-3.5" />
+   341→   341→            </Button>
+   342→   342→            <Button
+   343→   343→              variant="ghost" size="icon"
+   344→   344→              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+   345→   345→              onClick={toggleFullscreen}
+   346→   346→              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+   347→   347→            >
+   348→   348→              <Maximize2 className="h-3.5 w-3.5" />
+   349→   349→            </Button>
+   350→   350→            <Button
+   351→   351→              variant="ghost" size="icon"
+   352→   352→              className="h-7 w-7 text-white/60 hover:text-white hover:bg-white/10"
+   353→   353→              onClick={() => setIsMinimized(true)}
+   354→   354→            >
+   355→   355→              <Minimize2 className="h-3.5 w-3.5" />
+   356→   356→            </Button>
+   357→   357→          </div>
+   358→   358→        </div>
+   359→   359→
+   360→   360→        {/* ── Video Area ── */}
+   361→   361→        <div className="relative" style={{ height: 'calc(100% - 110px - 40px)' }}>
+   362→   362→          {/* ── SCREEN SHARE MAIN VIEW ── */}
+   363→   363→          {showScreenContent ? (
+   364→   364→            <div className="absolute inset-0 bg-slate-900">
+   365→   365→              {/* Local screen share (presenting) */}
+   366→   366→              {showLocalScreen && (
+   367→   367→                <div className="absolute inset-0 flex flex-col">
+   368→   368→                  <div className="flex-1 flex items-center justify-center p-4">
+   369→   369→                    <div className="relative w-full h-full bg-slate-800 rounded-lg overflow-hidden shadow-2xl border border-white/10">
+   370→   370→                      <video
+   371→   371→                        id="local-screen-video"
+   372→   372→                        autoPlay
+   373→   373→                        playsInline
+   374→   374→                        muted
+   375→   375→                        className="w-full h-full object-contain bg-black"
+   376→   376→                      />
+   377→   377→                      {/* Stop button overlay */}
+   378→   378→                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+   379→   379→                        <button
+   380→   380→                          onClick={onToggleScreen}
+   381→   381→                          className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-full text-sm font-medium transition-colors shadow-lg"
+   382→   382→                        >
+   383→   383→                          <MonitorOff className="h-4 w-4" />
+   384→   384→                          Stop sharing
+   385→   385→                        </button>
+   386→   386→                      </div>
+   387→   387→                    </div>
+   388→   388→                  </div>
+   389→   389→                </div>
+   390→   390→              )}
+   391→   391→
+   392→   392→              {/* Remote screen share (viewing) */}
+   393→   393→              {showRemoteScreen && !showLocalScreen && (
+   394→   394→                <div className="absolute inset-0 bg-black flex items-center justify-center p-4">
+   395→   395→                  <div className="relative w-full h-full rounded-lg overflow-hidden">
+   396→   396→                    <video
+   397→   397→                      id="remote-screen-video"
+   398→   398→                      autoPlay
+   399→   399→                      playsInline
+   400→   400→                      className="w-full h-full object-contain bg-black"
+   401→   401→                    />
+   402→   402→                    {/* Remote user info when viewing screen */}
+   403→   403→                    <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-lg">
+   404→   404→                      <Avatar className="h-6 w-6">
+   405→   405→                        {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
+   406→   406→                        <AvatarFallback className="bg-slate-600 text-[10px]">
+   407→   407→                          {targetUser ? getInitials(targetUser.name) : '?'}
+   408→   408→                        </AvatarFallback>
+   409→   409→                      </Avatar>
+   410→   410→                      <span className="text-xs text-white/80 font-medium">{targetUser?.name ?? 'Participant'}</span>
+   411→   411→                      {!remoteCameraOn && <VideoOff className="h-3 w-3 text-white/50" />}
+   412→   412→                    </div>
+   413→   413→                  </div>
+   414→   414→                </div>
+   415→   415→              )}
+   416→   416→
+   417→   417→              {/* Picture-in-picture: local camera when presenting screen */}
+   418→   418→              {isVideoCall && showLocalScreen && (
+   419→   419→                <div className="absolute bottom-20 right-4 w-[160px] h-[120px] rounded-xl overflow-hidden shadow-xl border-2 border-white/20 bg-slate-800">
+   420→   420→                  {cameraOn ? (
+   421→   421→                    <video
+   422→   422→                      id="local-video"
+   423→   423→                      autoPlay
+   424→   424→                      playsInline
+   425→   425→                      muted
+   426→   426→                      className="w-full h-full object-cover transform -scale-x-100"
+   427→   427→                    />
+   428→   428→                  ) : (
+   429→   429→                    <div className="w-full h-full flex items-center justify-center">
+   430→   430→                      <Avatar className="h-10 w-10">
+   431→   431→                        {currentUser?.avatar && <AvatarImage src={currentUser.avatar} />}
+   432→   432→                        <AvatarFallback className="bg-slate-700 text-sm font-semibold">
+   433→   433→                          {getInitials(currentUser.name)}
+   434→   434→                        </AvatarFallback>
+   435→   435→                      </Avatar>
+   436→   436→                    </div>
+   437→   437→                  )}
+   438→   438→                </div>
+   439→   439→              )}
+   440→   440→            </div>
+   441→   441→          ) : (
+   442→   442→            /* ── NORMAL VIDEO / AUDIO VIEW ── */
+   443→   443→            <div className="absolute inset-0 bg-slate-900 flex items-center justify-center">
+   444→   444→              {/* Remote video */}
+   445→   445→              {isVideoCall && isConnected && (
+   446→   446→                <video
+   447→   447→                  id="remote-video"
+   448→   448→                  autoPlay
+   449→   449→                  playsInline
+   450→   450→                  className={cn(
+   451→   451→                    'w-full h-full object-cover',
+   452→   452→                    !remoteVideoPresent && 'hidden'
+   453→   453→                  )}
+   454→   454→                />
+   455→   455→              )}
+   456→   456→
+   457→   457→              {/* Waiting/connecting state */}
+   458→   458→              {!isConnected && (
+   459→   459→                <div className="flex flex-col items-center gap-3">
+   460→   460→                  <Avatar className="h-20 w-20">
+   461→   461→                    {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
+   462→   462→                    <AvatarFallback className="bg-slate-700 text-2xl font-semibold">
+   463→   463→                      {targetUser ? getInitials(targetUser.name) : '?'}
+   464→   464→                    </AvatarFallback>
+   465→   465→                  </Avatar>
+   466→   466→                  <div className="text-center">
+   467→   467→                    <p className="text-white/90 font-medium">
+   468→   468→                      {isRinging ? 'Calling...' : 'Connecting...'}
+   469→   469→                    </p>
+   470→   470→                    {isRinging && (
+   471→   471→                      <div className="flex items-center justify-center gap-1.5 mt-2">
+   472→   472→                        {[0, 1, 2].map((i) => (
+   473→   473→                          <motion.div
+   474→   474→                            key={i}
+   475→   475→                            className="h-2 w-2 bg-emerald-400 rounded-full"
+   476→   476→                            animate={{ opacity: [0.3, 1, 0.3] }}
+   477→   477→                            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+   478→   478→                          />
+   479→   479→                        ))}
+   480→   480→                      </div>
+   481→   481→                    )}
+   482→   482→                  </div>
+   483→   483→                </div>
+   484→   484→              )}
+   485→   485→
+   486→   486→              {/* Remote user avatar (camera off or no video) */}
+   487→   487→              {isConnected && isVideoCall && !remoteVideoPresent && !showScreenContent && (
+   488→   488→                <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+   489→   489→                  <div className="flex flex-col items-center gap-2">
+   490→   490→                    <Avatar className="h-24 w-24">
+   491→   491→                      {targetUser?.avatar && <AvatarImage src={targetUser.avatar} />}
+   492→   492→                      <AvatarFallback className="bg-slate-700 text-3xl font-semibold">
+   493→   493→                        {targetUser ? getInitials(targetUser.name) : '?'}
+   494→   494→                      </AvatarFallback>
+   495→   495→                    </Avatar>
+   496→   496→                    {!remoteCameraOn && (
+   497→   497→                      <div className="flex items-center gap-1 text-white/40 text-xs">
+   498→   498→                        <VideoOff className="h-3 w-3" />
+   499→   499→                        <span>Camera off</span>
+   500→   500→                      </div>
+   501→   501→                    )}
+   502→   502→                    {!remoteMicOn && (
+   503→   503→                      <div className="flex items-center gap-1 text-red-400 text-xs">
+   504→   504→                        <MicOff className="h-3 w-3" />
+   505→   505→                        <span>Muted</span>
+   506→   506→                      </div>
+   507→   507→                    )}
+   508→   508→                  </div>
+   509→   509→                </div>
+   510→   510→              )}
+   511→   511→
+   512→   512→              {/* Audio call in progress */}
+   513→   513→              {isConnected && !isVideoCall && (
+   514→   514→                <div className="flex flex-col items-center gap-3">
+   515→   515→                  <div className="h-24 w-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
+   516→   516→                    <Phone className="h-10 w-10 text-emerald-400" />
+   517→   517→                  </div>
+   518→   518→                  <p className="text-white/70 text-sm">Audio call in progress</p>
+   519→   519→                  <p className="text-white/50 text-lg font-mono font-medium">
+   520→   520→                    {formatTime(callDuration)}
+   521→   521→                  </p>
+   522→   522→                  {!remoteMicOn && (
+   523→   523→                    <div className="flex items-center gap-1 text-red-400 text-xs">
+   524→   524→                      <MicOff className="h-3 w-3" />
+   525→   525→                      <span>{targetUser?.name} is muted</span>
+   526→   526→                    </div>
+   527→   527→                  )}
+   528→   528→                </div>
+   529→   529→              )}
+   530→   530→
+   531→   531→              {/* Local video picture-in-picture */}
+   532→   532→              {isVideoCall && (
+   533→   533→                <div className={cn(
+   534→   534→                  'absolute bottom-3 right-3 rounded-xl overflow-hidden shadow-lg border-2 border-white/20',
+   535→   535→                  cameraOn ? 'w-[140px] h-[105px]' : 'w-[100px] h-[100px]'
+   536→   536→                )}>
+   537→   537→                  {cameraOn ? (
+   538→   538→                    <video
+   539→   539→                      id="local-video"
+   540→   540→                      autoPlay
+   541→   541→                      playsInline
+   542→   542→                      muted
+   543→   543→                      className="w-full h-full object-cover transform -scale-x-100"
+   544→   544→                    />
+   545→   545→                  ) : (
+   546→   546→                    <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+   547→   547→                      <Avatar className="h-10 w-10">
+   548→   548→                        {currentUser?.avatar && <AvatarImage src={currentUser.avatar} />}
+   549→   549→                        <AvatarFallback className="bg-slate-700 text-sm font-semibold">
+   550→   550→                          {getInitials(currentUser.name)}
+   551→   551→                        </AvatarFallback>
+   552→   552→                      </Avatar>
+   553→   553→                    </div>
+   554→   554→                  )}
+   555→   555→                </div>
+   556→   556→              )}
+   557→   557→            </div>
+   558→   558→          )}
+   559→   559→        </div>
+   560→   560→
+   561→   561→        {/* ── Controls Bar ── */}
+   562→   562→        <div className={cn(
+   563→   563→          'absolute bottom-0 left-0 right-0 px-4 py-3',
+   564→   564→          'bg-gradient-to-t from-slate-950/90 to-transparent'
+   565→   565→        )}>
+   566→   566→          <div className="flex items-center justify-center gap-2">
+   567→   567→            {/* Mic */}
+   568→   568→            <ControlButton
+   569→   569→              active={micOn}
+   570→   570→              activeIcon={<Mic className="h-4 w-4" />}
+   571→   571→              inactiveIcon={<MicOff className="h-4 w-4" />}
+   572→   572→              onClick={onToggleMic}
+   573→   573→              title={micOn ? 'Mute' : 'Unmute'}
+   574→   574→            />
+   575→   575→
+   576→   576→            {/* Camera (video calls only) */}
+   577→   577→            {isVideoCall && (
+   578→   578→              <ControlButton
+   579→   579→                active={cameraOn}
+   580→   580→                activeIcon={<Video className="h-4 w-4" />}
+   581→   581→                inactiveIcon={<VideoOff className="h-4 w-4" />}
+   582→   582→                onClick={onToggleCamera}
+   583→   583→                title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
+   584→   584→              />
+   585→   585→            )}
+   586→   586→
+   587→   587→            {/* Screen share — with tooltip showing the label */}
+   588→   588→            <div className="relative group">
+   589→   589→              <ControlButton
+   590→   590→                active={screenOn}
+   591→   591→                activeIcon={<MonitorOff className="h-4 w-4" />}
+   592→   592→                inactiveIcon={<MonitorUp className="h-4 w-4" />}
+   593→   593→                onClick={onToggleScreen}
+   594→   594→                title={screenOn ? 'Stop sharing' : 'Share screen'}
+   595→   595→              />
+   596→   596→              {/* Label tooltip */}
+   597→   597→              {screenOn && screenShareLabel && (
+   598→   598→                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 bg-black text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+   599→   599→                  Sharing: {screenShareLabel}
+   600→   600→                </div>
+   601→   601→              )}
+   602→   602→            </div>
+   603→   603→
+   604→   604→            {/* End Call */}
+   605→   605→            <button
+   606→   606→              onClick={onEnd}
+   607→   607→              className="h-10 w-10 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg"
+   608→   608→              title="End call"
+   609→   609→            >
+   610→   610→              <PhoneOff className="h-4 w-4" />
+   611→   611→            </button>
+   612→   612→          </div>
+   613→   613→
+   614→   614→          {/* Screen share indicator at the bottom */}
+   615→   615→          {screenOn && (
+   616→   616→            <motion.div
+   617→   617→              initial={{ opacity: 0, height: 0 }}
+   618→   618→              animate={{ opacity: 1, height: 'auto' }}
+   619→   619→              exit={{ opacity: 0, height: 0 }}
+   620→   620→              className="flex items-center justify-center gap-2 mt-2 text-xs text-emerald-400"
+   621→   621→            >
+   622→   622→              <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+   623→   623→              <span>You are presenting</span>
+   624→   624→              {screenShareLabel && <span className="text-white/40">({screenShareLabel})</span>}
+   625→   625→            </motion.div>
+   626→   626→          )}
+   627→   627→        </div>
+   628→   628→      </motion.div>
+   629→   629→    </AnimatePresence>
+   630→   630→  )
+   631→   631→}
+   632→   632→
+   633→   633→// ─── Reusable Control Button ───────────────────────────────────────────
+   634→   634→
+   635→   635→function ControlButton({
+   636→   636→  active,
+   637→   637→  activeIcon,
+   638→   638→  inactiveIcon,
+   639→   639→  onClick,
+   640→   640→  title,
+   641→   641→}: {
+   642→   642→  active: boolean
+   643→   643→  activeIcon: React.ReactNode
+   644→   644→  inactiveIcon: React.ReactNode
+   645→   645→  onClick: () => void
+   646→   646→  title: string
+   647→   647→}) {
+   648→   648→  return (
+   649→   649→    <button
+   650→   650→      onClick={onClick}
+   651→   651→      className={cn(
+   652→   652→        'h-10 w-10 rounded-full flex items-center justify-center transition-all',
+   653→   653→        active ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+   654→   654→      )}
+   655→   655→      title={title}
+   656→   656→    >
+   657→   657→      {active ? activeIcon : inactiveIcon}
+   658→   658→    </button>
+   659→   659→  )
+   660→   660→}
+   661→   661→
+   662→   662→// ── Video Call Button (for chat header) ──
+   663→   663→
+   664→   664→export function VideoCallButtons({
+   665→   665→  onVideo,
+   666→   666→  onAudio,
+   667→   667→  disabled,
+   668→   668→}: {
+   669→   669→  onVideo: () => void
+   670→   670→  onAudio: () => void
+   671→   671→  disabled?: boolean
+   672→   672→}) {
+   673→   673→  return (
+   674→   674→    <div className="flex items-center gap-1 ml-auto mr-1">
+   675→   675→      <Button
+   676→   676→        variant="ghost"
+   677→   677→        size="icon"
+   678→   678→        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+   679→   679→        onClick={onAudio}
+   680→   680→        disabled={disabled}
+   681→   681→        title="Audio call"
+   682→   682→      >
+   683→   683→        <Phone className="h-4 w-4" />
+   684→   684→      </Button>
+   685→   685→      <Button
+   686→   686→        variant="ghost"
+   687→   687→        size="icon"
+   688→   688→        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+   689→   689→        onClick={onVideo}
+   690→   690→        disabled={disabled}
+   691→   691→        title="Video call"
+   692→   692→      >
+   693→   693→        <Video className="h-4 w-4" />
+   694→   694→      </Button>
+   695→   695→    </div>
+   696→   696→  )
+   697→   697→}
+   698→   698→
+   699→   699→// ── Group Call Buttons ──
+   700→   700→
+   701→   701→export function GroupCallButtons({
+   702→   702→  onVideo,
+   703→   703→  onAudio,
+   704→   704→  disabled,
+   705→   705→}: {
+   706→   706→  onVideo: () => void
+   707→   707→  onAudio: () => void
+   708→   708→  disabled?: boolean
+   709→   709→}) {
+   710→   710→  return (
+   711→   711→    <div className="flex items-center gap-1">
+   712→   712→      <Button
+   713→   713→        variant="ghost"
+   714→   714→        size="icon"
+   715→   715→        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+   716→   716→        onClick={onAudio}
+   717→   717→        disabled={disabled}
+   718→   718→        title="Start audio call"
+   719→   719→      >
+   720→   720→        <Phone className="h-4 w-4" />
+   721→   721→      </Button>
+   722→   722→      <Button
+   723→   723→        variant="ghost"
+   724→   724→        size="icon"
+   725→   725→        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+   726→   726→        onClick={onVideo}
+   727→   727→        disabled={disabled}
+   728→   728→        title="Start video call"
+   729→   729→      >
+   730→   730→        <Video className="h-4 w-4" />
+   731→   731→      </Button>
+   732→   732→    </div>
+   733→   733→  )
+   734→   734→}
+   735→   735→

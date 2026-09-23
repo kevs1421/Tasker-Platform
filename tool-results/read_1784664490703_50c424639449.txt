@@ -1,0 +1,783 @@
+     1→'use client'
+     2→
+     3→import { useAuthStore } from '@/stores/auth'
+     4→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+     5→import { Button } from '@/components/ui/button'
+     6→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { ScrollArea } from '@/components/ui/scroll-area'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Input } from '@/components/ui/input'
+    14→import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, ListTodo, MessageSquare, ClipboardCheck, UserCircle, Users, Sun, Moon, Kanban, Clock, Play, Square, Loader2, Timer, WifiOff, Camera, CameraOff, Settings2, RefreshCw } from 'lucide-react'
+    15→import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
+    16→import type { AppRoute } from '@/types'
+    17→import { cn } from '@/lib/utils'
+    18→import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+    19→import { useTheme } from 'next-themes'
+    20→import { toast } from 'sonner'
+    21→import { screenshotSession } from '@/lib/screenshot-capture'
+    22→
+    23→// ─── Time In/Out Widget ──────────────────────────────────
+    24→
+    25→interface ActiveTimeEntry {
+    26→  id: string
+    27→  timeIn: string
+    28→  projectId?: string | null
+    29→  project?: { id: string; name: string } | null
+    30→  task?: { id: string; title: string } | null
+    31→  description?: string | null
+    32→}
+    33→
+    34→interface Project {
+    35→  id: string
+    36→  name: string
+    37→}
+    38→
+    39→interface Task {
+    40→  id: string
+    41→  title: string
+    42→}
+    43→
+    44→function formatElapsed(ms: number): string {
+    45→  const totalSeconds = Math.floor(ms / 1000)
+    46→  const h = Math.floor(totalSeconds / 3600)
+    47→  const m = Math.floor((totalSeconds % 3600) / 60)
+    48→  const s = totalSeconds % 60
+    49→  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    50→  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    51→}
+    52→
+    53→function formatCountdown(ms: number): string {
+    54→  if (ms <= 0) return '0:00'
+    55→  const totalSeconds = Math.floor(ms / 1000)
+    56→  const m = Math.floor(totalSeconds / 60)
+    57→  const s = totalSeconds % 60
+    58→  return `${m}:${String(s).padStart(2, '0')}`
+    59→}
+    60→
+    61→function TimeInOutWidget({ userId }: { userId: string }) {
+    62→  const [activeEntry, setActiveEntry] = useState<ActiveTimeEntry | null>(null)
+    63→  const [elapsedMs, setElapsedMs] = useState(0)
+    64→  const [loading, setLoading] = useState(true)
+    65→  const [clockingIn, setClockingIn] = useState(false)
+    66→  const [clockingOut, setClockingOut] = useState(false)
+    67→  const [dialogOpen, setDialogOpen] = useState(false)
+    68→
+    69→  // Time In dialog state
+    70→  const [projects, setProjects] = useState<Project[]>([])
+    71→  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+    72→  const [tasks, setTasks] = useState<Task[]>([])
+    73→  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+    74→  const [description, setDescription] = useState('')
+    75→  const [loadingProjects, setLoadingProjects] = useState(false)
+    76→  const [loadingTasks, setLoadingTasks] = useState(false)
+    77→
+    78→  // Screenshot session state
+    79→  const [autoScreenshot, setAutoScreenshot] = useState(true)
+    80→  const [isCapturing, setIsCapturing] = useState(false)
+    81→  const [captureCount, setCaptureCount] = useState(0)
+    82→  const [nextCaptureIn, setNextCaptureIn] = useState(0)
+    83→  const [screenshotInterval, setScreenshotInterval] = useState(5) // minutes
+    84→  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    85→
+    86→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    87→  const startTimeRef = useRef<number>(0)
+    88→
+    89→  // Fetch screenshot config on mount
+    90→  useEffect(() => {
+    91→    fetch(`/api/screenshot-config?userId=${userId}`)
+    92→      .then(r => r.json())
+    93→      .then(d => {
+    94→        if (d.autoEnabled !== undefined) setAutoScreenshot(d.autoEnabled)
+    95→        if (d.intervalMinutes) setScreenshotInterval(d.intervalMinutes)
+    96→      })
+    97→      .catch(() => {})
+    98→  }, [userId])
+    99→
+   100→  // Countdown timer for next screenshot
+   101→  useEffect(() => {
+   102→    if (activeEntry && autoScreenshot && screenshotSession.getIsRunning()) {
+   103→      countdownRef.current = setInterval(() => {
+   104→        setNextCaptureIn(screenshotSession.getTimeUntilNextCapture())
+   105→      }, 1000)
+   106→    } else {
+   107→      if (countdownRef.current) {
+   108→        clearInterval(countdownRef.current)
+   109→        countdownRef.current = null
+   110→      }
+   111→      setNextCaptureIn(0)
+   112→    }
+   113→    return () => {
+   114→      if (countdownRef.current) {
+   115→        clearInterval(countdownRef.current)
+   116→        countdownRef.current = null
+   117→      }
+   118→    }
+   119→  }, [activeEntry, autoScreenshot])
+   120→
+   121→  // Fetch active timer on mount
+   122→  const fetchActiveTimer = useCallback(async () => {
+   123→    try {
+   124→      const res = await fetch(`/api/time-entries?userId=${userId}&active=true`)
+   125→      if (res.ok) {
+   126→        const data = await res.json()
+   127→        const entries = data.timeEntries || []
+   128→        const entry: ActiveTimeEntry | null = entries.find((e: ActiveTimeEntry) => e.timeIn) || null
+   129→        setActiveEntry(entry)
+   130→        if (entry) {
+   131→          startTimeRef.current = new Date(entry.timeIn).getTime()
+   132→          setElapsedMs(Date.now() - startTimeRef.current)
+   133→
+   134→          // Re-start screenshot session if we find an active timer (page reload)
+   135→          const user = useAuthStore.getState().user
+   136→          if (user && user.role !== 'client') {
+   137→            fetch(`/api/screenshot-config?userId=${userId}`)
+   138→              .then(r => r.json())
+   139→              .then(config => {
+   140→                if (config.autoEnabled) {
+   141→                  screenshotSession.start({
+   142→                    userId,
+   143→                    userRole: user.role,
+   144→                    projectId: entry.projectId || undefined,
+   145→                    taskId: entry.task?.id || undefined,
+   146→                    intervalMinutes: config.intervalMinutes || 5,
+   147→                    quality: 0.6,
+   148→                    onCaptureStart: () => setIsCapturing(true),
+   149→                    onCaptureComplete: (count) => {
+   150→                      setCaptureCount(count)
+   151→                      setIsCapturing(false)
+   152→                    },
+   153→                    onCaptureError: () => setIsCapturing(false),
+   154→                  })
+   155→                }
+   156→              })
+   157→              .catch(() => {})
+   158→          }
+   159→        }
+   160→      }
+   161→    } catch {
+   162→      // silent
+   163→    } finally {
+   164→      setLoading(false)
+   165→    }
+   166→  }, [userId])
+   167→
+   168→  useEffect(() => {
+   169→    fetchActiveTimer()
+   170→    // Cleanup screenshot session on unmount
+   171→    return () => {
+   172→      screenshotSession.stop()
+   173→    }
+   174→  }, [fetchActiveTimer])
+   175→
+   176→  // 1-second interval for elapsed display
+   177→  useEffect(() => {
+   178→    if (activeEntry) {
+   179→      intervalRef.current = setInterval(() => {
+   180→        setElapsedMs(Date.now() - startTimeRef.current)
+   181→      }, 1000)
+   182→    } else {
+   183→      if (intervalRef.current) {
+   184→        clearInterval(intervalRef.current)
+   185→        intervalRef.current = null
+   186→      }
+   187→    }
+   188→    return () => {
+   189→      if (intervalRef.current) {
+   190→        clearInterval(intervalRef.current)
+   191→        intervalRef.current = null
+   192→      }
+   193→    }
+   194→  }, [activeEntry])
+   195→
+   196→  // Open time-in dialog and fetch projects
+   197→  const handleOpenDialog = async () => {
+   198→    setDialogOpen(true)
+   199→    setSelectedProjectId('')
+   200→    setSelectedTaskId('')
+   201→    setDescription('')
+   202→    setTasks([])
+   203→    setLoadingProjects(true)
+   204→    try {
+   205→      const res = await fetch('/api/projects')
+   206→      if (res.ok) {
+   207→        const data = await res.json()
+   208→        setProjects(data.projects ?? [])
+   209→      }
+   210→    } catch {
+   211→      // silent
+   212→    } finally {
+   213→      setLoadingProjects(false)
+   214→    }
+   215→  }
+   216→
+   217→  // Fetch tasks when project changes
+   218→  const handleProjectChange = async (projectId: string) => {
+   219→    setSelectedProjectId(projectId)
+   220→    setSelectedTaskId('')
+   221→    setTasks([])
+   222→    if (!projectId) return
+   223→    setLoadingTasks(true)
+   224→    try {
+   225→      const res = await fetch(`/api/projects/${projectId}`)
+   226→      if (res.ok) {
+   227→        const data = await res.json()
+   228→        setTasks(data.project?.tasks ?? [])
+   229→      }
+   230→    } catch {
+   231→      // silent
+   232→    } finally {
+   233→      setLoadingTasks(false)
+   234→    }
+   235→  }
+   236→
+   237→  // Clock in
+   238→  const handleClockIn = async () => {
+   239→    const user = useAuthStore.getState().user
+   240→    setClockingIn(true)
+   241→    try {
+   242→      const body: Record<string, unknown> = { action: 'time_in', userId }
+   243→      if (selectedProjectId) body.projectId = selectedProjectId
+   244→      if (selectedTaskId) body.taskId = selectedTaskId
+   245→      if (description.trim()) body.description = description.trim()
+   246→
+   247→      const res = await fetch('/api/time-entries', {
+   248→        method: 'POST',
+   249→        headers: { 'Content-Type': 'application/json' },
+   250→        body: JSON.stringify(body),
+   251→      })
+   252→      if (!res.ok) {
+   253→        const err = await res.json().catch(() => ({}))
+   254→        throw new Error(err.error || 'Failed to clock in')
+   255→      }
+   256→      const data = await res.json()
+   257→      const entry = data.timeEntry
+   258→      if (entry) {
+   259→        setActiveEntry(entry)
+   260→        startTimeRef.current = new Date(entry.timeIn).getTime()
+   261→        setElapsedMs(Date.now() - startTimeRef.current)
+   262→      }
+   263→      setDialogOpen(false)
+   264→      toast.success('Clocked in successfully')
+   265→
+   266→      // Start periodic screenshot session
+   267→      if (autoScreenshot && user && user.role !== 'client') {
+   268→        setCaptureCount(0)
+   269→        screenshotSession.start({
+   270→          userId,
+   271→          userRole: user.role,
+   272→          projectId: selectedProjectId || undefined,
+   273→          taskId: selectedTaskId || undefined,
+   274→          intervalMinutes: screenshotInterval,
+   275→          quality: 0.6,
+   276→          onCaptureStart: () => setIsCapturing(true),
+   277→          onCaptureComplete: (count) => {
+   278→            setCaptureCount(count)
+   279→            setIsCapturing(false)
+   280→          },
+   281→          onCaptureError: () => setIsCapturing(false),
+   282→        })
+   283→        toast.info('Screenshot monitoring started', {
+   284→          description: `Screenshots will be captured every ${screenshotInterval} min`,
+   285→          duration: 3000,
+   286→        })
+   287→      }
+   288→    } catch (err) {
+   289→      toast.error(err instanceof Error ? err.message : 'Failed to clock in')
+   290→    } finally {
+   291→      setClockingIn(false)
+   292→    }
+   293→  }
+   294→
+   295→  // Clock out
+   296→  const handleClockOut = async () => {
+   297→    if (!activeEntry) return
+   298→    setClockingOut(true)
+   299→
+   300→    // Stop screenshot session immediately
+   301→    screenshotSession.stop()
+   302→    setIsCapturing(false)
+   303→
+   304→    const finalCount = screenshotSession.getCaptureCount()
+   305→
+   306→    try {
+   307→      const res = await fetch(`/api/time-entries/${activeEntry.id}`, {
+   308→        method: 'PATCH',
+   309→        headers: { 'Content-Type': 'application/json' },
+   310→        body: JSON.stringify({ action: 'time_out' }),
+   311→      })
+   312→      if (!res.ok) {
+   313→        const err = await res.json().catch(() => ({}))
+   314→        throw new Error(err.error || 'Failed to clock out')
+   315→      }
+   316→      setActiveEntry(null)
+   317→      setElapsedMs(0)
+   318→      setCaptureCount(0)
+   319→      setNextCaptureIn(0)
+   320→      toast.success('Clocked out successfully', {
+   321→        ...(finalCount > 0 && {
+   322→          description: `${finalCount} screenshot${finalCount > 1 ? 's' : ''} saved during this session`,
+   323→        }),
+   324→      })
+   325→    } catch (err) {
+   326→      toast.error(err instanceof Error ? err.message : 'Failed to clock out')
+   327→    } finally {
+   328→      setClockingOut(false)
+   329→    }
+   330→  }
+   331→
+   332→  if (loading) {
+   333→    return (
+   334→      <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 flex items-center justify-center gap-2">
+   335→        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+   336→        <span className="text-xs text-muted-foreground">Loading timer…</span>
+   337→      </div>
+   338→    )
+   339→  }
+   340→
+   341→  if (activeEntry) {
+   342→    return (
+   343→      <>
+   344→        {/* Screenshot monitoring status */}
+   345→        {autoScreenshot && (
+   346→          <div className={cn(
+   347→            'mb-2 rounded-lg border px-3 py-1.5 flex items-center gap-2',
+   348→            isCapturing
+   349→              ? 'border-primary/40 bg-primary/5 dark:bg-primary/10 animate-pulse'
+   350→              : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30'
+   351→          )}>
+   352→            {isCapturing ? (
+   353→              <>
+   354→                <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
+   355→                <span className="text-[11px] text-primary font-medium flex-1">Capturing screenshot…</span>
+   356→                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+   357→              </>
+   358→            ) : (
+   359→              <>
+   360→                <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+   361→                <div className="flex-1 min-w-0">
+   362→                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+   363→                    Monitoring • {captureCount} captured
+   364→                  </span>
+   365→                  {nextCaptureIn > 0 && (
+   366→                    <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 ml-1.5">
+   367→                      Next in {formatCountdown(nextCaptureIn)}
+   368→                    </span>
+   369→                  )}
+   370→                </div>
+   371→                <RefreshCw className="w-3 h-3 text-emerald-500 dark:text-emerald-400 animate-[spin_3s_linear_infinite]" />
+   372→              </>
+   373→            )}
+   374→          </div>
+   375→        )}
+   376→        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-2">
+   377→          <Timer className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+   378→          <div className="flex-1 min-w-0">
+   379→            <div className="text-[10px] text-red-600 dark:text-red-400 font-medium leading-none mb-0.5">
+   380→              {activeEntry.project?.name || 'No Project'}
+   381→            </div>
+   382→            <div className="text-xs font-mono font-semibold text-red-700 dark:text-red-300 tabular-nums">
+   383→              {formatElapsed(elapsedMs)}
+   384→            </div>
+   385→          </div>
+   386→          <Button
+   387→            size="sm"
+   388→            variant="destructive"
+   389→            className="h-7 px-2 text-[11px] shrink-0"
+   390→            onClick={handleClockOut}
+   391→            disabled={clockingOut}
+   392→          >
+   393→            {clockingOut ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3 mr-1" />}
+   394→            Out
+   395→          </Button>
+   396→        </div>
+   397→      </>
+   398→    )
+   399→  }
+   400→
+   401→  return (
+   402→    <>
+   403→      <button
+   404→        onClick={handleOpenDialog}
+   405→        className="mb-3 w-full rounded-lg border border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30 px-3 py-2 flex items-center justify-center gap-2 hover:bg-green-100 dark:hover:bg-green-950/50 transition-colors cursor-pointer"
+   406→      >
+   407→        <Play className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+   408→        <Clock className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+   409→        <span className="text-xs font-medium text-green-700 dark:text-green-300">Time In</span>
+   410→      </button>
+   411→
+   412→      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open) }}>
+   413→        <DialogContent className="sm:max-w-md">
+   414→          <DialogHeader>
+   415→            <DialogTitle>Clock In</DialogTitle>
+   416→            <DialogDescription>Optionally select a project, task, and add a description before clocking in.</DialogDescription>
+   417→          </DialogHeader>
+   418→          <div className="space-y-4 py-2">
+   419→            <div className="space-y-2">
+   420→              <Label className="text-sm">Project (optional)</Label>
+   421→              <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={loadingProjects}>
+   422→                <SelectTrigger className="h-9">
+   423→                  <SelectValue placeholder={loadingProjects ? 'Loading…' : 'Select project'} />
+   424→                </SelectTrigger>
+   425→                <SelectContent>
+   426→                  {projects.map((p) => (
+   427→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   428→                  ))}
+   429→                </SelectContent>
+   430→              </Select>
+   431→            </div>
+   432→            {selectedProjectId && (
+   433→              <div className="space-y-2">
+   434→                <Label className="text-sm">Task (optional)</Label>
+   435→                <Select value={selectedTaskId} onValueChange={setSelectedTaskId} disabled={loadingTasks}>
+   436→                  <SelectTrigger className="h-9">
+   437→                    <SelectValue placeholder={loadingTasks ? 'Loading…' : 'Select task'} />
+   438→                  </SelectTrigger>
+   439→                  <SelectContent>
+   440→                    {tasks.map((t) => (
+   441→                      <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+   442→                    ))}
+   443→                  </SelectContent>
+   444→                </Select>
+   445→              </div>
+   446→            )}
+   447→            <div className="space-y-2">
+   448→              <Label className="text-sm">Description (optional)</Label>
+   449→              <Input
+   450→                placeholder="What are you working on?"
+   451→                value={description}
+   452→                onChange={(e) => setDescription(e.target.value)}
+   453→                className="h-9"
+   454→              />
+   455→            </div>
+   456→
+   457→            {/* Auto-screenshot section */}
+   458→            <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+   459→              <div className="flex items-center justify-between">
+   460→                <div className="flex items-center gap-2">
+   461→                  {autoScreenshot
+   462→                    ? <Camera className="w-4 h-4 text-primary" />
+   463→                    : <CameraOff className="w-4 h-4 text-muted-foreground" />}
+   464→                  <Label className="text-sm font-medium cursor-pointer" onClick={() => setAutoScreenshot(!autoScreenshot)}>
+   465→                    Auto Screenshot Monitoring
+   466→                  </Label>
+   467→                </div>
+   468→                <Button
+   469→                  variant="ghost"
+   470→                  size="sm"
+   471→                  className={cn(
+   472→                    'h-6 px-2 text-[10px]',
+   473→                    autoScreenshot ? 'text-primary' : 'text-muted-foreground'
+   474→                  )}
+   475→                  onClick={() => setAutoScreenshot(!autoScreenshot)}
+   476→                >
+   477→                  {autoScreenshot ? 'ON' : 'OFF'}
+   478→                </Button>
+   479→              </div>
+   480→              {autoScreenshot && (
+   481→                <div className="pl-6 space-y-2">
+   482→                  <div className="flex items-center gap-2">
+   483→                    <Settings2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   484→                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Interval:</Label>
+   485→                    <Select
+   486→                      value={String(screenshotInterval)}
+   487→                      onValueChange={(v) => setScreenshotInterval(Number(v))}
+   488→                    >
+   489→                      <SelectTrigger className="h-7 w-28 text-xs">
+   490→                        <SelectValue />
+   491→                      </SelectTrigger>
+   492→                      <SelectContent>
+   493→                        <SelectItem value="1">Every 1 min</SelectItem>
+   494→                        <SelectItem value="3">Every 3 min</SelectItem>
+   495→                        <SelectItem value="5">Every 5 min</SelectItem>
+   496→                        <SelectItem value="10">Every 10 min</SelectItem>
+   497→                        <SelectItem value="15">Every 15 min</SelectItem>
+   498→                        <SelectItem value="30">Every 30 min</SelectItem>
+   499→                      </SelectContent>
+   500→                    </Select>
+   501→                  </div>
+   502→                  <p className="text-[11px] text-muted-foreground">
+   503→                    Screen will be captured every {screenshotInterval} minute{screenshotInterval > 1 ? 's' : ''} while you are timed in. Screenshots are saved to your work log.
+   504→                  </p>
+   505→                </div>
+   506→              )}
+   507→            </div>
+   508→          </div>
+   509→          <DialogFooter>
+   510→            <Button variant="outline" onClick={() => setDialogOpen(false)} className="h-9">Cancel</Button>
+   511→            <Button onClick={handleClockIn} disabled={clockingIn} className="h-9 bg-green-600 hover:bg-green-700 text-white">
+   512→              {clockingIn && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+   513→              <Play className="w-3.5 h-3.5 mr-1.5" />
+   514→              Clock In
+   515→            </Button>
+   516→          </DialogFooter>
+   517→        </DialogContent>
+   518→      </Dialog>
+   519→    </>
+   520→  )
+   521→}
+   522→
+   523→// ─── Header ─────────────────────────────────────────────
+   524→export function AppHeader() {
+   525→  const { user, logout } = useAuthStore()
+   526→  const { theme, setTheme } = useTheme()
+   527→  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+   528→  const [unreadCount, setUnreadCount] = useState(0)
+   529→
+   530→  useEffect(() => {
+   531→    if (user) {
+   532→      fetch(`/api/messages?userId=${user.id}`)
+   533→        .then(r => r.json())
+   534→        .then(d => setUnreadCount(d.conversations?.reduce((sum: number, c: { unread: number }) => sum + c.unread, 0) || 0))
+   535→        .catch(() => {})
+   536→    }
+   537→  }, [user])
+   538→
+   539→  // Stop screenshot session on logout
+   540→  const handleLogout = () => {
+   541→    screenshotSession.stop()
+   542→    logout()
+   543→  }
+   544→
+   545→  if (!user) return null
+   546→  const roleInfo = getRoleBadgeClasses(user.role)
+   547→
+   548→  return (
+   549→    <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
+   550→      <div className="flex items-center gap-3">
+   551→        <button onClick={() => useAuthStore.getState().toggleSidebar()} className="lg:hidden p-1.5 rounded-md hover:bg-accent">
+   552→          <Menu className="w-5 h-5" />
+   553→        </button>
+   554→        <div className="flex items-center gap-2">
+   555→          <img src="/logo.svg" alt="Yber Digitals" className="w-8 h-8 rounded-lg object-contain" />
+   556→          <span className="font-semibold text-lg hidden sm:block">Yber Digitals</span>
+   557→        </div>
+   558→      </div>
+   559→      <div className="flex items-center gap-2">
+   560→        {mounted && (
+   561→          <DropdownMenu>
+   562→            <DropdownMenuTrigger asChild>
+   563→              <Button variant="ghost" size="icon" className="relative">
+   564→                {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+   565→              </Button>
+   566→            </DropdownMenuTrigger>
+   567→            <DropdownMenuContent align="end" className="w-36">
+   568→              <DropdownMenuItem onClick={() => setTheme('light')} className={cn(theme === 'light' && 'bg-accent')}>
+   569→                <Sun className="mr-2 h-4 w-4" />Light
+   570→              </DropdownMenuItem>
+   571→              <DropdownMenuItem onClick={() => setTheme('dark')} className={cn(theme === 'dark' && 'bg-accent')}>
+   572→                <Moon className="mr-2 h-4 w-4" />Dark
+   573→              </DropdownMenuItem>
+   574→            </DropdownMenuContent>
+   575→          </DropdownMenu>
+   576→        )}
+   577→        <Button variant="ghost" size="icon" className="relative" onClick={() => useAuthStore.getState().setRoute(
+   578→          user.role === 'admin' ? { page: 'admin-dashboard', tab: 'messages' } :
+   579→          user.role === 'team' ? { page: 'team-dashboard', tab: 'messages' } :
+   580→          { page: 'client-dashboard', tab: 'messages' }
+   581→        )}>
+   582→          <MessageSquare className="w-4 h-4" />
+   583→          {unreadCount > 0 && (
+   584→            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-destructive text-destructive-foreground rounded-full text-[10px] font-bold flex items-center justify-center px-1">
+   585→              {unreadCount > 9 ? '9+' : unreadCount}
+   586→            </span>
+   587→          )}
+   588→        </Button>
+   589→        <DropdownMenu>
+   590→          <DropdownMenuTrigger asChild>
+   591→            <Button variant="ghost" className="flex items-center gap-2 pl-2 pr-3">
+   592→              <Avatar className="w-7 h-7">
+   593→                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">{getInitials(user.name)}</AvatarFallback>
+   594→              </Avatar>
+   595→              <div className="hidden sm:flex flex-col items-start">
+   596→                <span className="text-sm font-medium leading-tight">{user.name}</span>
+   597→                <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0', roleInfo)}>{user.role}</Badge>
+   598→              </div>
+   599→            </Button>
+   600→          </DropdownMenuTrigger>
+   601→          <DropdownMenuContent align="end" className="w-56">
+   602→            <DropdownMenuLabel className="font-normal">
+   603→              <div className="flex flex-col space-y-1">
+   604→                <p className="text-sm font-medium">{user.name}</p>
+   605→                <p className="text-xs text-muted-foreground">{user.email}</p>
+   606→              </div>
+   607→            </DropdownMenuLabel>
+   608→            <DropdownMenuSeparator />
+   609→            <DropdownMenuItem onClick={() => useAuthStore.getState().setRoute(
+   610→              user.role === 'admin' ? { page: 'admin-dashboard', tab: 'profile' } :
+   611→              user.role === 'team' ? { page: 'team-dashboard', tab: 'profile' } :
+   612→              { page: 'client-dashboard', tab: 'profile' }
+   613→            )}>
+   614→              <User className="mr-2 h-4 w-4" />Profile
+   615→            </DropdownMenuItem>
+   616→            <DropdownMenuSeparator />
+   617→            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+   618→              <LogOut className="mr-2 h-4 w-4" />Sign out
+   619→            </DropdownMenuItem>
+   620→          </DropdownMenuContent>
+   621→        </DropdownMenu>
+   622→      </div>
+   623→    </header>
+   624→  )
+   625→}
+   626→
+   627→// ─── Sidebar ────────────────────────────────────────────
+   628→interface NavItem {
+   629→  id: string
+   630→  label: string
+   631→  icon: React.ElementType
+   632→  route: AppRoute
+   633→  badge?: string
+   634→}
+   635→
+   636→function getNavItems(role: string): NavItem[] {
+   637→  if (role === 'admin') return [
+   638→    { id: 'overview', label: 'Overview', icon: LayoutDashboard, route: { page: 'admin-dashboard', tab: 'overview' } },
+   639→    { id: 'users', label: 'Users', icon: Users, route: { page: 'admin-dashboard', tab: 'users' } },
+   640→    { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'admin-dashboard', tab: 'onboarding' } },
+   641→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'admin-dashboard', tab: 'project' } },
+   642→    { id: 'task-dashboard', label: 'Task Dashboard', icon: ListTodo, route: { page: 'admin-dashboard', tab: 'task-dashboard' } },
+   643→    { id: 'task-view', label: 'Task', icon: Kanban, route: { page: 'admin-dashboard', tab: 'task-view' } },
+   644→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'admin-dashboard', tab: 'time-tracking' } },
+   645→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'admin-dashboard', tab: 'messages' } },
+   646→    { id: 'screenshots', label: 'Screenshot Report', icon: Camera, route: { page: 'admin-dashboard', tab: 'screenshots' } },
+   647→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'admin-dashboard', tab: 'profile' } },
+   648→  ]
+   649→  if (role === 'team') return [
+   650→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
+   651→    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+   652→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
+   653→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
+   654→    { id: 'screenshots', label: 'Screenshots', icon: Camera, route: { page: 'team-dashboard', tab: 'screenshots' } },
+   655→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
+   656→  ]
+   657→  if (role === 'training') return [
+   658→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'team-dashboard', tab: 'project' } },
+   659→    { id: 'task', label: 'Task', icon: Kanban, route: { page: 'team-dashboard', tab: 'task' } },
+   660→    { id: 'time-tracking', label: 'Time Tracking', icon: Clock, route: { page: 'team-dashboard', tab: 'time-tracking' } },
+   661→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'team-dashboard', tab: 'messages' } },
+   662→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'team-dashboard', tab: 'profile' } },
+   663→  ]
+   664→  return [ // client
+   665→    { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'client-dashboard', tab: 'onboarding' } },
+   666→    { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'client-dashboard', tab: 'project' } },
+   667→    { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'client-dashboard', tab: 'messages' } },
+   668→    { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'client-dashboard', tab: 'profile' } },
+   669→  ]
+   670→}
+   671→
+   672→export function AppSidebar() {
+   673→  const { user, route, setRoute, sidebarOpen, setSidebarOpen } = useAuthStore()
+   674→
+   675→  if (!user) return null
+   676→  const navItems = getNavItems(user.role)
+   677→  const showTimeWidget = user.role === 'admin' || user.role === 'team' || user.role === 'training'
+   678→
+   679→  const isCurrentTab = (item: NavItem) => route.page === item.route.page && route.tab === item.route.tab
+   680→
+   681→  const sidebarContent = (
+   682→    <div className="flex flex-col h-full">
+   683→      <div className="p-4 flex items-center justify-between">
+   684→        <Badge variant="secondary" className="text-xs">
+   685→          {user.role === 'admin' ? 'Admin Panel' : user.role === 'client' ? 'Client Portal' : user.role === 'training' ? 'Training' : 'Team Workspace'}
+   686→        </Badge>
+   687→        <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+   688→          <X className="w-4 h-4" />
+   689→        </Button>
+   690→      </div>
+   691→      <Separator className="mx-4" />
+   692→      <ScrollArea className="flex-1 px-3 py-3">
+   693→        {showTimeWidget && (
+   694→          <TimeInOutWidget userId={user.id} />
+   695→        )}
+   696→        <nav className="space-y-1">
+   697→          {navItems.map((item) => (
+   698→            <Button
+   699→              key={item.id}
+   700→              variant={isCurrentTab(item) ? 'secondary' : 'ghost'}
+   701→              className={cn('w-full justify-start gap-3 h-9', isCurrentTab(item) && 'font-medium')}
+   702→              onClick={() => { setRoute(item.route); setSidebarOpen(false) }}
+   703→            >
+   704→              <item.icon className="w-4 h-4" />
+   705→              {item.label}
+   706→            </Button>
+   707→          ))}
+   708→        </nav>
+   709→      </ScrollArea>
+   710→      {user.role === 'admin' && (
+   711→        <>
+   712→          <Separator />
+   713→          <div className="p-4 flex items-center gap-2">
+   714→            <Shield className="w-4 h-4 text-primary" />
+   715→            <span className="text-xs text-muted-foreground">Admin Access</span>
+   716→          </div>
+   717→        </>
+   718→      )}
+   719→    </div>
+   720→  )
+   721→
+   722→  return (
+   723→    <>
+   724→      {sidebarOpen && (
+   725→        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+   726→      )}
+   727→      <aside className={cn(
+   728→        'fixed inset-y-0 left-0 z-50 w-64 bg-card border-r transform transition-transform duration-200 lg:hidden',
+   729→        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+   730→      )}>
+   731→        {sidebarContent}
+   732→      </aside>
+   733→      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:border-r bg-card shrink-0">
+   734→        {sidebarContent}
+   735→      </aside>
+   736→    </>
+   737→  )
+   738→}
+   739→
+   740→// ─── Dashboard Shell ────────────────────────────────────
+   741→function OfflineBanner() {
+   742→  const [isOffline, setIsOffline] = useState(() => {
+   743→    if (typeof navigator === 'undefined') return false
+   744→    return !navigator.onLine
+   745→  })
+   746→
+   747→  useEffect(() => {
+   748→    const handleOnline = () => setIsOffline(false)
+   749→    const handleOffline = () => setIsOffline(true)
+   750→    window.addEventListener('online', handleOnline)
+   751→    window.addEventListener('offline', handleOffline)
+   752→    return () => {
+   753→      window.removeEventListener('online', handleOnline)
+   754→      window.removeEventListener('offline', handleOffline)
+   755→    }
+   756→  }, [])
+   757→
+   758→  if (!isOffline) return null
+   759→
+   760→  return (
+   761→    <div className="bg-amber-500 text-white text-center text-xs font-medium py-1.5 px-4 flex items-center justify-center gap-2">
+   762→      <WifiOff className="w-3.5 h-3.5 shrink-0" />
+   763→      <span>You are offline. Some features may be unavailable until connection is restored.</span>
+   764→    </div>
+   765→  )
+   766→}
+   767→
+   768→export function DashboardShell({ children }: { children: React.ReactNode }) {
+   769→  return (
+   770→    <div className="min-h-screen flex flex-col bg-background">
+   771→      <OfflineBanner />
+   772→      <AppHeader />
+   773→      <div className="flex flex-1 overflow-hidden">
+   774→        <AppSidebar />
+   775→        <main className="flex-1 overflow-y-auto">
+   776→          <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
+   777→            {children}
+   778→          </div>
+   779→        </main>
+   780→      </div>
+   781→    </div>
+   782→  )
+   783→}

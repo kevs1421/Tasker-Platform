@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { useAuthStore, authHeaders } from '@/stores/auth'
+     5→import { useTimeTrackingStore } from '@/stores/time-tracking'
+     6→import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
+     7→import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
+     8→import { cn } from '@/lib/utils'
+     9→
+    10→// shadcn/ui
+    11→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+    12→import { Checkbox } from '@/components/ui/checkbox'
+    13→import { Button } from '@/components/ui/button'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Textarea } from '@/components/ui/textarea'
+    18→import { Skeleton } from '@/components/ui/skeleton'
+    19→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    20→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    21→import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+    22→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    23→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    24→import { ScrollArea } from '@/components/ui/scroll-area'
+    25→import { Separator } from '@/components/ui/separator'
+    26→import { Calendar } from '@/components/ui/calendar'
+    27→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    28→import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+    29→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    30→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+    31→
+    32→// recharts
+    33→import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
+    34→
+    35→// date-fns
+    36→import { format } from 'date-fns'
+    37→
+    38→// icons
+    39→import {
+    40→  FileCheck, FileText, FolderKanban, ListTodo,
+    41→  CheckCircle2, Clock, AlertTriangle, Users, Briefcase, TrendingUp,
+    42→  Plus, Trash2, Eye, ChevronDown, Check,
+    43→  Search, ArrowUpRight, CircleDot,
+    44→  MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
+    45→  UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
+    46→  KeyRound, Download, Save, FileArchive, Square, GraduationCap,
+    47→  ImageIcon, Building2, Palette, Rocket, ExternalLink
+    48→} from 'lucide-react'
+    49→
+    50→import { toast } from 'sonner'
+    51→import { motion } from 'framer-motion'
+    52→
+    53→// ─── Animation Variants ───────────────────────────────────────────────────────
+    54→
+    55→const fadeIn = {
+    56→  initial: { opacity: 0, y: 12 },
+    57→  animate: { opacity: 1, y: 0 },
+    58→  transition: { duration: 0.2 }
+    59→}
+    60→
+    61→const staggerContainer = {
+    62→  animate: { transition: { staggerChildren: 0.05 } }
+    63→}
+    64→
+    65→// ─── Shared: Action Icon Helper ────────────────────────────────────────────────
+    66→
+    67→function ActivityIcon({ action }: { action: string }) {
+    68→  if (action.includes('created')) return <Plus className="h-4 w-4 text-emerald-500" />
+    69→  if (action.includes('completed') || action.includes('done')) return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+    70→  if (action.includes('moved') || action.includes('updated')) return <ArrowUpRight className="h-4 w-4 text-amber-500" />
+    71→  if (action.includes('deleted') || action.includes('removed')) return <Trash2 className="h-4 w-4 text-rose-500" />
+    72→  if (action.includes('comment')) return <MessageCircle className="h-4 w-4 text-slate-500" />
+    73→  if (action.includes('onboarding')) return <FileCheck className="h-4 w-4 text-purple-500" />
+    74→  return <CircleDot className="h-4 w-4 text-slate-400" />
+    75→}
+    76→
+    77→// ─── AdminOverview ─────────────────────────────────────────────────────────────
+    78→
+    79→export function AdminOverview() {
+    80→  const [loading, setLoading] = useState(true)
+    81→  const [stats, setStats] = useState<DashboardStats | null>(null)
+    82→  const [activities, setActivities] = useState<ActivityLog[]>([])
+    83→  const [pendingOnboarding, setPendingOnboarding] = useState(0)
+    84→
+    85→  useEffect(() => {
+    86→    async function fetchData() {
+    87→      try {
+    88→        const [statsRes, actRes] = await Promise.all([
+    89→          fetch('/api/admin'),
+    90→          fetch('/api/admin/activity')
+    91→        ])
+    92→        if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
+    93→        const statsData = await statsRes.json()
+    94→        const actData = await actRes.json()
+    95→        setStats(statsData.stats)
+    96→        setActivities(actData.activities?.slice(0, 8) ?? [])
+    97→        setPendingOnboarding(actData.pendingOnboarding ?? 0)
+    98→      } catch {
+    99→        toast.error('Failed to load dashboard data')
+   100→      } finally {
+   101→        setLoading(false)
+   102→      }
+   103→    }
+   104→    fetchData()
+   105→  }, [])
+   106→
+   107→  const chartData = stats ? [
+   108→    { name: 'To Do', count: stats.todoTasks, fill: '#94a3b8' },
+   109→    { name: 'In Progress', count: stats.inProgressTasks, fill: '#3b82f6' },
+   110→    { name: 'In Review', count: stats.inReviewTasks, fill: '#a855f7' },
+   111→    { name: 'Done', count: stats.completedTasks, fill: '#10b981' },
+   112→  ] : []
+   113→
+   114→  if (loading) return <OverviewSkeleton />
+   115→
+   116→  if (!stats) return <p className="text-muted-foreground">No data available.</p>
+   117→
+   118→  const mainCards = [
+   119→    { label: 'Total Tasks', value: stats.totalTasks, sub: `${stats.completedTasks} completed`, icon: ListTodo, color: 'text-primary', bg: 'bg-primary/10' },
+   120→    { label: 'Active Projects', value: stats.activeProjects, sub: `${stats.totalProjects} total`, icon: FolderKanban, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   121→    { label: 'Team Members', value: stats.totalMembers, sub: 'Internal team', icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   122→    { label: 'Total Clients', value: stats.totalClients, sub: 'External users', icon: Briefcase, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/30' },
+   123→  ]
+   124→
+   125→  const smallCards = [
+   126→    { label: 'In Progress', value: stats.inProgressTasks, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+   127→    { label: 'Overdue', value: stats.overdueTasks, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+   128→    { label: 'This Week', value: stats.thisWeekCompleted, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+   129→    { label: 'Pending Onboarding', value: pendingOnboarding, icon: FileCheck, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+   130→  ]
+   131→
+   132→  return (
+   133→    <motion.div {...staggerContainer} initial="initial" animate="animate" className="space-y-6">
+   134→      {/* Main stat cards */}
+   135→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   136→        {mainCards.map((c) => (
+   137→          <motion.div key={c.label} {...fadeIn}>
+   138→            <Card className="relative overflow-hidden">
+   139→              <CardContent className="p-4">
+   140→                <div className="flex items-center justify-between">
+   141→                  <div className="space-y-1">
+   142→                    <p className="text-sm text-muted-foreground">{c.label}</p>
+   143→                    <p className="text-2xl font-bold">{c.value}</p>
+   144→                    <p className="text-xs text-muted-foreground">{c.sub}</p>
+   145→                  </div>
+   146→                  <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+   147→                    <c.icon className={`h-5 w-5 ${c.color}`} />
+   148→                  </div>
+   149→                </div>
+   150→              </CardContent>
+   151→            </Card>
+   152→          </motion.div>
+   153→        ))}
+   154→      </div>
+   155→
+   156→      {/* Smaller stat cards */}
+   157→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   158→        {smallCards.map((c) => (
+   159→          <motion.div key={c.label} {...fadeIn}>
+   160→            <Card>
+   161→              <CardContent className="p-4">
+   162→                <div className="flex items-center gap-3">
+   163→                  <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   164→                    <c.icon className={`h-4 w-4 ${c.color}`} />
+   165→                  </div>
+   166→                  <div>
+   167→                    <p className="text-lg font-semibold">{c.value}</p>
+   168→                    <p className="text-xs text-muted-foreground">{c.label}</p>
+   169→                  </div>
+   170→                </div>
+   171→              </CardContent>
+   172→            </Card>
+   173→          </motion.div>
+   174→        ))}
+   175→      </div>
+   176→
+   177→      {/* Chart + Activity */}
+   178→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+   179→        {/* Bar Chart */}
+   180→        <motion.div {...fadeIn} className="lg:col-span-3">
+   181→          <Card>
+   182→            <CardHeader className="pb-2">
+   183→              <CardTitle className="text-base">Task Distribution</CardTitle>
+   184→              <CardDescription>Breakdown by current status</CardDescription>
+   185→            </CardHeader>
+   186→            <CardContent>
+   187→              <div className="h-64">
+   188→                <ResponsiveContainer width="100%" height="100%">
+   189→                  <BarChart data={chartData} barCategoryGap="20%">
+   190→                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+   191→                    <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+   192→                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
+   193→                    <RechartsTooltip
+   194→                      contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
+   195→                    />
+   196→                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+   197→                      {chartData.map((entry, index) => (
+   198→                        <Cell key={index} fill={entry.fill} />
+   199→                      ))}
+   200→                    </Bar>
+   201→                  </BarChart>
+   202→                </ResponsiveContainer>
+   203→              </div>
+   204→            </CardContent>
+   205→          </Card>
+   206→        </motion.div>
+   207→
+   208→        {/* Recent Activity */}
+   209→        <motion.div {...fadeIn} className="lg:col-span-2">
+   210→          <Card>
+   211→            <CardHeader className="pb-2">
+   212→              <CardTitle className="text-base">Recent Activity</CardTitle>
+   213→              <CardDescription>Latest actions across the platform</CardDescription>
+   214→            </CardHeader>
+   215→            <CardContent className="p-0">
+   216→              <ScrollArea className="h-64 px-4">
+   217→                <div className="space-y-4 py-2">
+   218→                  {activities.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No recent activity</p>}
+   219→                  {activities.map((act) => (
+   220→                    <div key={act.id} className="flex items-start gap-3">
+   221→                      <Avatar className="h-8 w-8 mt-0.5">
+   222→                        {act.user?.avatar ? <AvatarImage src={act.user.avatar} alt={act.user.name} /> : null}
+   223→                        <AvatarFallback className="text-xs bg-slate-100 dark:bg-slate-800">
+   224→                          {act.user ? getInitials(act.user.name) : '?'}
+   225→                        </AvatarFallback>
+   226→                      </Avatar>
+   227→                      <div className="flex-1 min-w-0">
+   228→                        <div className="flex items-center gap-2">
+   229→                          <span className="text-sm font-medium truncate">{act.user?.name ?? 'System'}</span>
+   230→                          <ActivityIcon action={act.action} />
+   231→                        </div>
+   232→                        <p className="text-xs text-muted-foreground truncate">{act.details ?? act.action}</p>
+   233→                        <p className="text-xs text-muted-foreground/60 mt-0.5">{formatRelativeTime(act.createdAt)}</p>
+   234→                      </div>
+   235→                    </div>
+   236→                  ))}
+   237→                </div>
+   238→              </ScrollArea>
+   239→            </CardContent>
+   240→          </Card>
+   241→        </motion.div>
+   242→      </div>
+   243→    </motion.div>
+   244→  )
+   245→}
+   246→
+   247→function OverviewSkeleton() {
+   248→  return (
+   249→    <div className="space-y-6">
+   250→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   251→        {Array.from({ length: 4 }).map((_, i) => (
+   252→          <Card key={i}><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   253→        ))}
+   254→      </div>
+   255→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   256→        {Array.from({ length: 4 }).map((_, i) => (
+   257→          <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+   258→        ))}
+   259→      </div>
+   260→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+   261→        <Card className="lg:col-span-3"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   262→        <Card className="lg:col-span-2"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   263→      </div>
+   264→    </div>
+   265→  )
+   266→}
+   267→
+   268→// ─── AdminOnboarding ───────────────────────────────────────────────────────────
+   269→
+   270→function getOnboardingBadge(status: string) {
+   271→  switch (status) {
+   272→    case 'in_progress': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+   273→    case 'submitted': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+   274→    case 'approved': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+   275→    case 'rejected': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+   276→    default: return 'bg-slate-100 text-slate-700'
+   277→  }
+   278→}
+   279→
+   280→function getOnboardingStatusLabel(status: string) {
+   281→  const map: Record<string, string> = { in_progress: 'In Progress', submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', draft: 'Draft', published: 'Published', archived: 'Archived' }
+   282→  return map[status] || status
+   283→}
+   284→
+   285→const ONBOARDING_STEPS_CONFIG = [
+   286→  { id: 'business_info', label: 'Business Information', description: 'Company details, contact info, industry', required: true },
+   287→  { id: 'brand_assets', label: 'Brand Assets', description: 'Logo, brand colors, typography, guidelines', required: true },
+   288→  { id: 'project_kickoff', label: 'Project Kickoff', description: 'Goals, audience, competitors, budget, timeline', required: true },
+   289→  { id: 'documents', label: 'Document Submission', description: 'Contract, payment form, work order agreement', required: true },
+   290→]
+   291→
+   292→export function AdminOnboarding() {
+   293→  const { user } = useAuthStore()
+   294→  const [loading, setLoading] = useState(true)
+   295→  const [forms, setForms] = useState<OnboardingForm[]>([])
+   296→  const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[] }) | null>(null)
+   297→  const [dialogOpen, setDialogOpen] = useState(false)
+   298→  const [reviewing, setReviewing] = useState<string | null>(null)
+   299→  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+   300→
+   301→  // Create onboarding form state
+   302→  const [createOpen, setCreateOpen] = useState(false)
+   303→  const [creating, setCreating] = useState(false)
+   304→  const [projects, setProjects] = useState<Project[]>([])
+   305→  const [clients, setClients] = useState<User[]>([])
+   306→  const [createForm, setCreateForm] = useState({
+   307→    title: '',
+   308→    description: '',
+   309→    projectId: '',
+   310→    clientId: '',
+   311→    selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+   312→  })
+   313→  // Edit onboarding form state
+   314→  const [editOpen, setEditOpen] = useState(false)
+   315→  const [editing, setEditing] = useState(false)
+   316→  const [editFormId, setEditFormId] = useState<string | null>(null)
+   317→  const [editForm, setEditForm] = useState({
+   318→    title: '',
+   319→    description: '',
+   320→    projectId: '',
+   321→    clientId: '',
+   322→    selectedSteps: [] as string[],
+   323→  })
+   324→
+   325→  const fetchForms = useCallback(async () => {
+   326→    try {
+   327→      const res = await fetch('/api/onboarding')
+   328→      if (!res.ok) throw new Error('Failed')
+   329→      const data = await res.json()
+   330→      setForms(data.forms ?? [])
+   331→    } catch {
+   332→      toast.error('Failed to load onboarding forms')
+   333→    } finally {
+   334→      setLoading(false)
+   335→    }
+   336→  }, [])
+   337→
+   338→  const fetchProjects = useCallback(async () => {
+   339→    try {
+   340→      const res = await fetch('/api/projects')
+   341→      if (res.ok) {
+   342→        const data = await res.json()
+   343→        setProjects(data.projects ?? [])
+   344→      }
+   345→    } catch { /* ignore */ }
+   346→  }, [])
+   347→
+   348→  const fetchClients = useCallback(async () => {
+   349→    try {
+   350→      const res = await fetch('/api/users')
+   351→      if (res.ok) {
+   352→        const data = await res.json()
+   353→        setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
+   354→      }
+   355→    } catch { /* ignore */ }
+   356→  }, [])
+   357→
+   358→  useEffect(() => {
+   359→    fetchForms()
+   360→    fetchProjects()
+   361→    fetchClients()
+   362→  }, [fetchForms, fetchProjects, fetchClients])
+   363→
+   364→  async function openForm(form: OnboardingForm) {
+   365→    try {
+   366→      const res = await fetch(`/api/onboarding/${form.id}`)
+   367→      if (!res.ok) throw new Error('Failed')
+   368→      const data = await res.json()
+   369→      setSelectedForm(data.form)
+   370→      setDialogOpen(true)
+   371→    } catch {
+   372→      toast.error('Failed to load form details')
+   373→    }
+   374→  }
+   375→
+   376→  async function handleCreateOnboarding() {
+   377→    if (!user || !createForm.title.trim() || !createForm.projectId) return
+   378→    setCreating(true)
+   379→    try {
+   380→      const stepsJson = JSON.stringify(
+   381→        createForm.selectedSteps.map(stepId => {
+   382→          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+   383→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   384→        })
+   385→      )
+   386→      const res = await fetch('/api/onboarding', {
+   387→        method: 'POST',
+   388→        headers: authHeaders({ 'Content-Type': 'application/json' }),
+   389→        body: JSON.stringify({
+   390→          title: createForm.title.trim(),
+   391→          description: createForm.description.trim() || null,
+   392→          stepsJson,
+   393→          projectId: createForm.projectId,
+   394→          clientId: createForm.clientId || null,
+   395→          status: 'published',
+   396→        }),
+   397→      })
+   398→      if (!res.ok) {
+   399→        const d = await res.json()
+   400→        throw new Error(d.error || 'Failed to create')
+   401→      }
+   402→      toast.success('Onboarding form created successfully')
+   403→      setCreateOpen(false)
+   404→      setCreateForm({ title: '', description: '', projectId: '', clientId: '', selectedSteps: ['business_info', 'brand_assets', 'project_kickoff', 'documents'] })
+   405→      fetchForms()
+   406→    } catch (e: unknown) {
+   407→      toast.error(e instanceof Error ? e.message : 'Failed to create onboarding form')
+   408→    } finally {
+   409→      setCreating(false)
+   410→    }
+   411→  }
+   412→
+   413→  async function handleReview(submissionId: string, status: 'approved' | 'rejected') {
+   414→    if (!user) return
+   415→    setReviewing(submissionId)
+   416→    try {
+   417→      const notes = reviewNotes[submissionId] || ''
+   418→      const patchRes = await fetch(`/api/onboarding/${submissionId}`, {
+   419→        method: 'PATCH',
+   420→        headers: authHeaders({ 'Content-Type': 'application/json' }),
+   421→        body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
+   422→      })
+   423→      if (!patchRes.ok) {
+   424→        const d = await patchRes.json()
+   425→        throw new Error(d.error)
+   426→      }
+   427→      toast.success(`Submission ${status === 'approved' ? 'approved' : 'rejected'} successfully`)
+   428→      // Refresh
+   429→      if (selectedForm) {
+   430→        const fresh = await fetch(`/api/onboarding/${selectedForm.id}`)
+   431→        if (fresh.ok) {
+   432→          const data = await fresh.json()
+   433→          setSelectedForm(data.form)
+   434→        }
+   435→      }
+   436→      fetchForms()
+   437→    } catch (e: unknown) {
+   438→      toast.error(e instanceof Error ? e.message : 'Failed to review')
+   439→    } finally {
+   440→      setReviewing(null)
+   441→    }
+   442→  }
+   443→
+   444→  async function handleDeleteForm(formId: string, formTitle: string) {
+   445→    try {
+   446→      const res = await fetch(`/api/onboarding/${formId}`, {
+   447→        method: 'DELETE',
+   448→        headers: authHeaders(),
+   449→      })
+   450→      if (!res.ok) throw new Error()
+   451→      toast.success(`"${formTitle}" deleted`)
+   452→      setForms(prev => prev.filter(f => f.id !== formId))
+   453→    } catch {
+   454→      toast.error('Failed to delete onboarding form')
+   455→    }
+   456→  }
+   457→
+   458→  function openEditDialog(form: OnboardingForm) {
+   459→    const steps = form.stepsJson ? (JSON.parse(form.stepsJson) as { id: string }[]).map(s => s.id) : []
+   460→    setEditFormId(form.id)
+   461→    setEditForm({
+   462→      title: form.title,
+   463→      description: form.description ?? '',
+   464→      projectId: form.projectId,
+   465→      clientId: form.clientId ?? '',
+   466→      selectedSteps: steps.length > 0 ? steps : ['business_info', 'brand_assets', 'project_kickoff', 'documents'],
+   467→    })
+   468→    setEditOpen(true)
+   469→  }
+   470→
+   471→  async function handleEditOnboarding() {
+   472→    if (!editFormId || !editForm.title.trim() || !editForm.projectId) return
+   473→    setEditing(true)
+   474→    try {
+   475→      const stepsJson = JSON.stringify(
+   476→        editForm.selectedSteps.map(stepId => {
+   477→          const config = ONBOARDING_STEPS_CONFIG.find(s => s.id === stepId)
+   478→          return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
+   479→        })
+   480→      )
+   481→      const res = await fetch(`/api/onboarding/${editFormId}`, {
+   482→        method: 'PATCH',
+   483→        headers: authHeaders({ 'Content-Type': 'application/json' }),
+   484→        body: JSON.stringify({
+   485→          title: editForm.title.trim(),
+   486→          description: editForm.description.trim() || null,
+   487→          stepsJson,
+   488→          projectId: editForm.projectId,
+   489→          clientId: editForm.clientId && editForm.clientId !== '_none' ? editForm.clientId : null,
+   490→        }),
+   491→      })
+   492→      if (!res.ok) {
+   493→        const d = await res.json()
+   494→        throw new Error(d.error || 'Failed to update')
+   495→      }
+   496→      toast.success('Onboarding form updated successfully')
+   497→      setEditOpen(false)
+   498→      setEditFormId(null)
+   499→      fetchForms()
+   500→    } catch (e: unknown) {
+   501→      toast.error(e instanceof Error ? e.message : 'Failed to update onboarding form')
+   502→    } finally {
+   503→      setEditing(false)
+   504→    }
+   505→  }
+   506→
+   507→  const toggleStep = (stepId: string) => {
+   508→    setCreateForm(prev => ({
+   509→      ...prev,
+   510→      selectedSteps: prev.selectedSteps.includes(stepId)
+   511→        ? prev.selectedSteps.filter(s => s !== stepId)
+   512→        : [...prev.selectedSteps, stepId],
+   513→    }))
+   514→  }
+   515→
+   516→  if (loading) {
+   517→    return (
+   518→      <div className="space-y-4">
+   519→        <Skeleton className="h-10 w-48" />
+   520→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+   521→      </div>
+   522→    )
+   523→  }
+   524→
+   525→  return (
+   526→    <motion.div {...fadeIn} className="space-y-6">
+   527→      <div className="flex items-center justify-between">
+   528→        <div>
+   529→          <h2 className="text-xl font-semibold">Onboarding Management</h2>
+   530→          <p className="text-sm text-muted-foreground">Create and manage client onboarding forms</p>
+   531→        </div>
+   532→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+   533→          <Plus className="h-4 w-4 mr-2" /> Create Onboarding
+   534→        </Button>
+   535→      </div>
+   536→
+   537→      {/* Summary cards */}
+   538→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+   539→        {[
+   540→          { label: 'Total Forms', value: forms.length, color: 'text-slate-600', bg: 'bg-slate-100 dark:bg-slate-800' },
+   541→          { label: 'Published', value: forms.filter(f => f.status === 'published').length, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   542→          { label: 'Drafts', value: forms.filter(f => f.status === 'draft').length, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+   543→          { label: 'Pending Review', value: forms.reduce((acc, f) => acc + (f._count?.submissions ?? 0), 0), color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+   544→        ].map((c) => (
+   545→          <Card key={c.label}>
+   546→            <CardContent className="p-4">
+   547→              <div className="flex items-center gap-3">
+   548→                <div className={`h-8 w-8 rounded-md ${c.bg} flex items-center justify-center`}>
+   549→                  <FileCheck className={`h-4 w-4 ${c.color}`} />
+   550→                </div>
+   551→                <div>
+   552→                  <p className="text-lg font-semibold">{c.value}</p>
+   553→                  <p className="text-xs text-muted-foreground">{c.label}</p>
+   554→                </div>
+   555→              </div>
+   556→            </CardContent>
+   557→          </Card>
+   558→        ))}
+   559→      </div>
+   560→
+   561→      {/* Onboarding Forms Table */}
+   562→      <Card>
+   563→        <CardContent className="p-0">
+   564→          <Table>
+   565→            <TableHeader>
+   566→              <TableRow>
+   567→                <TableHead>Form Title</TableHead>
+   568→                <TableHead>Project</TableHead>
+   569→                <TableHead className="hidden md:table-cell">Client Owner</TableHead>
+   570→                <TableHead className="text-center">Submissions</TableHead>
+   571→                <TableHead>Status</TableHead>
+   572→                <TableHead className="w-28"></TableHead>
+   573→              </TableRow>
+   574→            </TableHeader>
+   575→            <TableBody>
+   576→              {forms.length === 0 && (
+   577→                <TableRow>
+   578→                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+   579→                    <div className="flex flex-col items-center gap-2">
+   580→                      <ClipboardList className="h-8 w-8 text-muted-foreground/50" />
+   581→                      <p>No onboarding forms yet</p>
+   582→                      <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+   583→                        <Plus className="h-4 w-4 mr-1" /> Create your first form
+   584→                      </Button>
+   585→                    </div>
+   586→                  </TableCell>
+   587→                </TableRow>
+   588→              )}
+   589→              {forms.map((form) => {
+   590→                const project = form.project as { color?: string; name?: string } | undefined
+   591→                return (
+   592→                  <TableRow key={form.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openForm(form)}>
+   593→                    <TableCell>
+   594→                      <div className="flex items-center gap-2">
+   595→                        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+   596→                          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   597→                        </div>
+   598→                        <div>
+   599→                          <p className="font-medium text-sm">{form.title}</p>
+   600→                          {form.description && <p className="text-xs text-muted-foreground truncate max-w-48">{form.description}</p>}
+   601→                        </div>
+   602→                      </div>
+   603→                    </TableCell>
+   604→                    <TableCell>
+   605→                      <div className="flex items-center gap-2">
+   606→                        {project?.color && <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />}
+   607→                        <span className="text-sm text-muted-foreground">{project?.name ?? '—'}</span>
+   608→                      </div>
+   609→                    </TableCell>
+   610→                    <TableCell className="hidden md:table-cell">
+   611→                      {form.client ? (
+   612→                        <div className="flex items-center gap-2">
+   613→                          <Avatar className="h-6 w-6">
+   614→                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   615→                              {getInitials(form.client.name)}
+   616→                            </AvatarFallback>
+   617→                          </Avatar>
+   618→                          <div className="min-w-0">
+   619→                            <p className="text-sm font-medium truncate">{form.client.name}</p>
+   620→                            {form.client.company && <p className="text-xs text-muted-foreground truncate">{form.client.company}</p>}
+   621→                          </div>
+   622→                        </div>
+   623→                      ) : (
+   624→                        <span className="text-sm text-muted-foreground">—</span>
+   625→                      )}
+   626→                    </TableCell>
+   627→                    <TableCell className="text-center">
+   628→                      {(form._count?.submissions ?? 0) > 0 && (
+   629→                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+   630→                          {form._count?.submissions}
+   631→                        </Badge>
+   632→                      )}
+   633→                      {(form._count?.submissions ?? 0) === 0 && <span className="text-muted-foreground text-sm">0</span>}
+   634→                    </TableCell>
+   635→                    <TableCell>
+   636→                      <Badge variant="secondary" className={getOnboardingBadge(form.status)}>
+   637→                        {getOnboardingStatusLabel(form.status)}
+   638→                      </Badge>
+   639→                    </TableCell>
+   640→                    <TableCell>
+   641→                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+   642→                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(form)}>
+   643→                          <Eye className="h-4 w-4" />
+   644→                        </Button>
+   645→                        <TooltipProvider>
+   646→                          <Tooltip>
+   647→                            <TooltipTrigger asChild>
+   648→                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(form)}>
+   649→                                <Pencil className="h-4 w-4" />
+   650→                              </Button>
+   651→                            </TooltipTrigger>
+   652→                            <TooltipContent>Edit Form</TooltipContent>
+   653→                          </Tooltip>
+   654→                        </TooltipProvider>
+   655→                        <AlertDialog>
+   656→                          <AlertDialogTrigger asChild>
+   657→                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+   658→                              <Trash2 className="h-4 w-4" />
+   659→                            </Button>
+   660→                          </AlertDialogTrigger>
+   661→                          <AlertDialogContent>
+   662→                            <AlertDialogHeader>
+   663→                              <AlertDialogTitle>Delete Onboarding Form</AlertDialogTitle>
+   664→                              <AlertDialogDescription>
+   665→                                Are you sure you want to delete &quot;{form.title}&quot;? This will also delete all associated submissions. This action cannot be undone.
+   666→                              </AlertDialogDescription>
+   667→                            </AlertDialogHeader>
+   668→                            <AlertDialogFooter>
+   669→                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   670→                              <AlertDialogAction onClick={() => handleDeleteForm(form.id, form.title)} className="bg-rose-600 hover:bg-rose-700">
+   671→                                Delete
+   672→                              </AlertDialogAction>
+   673→                            </AlertDialogFooter>
+   674→                          </AlertDialogContent>
+   675→                        </AlertDialog>
+   676→                      </div>
+   677→                    </TableCell>
+   678→                  </TableRow>
+   679→                )
+   680→              })}
+   681→            </TableBody>
+   682→          </Table>
+   683→        </CardContent>
+   684→      </Card>
+   685→
+   686→      {/* Submissions Review Dialog */}
+   687→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   688→        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+   689→          <DialogHeader>
+   690→            <DialogTitle className="flex items-center gap-2">
+   691→              <ClipboardList className="h-5 w-5 text-amber-500" />
+   692→              {selectedForm?.title ?? 'Form'}
+   693→            </DialogTitle>
+   694→            <DialogDescription>
+   695→              <div className="flex items-center gap-2">
+   696→                {selectedForm?.project ? (
+   697→                  <span className="flex items-center gap-1.5">
+   698→                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: (selectedForm.project as { color?: string }).color }} />
+   699→                    {(selectedForm.project as { name?: string }).name}
+   700→                  </span>
+   701→                ) : 'Project'}
+   702→                <span className="text-muted-foreground">•</span>
+   703→                <span>{selectedForm?.submissions?.length ?? 0} submission{(selectedForm?.submissions?.length ?? 0) !== 1 ? 's' : ''}</span>
+   704→              </div>
+   705→            </DialogDescription>
+   706→          </DialogHeader>
+   707→          <ScrollArea className="flex-1 -mx-6 px-6">
+   708→            <div className="space-y-5 py-2">
+   709→              {selectedForm?.submissions?.length === 0 && (
+   710→                <div className="flex flex-col items-center justify-center py-16 text-center">
+   711→                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-3">
+   712→                    <FileCheck className="h-7 w-7 text-muted-foreground" />
+   713→                  </div>
+   714→                  <p className="text-sm font-medium">No submissions yet</p>
+   715→                  <p className="text-xs text-muted-foreground mt-1">Client submissions will appear here once they complete the form.</p>
+   716→                </div>
+   717→              )}
+   718→              {selectedForm?.submissions?.map((sub) => {
+   719→                let parsedResponses: Record<string, string> = {}
+   720→                let parsedFiles: Record<string, { url: string; originalName: string; filename: string; size: number; type: string } | null> = {}
+   721→                try {
+   722→                  const raw = JSON.parse(sub.responsesJson)
+   723→                  parsedResponses = raw.responses || {}
+   724→                  parsedFiles = raw.files || {}
+   725→                } catch { /* old format fallback */ }
+   726→
+   727→                const fmtSz = (b: number) => {
+   728→                  if (b < 1024) return b + ' B'
+   729→                  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'
+   730→                  return (b / 1048576).toFixed(1) + ' MB'
+   731→                }
+   732→
+   733→                const stepCfg = [
+   734→                  { id: 'biz', label: 'Business Information', icon: Building2, clr: 'text-slate-600 dark:text-slate-400',
+   735→                    fields: [{ k: 'businessName', l: 'Business Name' }, { k: 'businessEmail', l: 'Business Email' }, { k: 'businessPhone', l: 'Business Phone' }, { k: 'businessAddress', l: 'Business Address' }, { k: 'industry', l: 'Industry' }, { k: 'companySize', l: 'Company Size' }], fks: [] },
+   736→                  { id: 'brand', label: 'Brand Assets', icon: Palette, clr: 'text-pink-600 dark:text-pink-400',
+   737→                    fields: [{ k: 'brandColors', l: 'Brand Colors' }, { k: 'typography', l: 'Typography / Fonts' }],
+   738→                    fks: [{ k: 'companyLogo', l: 'Company Logo', img: true }, { k: 'brandGuidelines', l: 'Brand Guidelines' }] },
+   739→                  { id: 'kick', label: 'Project Kickoff', icon: Rocket, clr: 'text-amber-600 dark:text-amber-400',
+   740→                    fields: [{ k: 'projectGoals', l: 'Project Goals' }, { k: 'targetAudience', l: 'Target Audience' }, { k: 'mainCompetitors', l: 'Main Competitors' }, { k: 'budgetRange', l: 'Budget Range' }, { k: 'expectedTimeline', l: 'Expected Timeline' }], fks: [] },
+   741→                  { id: 'docs', label: 'Document Submission', icon: FileText, clr: 'text-emerald-600 dark:text-emerald-400',
+   742→                    fields: [],
+   743→                    fks: [{ k: 'contractForm', l: 'Contract Form' }, { k: 'paymentForm', l: 'Payment Form' }, { k: 'workOrderAgreement', l: 'Work Order Agreement' }] },
+   744→                ]
+   745→
+   746→                return (
+   747→                  <div key={sub.id} className="space-y-4">
+   748→                    {/* Client header card */}
+   749→                    <Card className="border"><CardContent className="p-4">
+   750→                      <div className="flex items-start justify-between">
+   751→                        <div className="flex items-center gap-3">
+   752→                          <Avatar className="h-10 w-10">
+   753→                            {sub.client?.avatar ? <AvatarImage src={sub.client.avatar} /> : null}
+   754→                            <AvatarFallback className="text-sm font-medium">{sub.client ? getInitials(sub.client.name) : '?'}</AvatarFallback>
+   755→                          </Avatar>
+   756→                          <div>
+   757→                            <p className="text-sm font-semibold">{sub.client?.name ?? 'Unknown'}</p>
+   758→                            <p className="text-xs text-muted-foreground">{sub.client?.company ?? sub.client?.email ?? 'No company'}</p>
+   759→                          </div>
+   760→                        </div>
+   761→                        <div className="flex items-center gap-2 shrink-0">
+   762→                          {sub.submittedAt && <span className="text-xs text-muted-foreground hidden sm:inline">{formatDate(sub.submittedAt)}</span>}
+   763→                          <Badge variant="secondary" className={getOnboardingBadge(sub.status)}>{getOnboardingStatusLabel(sub.status)}</Badge>
+   764→                        </div>
+   765→                      </div>
+   766→                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+   767→                        <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => window.open('/api/onboarding/download?submissionId=' + sub.id, '_blank')}>
+   768→                          <Download className="h-3.5 w-3.5" /> Download Report
+   769→                        </Button>
+   770→                        {Object.keys(parsedFiles).filter(([, f]) => f).length > 0 && (
+   771→                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.open('/api/onboarding/download-documents?submissionId=' + sub.id, '_blank')}>
+   772→                            <FileArchive className="h-3.5 w-3.5" /> Download All Documents
+   773→                          </Button>
+   774→                        )}
+   775→                      </div>
+   776→                    </CardContent></Card>
+   777→
+   778→                    {/* Step-by-step organized data */}
+   779→                    {stepCfg.map((st, si) => {
+   780→                      const SI = st.icon
+   781→                      const hasContent = st.fields.some(f => parsedResponses[f.k]?.trim()) || st.fks.some(f => parsedFiles[f.k])
+   782→                      if (!hasContent) return null
+   783→                      return (
+   784→                        <Card key={st.id} className="border">
+   785→                          <CardHeader className="pb-2 pt-3 px-4">
+   786→                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   787→                              <div className="h-7 w-7 rounded-md bg-muted flex items-center justify-center">
+   788→                                <SI className={'h-3.5 w-3.5 ' + st.clr} />
+   789→                              </div>
+   790→                              <span className="flex items-center gap-2">
+   791→                                {st.label}
+   792→                                <span className="text-[10px] text-muted-foreground font-normal bg-muted px-1.5 py-0.5 rounded">Step {si + 1}</span>
+   793→                              </span>
+   794→                            </CardTitle>
+   795→                          </CardHeader>
+   796→                          <CardContent className="px-4 pb-4 space-y-3">
+   797→                            {st.fks.map((fc: { k: string; l: string; img?: boolean }) => {
+   798→                              const f = parsedFiles[fc.k]
+   799→                              if (!f) return null
+   800→                              const isImg = fc.img && f.type?.startsWith('image/')
+   801→                              return (
+   802→                                <div key={fc.k} className="space-y-1.5">
+   803→                                  <p className="text-xs font-medium text-muted-foreground">{fc.l}</p>
+   804→                                  {isImg ? (
+   805→                                    <a href={f.url} target="_blank" rel="noopener noreferrer" className="inline-block group">
+   806→                                      <div className="w-24 h-24 rounded-lg border bg-muted/30 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-all">
+   807→                                        <img src={f.url} alt={f.originalName} className="w-full h-full object-contain p-1" />
+   808→                                      </div>
+   809→                                      <div className="flex items-center gap-1.5 mt-1.5">
+   810→                                        <ImageIcon className="h-3 w-3 text-muted-foreground" />
+   811→                                        <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors truncate max-w-[180px]">{f.originalName}</span>
+   812→                                        <span className="text-[10px] text-muted-foreground">({fmtSz(f.size)})</span>
+   813→                                      </div>
+   814→                                    </a>
+   815→                                  ) : (
+   816→                                    <a href={f.url} download={f.originalName} target="_blank" rel="noopener noreferrer"
+   817→                                      className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors group">
+   818→                                      <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+   819→                                        <FileText className="h-4 w-4 text-primary" />
+   820→                                      </div>
+   821→                                      <div className="flex-1 min-w-0">
+   822→                                        <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{f.originalName}</p>
+   823→                                        <p className="text-[11px] text-muted-foreground">{fmtSz(f.size)} • {f.type?.split('/').pop()?.toUpperCase()}</p>
+   824→                                      </div>
+   825→                                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+   826→                                    </a>
+   827→                                  )}
+   828→                                </div>
+   829→                              )
+   830→                            })}
+   831→                            {st.fields.length > 0 && (
+   832→                              <div className={cn('grid gap-2.5', st.id === 'kick' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2')}>
+   833→                                {st.fields.map((fd: { k: string; l: string }) => {
+   834→                                  const v = parsedResponses[fd.k]?.trim()
+   835→                                  if (!v) return null
+   836→                                  return (
+   837→                                    <div key={fd.k} className="p-3 rounded-lg bg-muted/50 border">
+   838→                                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{fd.l}</p>
+   839→                                      <p className="text-sm whitespace-pre-wrap">{v}</p>
+   840→                                    </div>
+   841→                                  )
+   842→                                })}
+   843→                              </div>
+   844→                            )}
+   845→                          </CardContent>
+   846→                        </Card>
+   847→                      )
+   848→                    })}
+   849→
+   850→                    {/* Review notes */}
+   851→                    {sub.reviewNotes && (
+   852→                      <div className="bg-muted/50 rounded-lg p-3 text-sm">
+   853→                        <span className="font-medium">Review notes:</span> {sub.reviewNotes}
+   854→                        {sub.reviewer && <span className="text-muted-foreground"> — by {sub.reviewer.name}</span>}
+   855→                      </div>
+   856→                    )}
+   857→
+   858→                    {/* Review actions */}
+   859→                    {sub.status === 'submitted' && (
+   860→                      <Card className="border-dashed border-primary/30 bg-primary/[0.02]">
+   861→                        <CardContent className="p-4 space-y-3">
+   862→                          <p className="text-sm font-medium">Review this submission</p>
+   863→                          <Textarea placeholder="Add review notes (optional)..." value={reviewNotes[sub.id] ?? ''} onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.id]: e.target.value }))} className="text-sm" rows={2} />
+   864→                          <div className="flex gap-2">
+   865→                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handleReview(sub.id, 'approved')} disabled={reviewing === sub.id}>
+   866→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5 mr-1" />} Approve
+   867→                            </Button>
+   868→                            <Button size="sm" variant="destructive" onClick={() => handleReview(sub.id, 'rejected')} disabled={reviewing === sub.id}>
+   869→                              {reviewing === sub.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5 mr-1" />} Reject
+   870→                            </Button>
+   871→                          </div>
+   872→                        </CardContent>
+   873→                      </Card>
+   874→                    )}
+   875→                  </div>
+   876→                )
+   877→              })}
+   878→            </div>
+   879→          </ScrollArea>
+   880→        </DialogContent>
+   881→      </Dialog>
+   882→
+   883→      {/* Create Onboarding Form Dialog */}
+   884→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   885→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+   886→          <DialogHeader>
+   887→            <DialogTitle className="flex items-center gap-2">
+   888→              <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
+   889→            </DialogTitle>
+   890→            <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
+   891→          </DialogHeader>
+   892→
+   893→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+   894→            {/* Title */}
+   895→            <div className="space-y-1.5">
+   896→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+   897→              <Input
+   898→                placeholder="e.g., Client Onboarding Package"
+   899→                value={createForm.title}
+   900→                onChange={(e) => setCreateForm(p => ({ ...p, title: e.target.value }))}
+   901→                autoFocus
+   902→              />
+   903→            </div>
+   904→
+   905→            {/* Description */}
+   906→            <div className="space-y-1.5">
+   907→              <Label className="text-sm">Description</Label>
+   908→              <Textarea
+   909→                placeholder="Brief description of this onboarding form (optional)"
+   910→                value={createForm.description}
+   911→                onChange={(e) => setCreateForm(p => ({ ...p, description: e.target.value }))}
+   912→                rows={2}
+   913→              />
+   914→            </div>
+   915→
+   916→            {/* Project Selection */}
+   917→            <div className="space-y-1.5">
+   918→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+   919→              <Select value={createForm.projectId} onValueChange={(v) => setCreateForm(p => ({ ...p, projectId: v }))}>
+   920→                <SelectTrigger className="w-full">
+   921→                  <SelectValue placeholder="Select a project" />
+   922→                </SelectTrigger>
+   923→                <SelectContent>
+   924→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+   925→                  {projects.map((p) => (
+   926→                    <SelectItem key={p.id} value={p.id}>
+   927→                      <span className="flex items-center gap-2">
+   928→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+   929→                        {p.name}
+   930→                      </span>
+   931→                    </SelectItem>
+   932→                  ))}
+   933→                </SelectContent>
+   934→              </Select>
+   935→              <p className="text-xs text-muted-foreground">The onboarding form will be linked to this project</p>
+   936→            </div>
+   937→
+   938→            {/* Client Owner Selection */}
+   939→            <div className="space-y-1.5">
+   940→              <Label className="text-sm">Client Owner <span className="text-red-500">*</span></Label>
+   941→              <Select value={createForm.clientId} onValueChange={(v) => setCreateForm(p => ({ ...p, clientId: v }))}>
+   942→                <SelectTrigger className="w-full">
+   943→                  <SelectValue placeholder="Select a client" />
+   944→                </SelectTrigger>
+   945→                <SelectContent>
+   946→                  {clients.length === 0 && <SelectItem value="_none" disabled>No active clients available</SelectItem>}
+   947→                  {clients.map((c) => (
+   948→                    <SelectItem key={c.id} value={c.id}>
+   949→                      <span className="flex items-center gap-2">
+   950→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+   951→                          {getInitials(c.name)}
+   952→                        </span>
+   953→                        <span>{c.name}</span>
+   954→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+   955→                      </span>
+   956→                    </SelectItem>
+   957→                  ))}
+   958→                </SelectContent>
+   959→              </Select>
+   960→              <p className="text-xs text-muted-foreground">Only this client will see and fill out this onboarding form</p>
+   961→            </div>
+   962→
+   963→            <Separator />
+   964→
+   965→            {/* Step Selection */}
+   966→            <div className="space-y-3">
+   967→              <div className="flex items-center justify-between">
+   968→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+   969→                <Badge variant="secondary" className="text-xs">
+   970→                  {createForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+   971→                </Badge>
+   972→              </div>
+   973→
+   974→              <p className="text-xs text-muted-foreground">Choose which steps to include in the onboarding form</p>
+   975→
+   976→              <div className="space-y-2">
+   977→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+   978→                  const isSelected = createForm.selectedSteps.includes(step.id)
+   979→                  return (
+   980→                    <button
+   981→                      key={step.id}
+   982→                      type="button"
+   983→                      onClick={() => toggleStep(step.id)}
+   984→                      className={cn(
+   985→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+   986→                        isSelected
+   987→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+   988→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+   989→                      )}
+   990→                    >
+   991→                      <div className="flex items-start gap-3">
+   992→                        <div className={cn(
+   993→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+   994→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+   995→                        )}>
+   996→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+   997→                        </div>
+   998→                        <div className="flex-1 min-w-0">
+   999→                          <div className="flex items-center gap-2">
+  1000→                            <p className="text-sm font-medium">{step.label}</p>
+  1001→                            {step.required && (
+  1002→                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+  1003→                            )}
+  1004→                          </div>
+  1005→                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+  1006→                        </div>
+  1007→                      </div>
+  1008→                    </button>
+  1009→                  )
+  1010→                })}
+  1011→              </div>
+  1012→            </div>
+  1013→          </div>
+  1014→
+  1015→          <DialogFooter className="pt-2">
+  1016→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+  1017→            <Button
+  1018→              onClick={handleCreateOnboarding}
+  1019→              disabled={!createForm.title.trim() || !createForm.projectId || !createForm.clientId || createForm.selectedSteps.length === 0 || creating}
+  1020→              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+  1021→            >
+  1022→              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+  1023→              <ClipboardList className="h-4 w-4 mr-2" />
+  1024→              Create Form
+  1025→            </Button>
+  1026→          </DialogFooter>
+  1027→        </DialogContent>
+  1028→      </Dialog>
+  1029→
+  1030→      {/* Edit Onboarding Form Dialog */}
+  1031→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+  1032→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+  1033→          <DialogHeader>
+  1034→            <DialogTitle className="flex items-center gap-2">
+  1035→              <Pencil className="h-5 w-5 text-primary" /> Edit Onboarding Form
+  1036→            </DialogTitle>
+  1037→            <DialogDescription>Update the onboarding form details</DialogDescription>
+  1038→          </DialogHeader>
+  1039→
+  1040→          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+  1041→            {/* Title */}
+  1042→            <div className="space-y-1.5">
+  1043→              <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
+  1044→              <Input
+  1045→                placeholder="e.g., Client Onboarding Package"
+  1046→                value={editForm.title}
+  1047→                onChange={(e) => setEditForm(p => ({ ...p, title: e.target.value }))}
+  1048→                autoFocus
+  1049→              />
+  1050→            </div>
+  1051→
+  1052→            {/* Description */}
+  1053→            <div className="space-y-1.5">
+  1054→              <Label className="text-sm">Description</Label>
+  1055→              <Textarea
+  1056→                placeholder="Brief description of this onboarding form (optional)"
+  1057→                value={editForm.description}
+  1058→                onChange={(e) => setEditForm(p => ({ ...p, description: e.target.value }))}
+  1059→                rows={2}
+  1060→              />
+  1061→            </div>
+  1062→
+  1063→            {/* Project Selection */}
+  1064→            <div className="space-y-1.5">
+  1065→              <Label className="text-sm">Project <span className="text-red-500">*</span></Label>
+  1066→              <Select value={editForm.projectId} onValueChange={(v) => setEditForm(p => ({ ...p, projectId: v }))}>
+  1067→                <SelectTrigger className="w-full">
+  1068→                  <SelectValue placeholder="Select a project" />
+  1069→                </SelectTrigger>
+  1070→                <SelectContent>
+  1071→                  {projects.length === 0 && <SelectItem value="_none" disabled>No projects available</SelectItem>}
+  1072→                  {projects.map((p) => (
+  1073→                    <SelectItem key={p.id} value={p.id}>
+  1074→                      <span className="flex items-center gap-2">
+  1075→                        <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+  1076→                        {p.name}
+  1077→                      </span>
+  1078→                    </SelectItem>
+  1079→                  ))}
+  1080→                </SelectContent>
+  1081→              </Select>
+  1082→            </div>
+  1083→
+  1084→            {/* Client Owner Selection */}
+  1085→            <div className="space-y-1.5">
+  1086→              <Label className="text-sm">Client Owner</Label>
+  1087→              <Select value={editForm.clientId} onValueChange={(v) => setEditForm(p => ({ ...p, clientId: v }))}>
+  1088→                <SelectTrigger className="w-full">
+  1089→                  <SelectValue placeholder="Select a client" />
+  1090→                </SelectTrigger>
+  1091→                <SelectContent>
+  1092→                  <SelectItem value="_none">No client assigned</SelectItem>
+  1093→                  {clients.map((c) => (
+  1094→                    <SelectItem key={c.id} value={c.id}>
+  1095→                      <span className="flex items-center gap-2">
+  1096→                        <span className="inline-block h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium">
+  1097→                          {getInitials(c.name)}
+  1098→                        </span>
+  1099→                        <span>{c.name}</span>
+  1100→                        {c.company && <span className="text-muted-foreground text-xs">({c.company})</span>}
+  1101→                      </span>
+  1102→                    </SelectItem>
+  1103→                  ))}
+  1104→                </SelectContent>
+  1105→              </Select>
+  1106→            </div>
+  1107→
+  1108→            <Separator />
+  1109→
+  1110→            {/* Step Selection */}
+  1111→            <div className="space-y-3">
+  1112→              <div className="flex items-center justify-between">
+  1113→                <Label className="text-sm font-medium">Onboarding Steps</Label>
+  1114→                <Badge variant="secondary" className="text-xs">
+  1115→                  {editForm.selectedSteps.length} / {ONBOARDING_STEPS_CONFIG.length} selected
+  1116→                </Badge>
+  1117→              </div>
+  1118→
+  1119→              <div className="space-y-2">
+  1120→                {ONBOARDING_STEPS_CONFIG.map((step) => {
+  1121→                  const isSelected = editForm.selectedSteps.includes(step.id)
+  1122→                  return (
+  1123→                    <button
+  1124→                      key={step.id}
+  1125→                      type="button"
+  1126→                      onClick={() => setEditForm(prev => ({
+  1127→                        ...prev,
+  1128→                        selectedSteps: prev.selectedSteps.includes(step.id)
+  1129→                          ? prev.selectedSteps.filter(s => s !== step.id)
+  1130→                          : [...prev.selectedSteps, step.id],
+  1131→                      }))}
+  1132→                      className={cn(
+  1133→                        'w-full text-left p-3 rounded-lg border-2 transition-all duration-150',
+  1134→                        isSelected
+  1135→                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
+  1136→                          : 'border-transparent bg-muted/50 hover:bg-muted'
+  1137→                      )}
+  1138→                    >
+  1139→                      <div className="flex items-start gap-3">
+  1140→                        <div className={cn(
+  1141→                          'mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+  1142→                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/30'
+  1143→                        )}>
+  1144→                          {isSelected && <Check className="h-3.5 w-3.5" />}
+  1145→                        </div>
+  1146→                        <div className="flex-1 min-w-0">
+  1147→                          <div className="flex items-center gap-2">
+  1148→                            <p className="text-sm font-medium">{step.label}</p>
+  1149→                            {step.required && (
+  1150→                              <span className="text-[10px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">Required</span>
+  1151→                            )}
+  1152→                          </div>
+  1153→                          <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+  1154→                        </div>
+  1155→                      </div>
+  1156→                    </button>
+  1157→                  )
+  1158→                })}
+  1159→              </div>
+  1160→            </div>
+  1161→          </div>
+  1162→
+  1163→          <DialogFooter className="pt-2">
+  1164→            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+  1165→            <Button
+  1166→              onClick={handleEditOnboarding}
+  1167→              disabled={!editForm.title.trim() || !editForm.projectId || editForm.selectedSteps.length === 0 || editing}
+  1168→              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+  1169→            >
+  1170→              {editing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+  1171→              <Pencil className="h-4 w-4 mr-2" />
+  1172→              Save Changes
+  1173→            </Button>
+  1174→          </DialogFooter>
+  1175→        </DialogContent>
+  1176→      </Dialog>
+  1177→    </motion.div>
+  1178→  )
+  1179→}
+  1180→
+  1181→// ─── AdminProjects ─────────────────────────────────────────────────────────────
+  1182→
+  1183→const PRESET_COLORS = ['#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#e11d48']
+  1184→
+  1185→export function AdminProjects() {
+  1186→  const { user } = useAuthStore()
+  1187→  const [loading, setLoading] = useState(true)
+  1188→  const [projects, setProjects] = useState<Project[]>([])
+  1189→  const [createOpen, setCreateOpen] = useState(false)
+  1190→  const [creating, setCreating] = useState(false)
+  1191→  const [form, setForm] = useState({ name: '', description: '', priority: 'medium', dueDate: null as Date | null, color: PRESET_COLORS[0] })
+  1192→  const [activeUsers, setActiveUsers] = useState<User[]>([])
+  1193→  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  1194→   // Manage members dialog
+  1195→  const [manageMembersOpen, setManageMembersOpen] = useState(false)
+  1196→  const [manageProjectId, setManageProjectId] = useState<string>('')
+  1197→  const [manageProjectName, setManageProjectName] = useState('')
+  1198→  const [projectMembers, setProjectMembers] = useState<(ProjectMember & { user: User })[]>([])
+  1199→  const [membersLoading, setMembersLoading] = useState(false)
+  1200→
+  1201→  const fetchProjects = useCallback(async () => {
+  1202→    try {
+  1203→      const res = await fetch('/api/projects')
+  1204→      if (!res.ok) throw new Error('Failed')
+  1205→      const data = await res.json()
+  1206→      setProjects(data.projects ?? [])
+  1207→    } catch {
+  1208→      toast.error('Failed to load projects')
+  1209→    } finally {
+  1210→      setLoading(false)
+  1211→    }
+  1212→  }, [])
+  1213→
+  1214→  // Fetch active admin + team users for member picker
+  1215→  useEffect(() => {
+  1216→    fetch('/api/users')
+  1217→      .then(r => r.json())
+  1218→      .then(d => {
+  1219→        const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team' || u.role === 'training') && u.status === 'active')
+  1220→        setActiveUsers(users)
+  1221→      })
+  1222→      .catch(() => {})
+  1223→  }, [])
+  1224→
+  1225→  useEffect(() => { fetchProjects() }, [fetchProjects])
+  1226→
+  1227→  async function handleCreate() {
+  1228→    if (!user || !form.name.trim()) return
+  1229→    setCreating(true)
+  1230→    try {
+  1231→      const createRes = await fetch('/api/projects', {
+  1232→        method: 'POST',
+  1233→        headers: { 'Content-Type': 'application/json' },
+  1234→        body: JSON.stringify({
+  1235→          name: form.name,
+  1236→          description: form.description || null,
+  1237→          priority: form.priority,
+  1238→          dueDate: form.dueDate ? form.dueDate.toISOString() : null,
+  1239→          color: form.color,
+  1240→          createdBy: user.id,
+  1241→          memberIds: selectedMemberIds
+  1242→        })
+  1243→      })
+  1244→      if (!createRes.ok) {
+  1245→        const d = await createRes.json()
+  1246→        throw new Error(d.error)
+  1247→      }
+  1248→      toast.success('Project created successfully')
+  1249→      setCreateOpen(false)
+  1250→      setForm({ name: '', description: '', priority: 'medium', dueDate: null, color: PRESET_COLORS[0] })
+  1251→      setSelectedMemberIds([])
+  1252→      fetchProjects()
+  1253→    } catch (e: unknown) {
+  1254→      toast.error(e instanceof Error ? e.message : 'Failed to create project')
+  1255→    } finally {
+  1256→      setCreating(false)
+  1257→    }
+  1258→  }
+  1259→
+  1260→  async function handleStatusChange(projectId: string, status: string) {
+  1261→    try {
+  1262→      const patchRes = await fetch(`/api/projects/${projectId}`, {
+  1263→        method: 'PATCH',
+  1264→        headers: { 'Content-Type': 'application/json' },
+  1265→        body: JSON.stringify({ status })
+  1266→      })
+  1267→      if (!patchRes.ok) throw new Error()
+  1268→      toast.success(`Project ${status}`)
+  1269→      fetchProjects()
+  1270→    } catch {
+  1271→      toast.error('Failed to update project status')
+  1272→    }
+  1273→  }
+  1274→
+  1275→  async function handleDelete(projectId: string) {
+  1276→    try {
+  1277→      const delRes = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+  1278→      if (!delRes.ok) throw new Error()
+  1279→      toast.success('Project deleted')
+  1280→      fetchProjects()
+  1281→    } catch {
+  1282→      toast.error('Failed to delete project')
+  1283→    }
+  1284→  }
+  1285→
+  1286→  async function openManageMembers(projectId: string, projectName: string) {
+  1287→    setManageProjectId(projectId)
+  1288→    setManageProjectName(projectName)
+  1289→    setManageMembersOpen(true)
+  1290→    setMembersLoading(true)
+  1291→    try {
+  1292→      const res = await fetch(`/api/projects/${projectId}/members`)
+  1293→      const data = await res.json()
+  1294→      setProjectMembers(data.members || [])
+  1295→    } catch {
+  1296→      toast.error('Failed to load members')
+  1297→    } finally {
+  1298→      setMembersLoading(false)
+  1299→    }
+  1300→  }
+  1301→
+  1302→  async function handleAddMembers(userIds: string[]) {
+  1303→    try {
+  1304→      const res = await fetch(`/api/projects/${manageProjectId}/members`, {
+  1305→        method: 'POST',
+  1306→        headers: { 'Content-Type': 'application/json' },
+  1307→        body: JSON.stringify({ userIds })
+  1308→      })
+  1309→      if (!res.ok) throw new Error()
+  1310→      toast.success(`${userIds.length} member(s) added`)
+  1311→      // Refresh members list
+  1312→      const updated = await fetch(`/api/projects/${manageProjectId}/members`).then(r => r.json())
+  1313→      setProjectMembers(updated.members || [])
+  1314→      fetchProjects()
+  1315→    } catch {
+  1316→      toast.error('Failed to add members')
+  1317→    }
+  1318→  }
+  1319→
+  1320→  async function handleRemoveMember(userId: string) {
+  1321→    try {
+  1322→      const res = await fetch(`/api/projects/${manageProjectId}/members?userId=${userId}`, { method: 'DELETE' })
+  1323→      if (!res.ok) throw new Error()
+  1324→      toast.success('Member removed')
+  1325→      setProjectMembers(prev => prev.filter(m => m.userId !== userId))
+  1326→      fetchProjects()
+  1327→    } catch {
+  1328→      toast.error('Failed to remove member')
+  1329→    }
+  1330→  }
+  1331→
+  1332→  function getProjectStatusBadge(status: string) {
+  1333→    switch (status) {
+  1334→      case 'active': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  1335→      case 'completed': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+  1336→      case 'archived': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+  1337→      default: return 'bg-slate-100 text-slate-700'
+  1338→    }
+  1339→  }
+  1340→
+  1341→  if (loading) {
+  1342→    return (
+  1343→      <div className="space-y-4">
+  1344→        <div className="flex justify-between items-center"><Skeleton className="h-10 w-48" /><Skeleton className="h-10 w-32" /></div>
+  1345→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+  1346→      </div>
+  1347→    )
+  1348→  }
+  1349→
+  1350→  return (
+  1351→    <motion.div {...fadeIn} className="space-y-6">
+  1352→      <div className="flex items-center justify-between">
+  1353→        <div>
+  1354→          <h2 className="text-xl font-semibold">Projects</h2>
+  1355→          <p className="text-sm text-muted-foreground">Manage all projects across the platform</p>
+  1356→        </div>
+  1357→        <Button onClick={() => setCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  1358→          <Plus className="h-4 w-4 mr-2" /> New Project
+  1359→        </Button>
+  1360→      </div>
+  1361→
+  1362→      <Card>
+  1363→        <CardContent className="p-0">
+  1364→          <Table>
+  1365→            <TableHeader>
+  1366→              <TableRow>
+  1367→                <TableHead>Name</TableHead>
+  1368→                <TableHead className="hidden md:table-cell">Description</TableHead>
+  1369→                <TableHead>Priority</TableHead>
+  1370→                <TableHead className="text-center">Tasks</TableHead>
+  1371→                <TableHead className="text-center hidden sm:table-cell">Members</TableHead>
+  1372→                <TableHead>Status</TableHead>
+  1373→                <TableHead className="w-24"></TableHead>
+  1374→              </TableRow>
+  1375→            </TableHeader>
+  1376→            <TableBody>
+  1377→              {projects.length === 0 && (
+  1378→                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No projects found</TableCell></TableRow>
+  1379→              )}
+  1380→              {projects.map((p) => {
+  1381→                const pCfg = getPriorityConfig(p.priority)
+  1382→                return (
+  1383→                  <TableRow key={p.id}>
+  1384→                    <TableCell>
+  1385→                      <div className="flex items-center gap-2">
+  1386→                        <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+  1387→                        <span className="font-medium">{p.name}</span>
+  1388→                      </div>
+  1389→                    </TableCell>
+  1390→                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-48 truncate">
+  1391→                      {p.description ?? '—'}
+  1392→                    </TableCell>
+  1393→                    <TableCell>
+  1394→                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>
+  1395→                        {pCfg.label}
+  1396→                      </Badge>
+  1397→                    </TableCell>
+  1398→                    <TableCell className="text-center">{p._count?.tasks ?? 0}</TableCell>
+  1399→                    <TableCell className="text-center hidden sm:table-cell">
+  1400→                      <Button
+  1401→                        variant="ghost"
+  1402→                        size="sm"
+  1403→                        className="h-7 gap-1 text-muted-foreground hover:text-foreground"
+  1404→                        onClick={() => openManageMembers(p.id, p.name)}
+  1405→                      >
+  1406→                        <Users className="h-3.5 w-3.5" />
+  1407→                        {p._count?.members ?? 0}
+  1408→                      </Button>
+  1409→                    </TableCell>
+  1410→                    <TableCell>
+  1411→                      <DropdownMenu>
+  1412→                        <DropdownMenuTrigger asChild>
+  1413→                          <Button variant="ghost" size="sm" className="h-7">
+  1414→                            <Badge variant="secondary" className={getProjectStatusBadge(p.status)}>
+  1415→                              {p.status}
+  1416→                            </Badge>
+  1417→                            <ChevronDown className="h-3 w-3 ml-1" />
+  1418→                          </Button>
+  1419→                        </DropdownMenuTrigger>
+  1420→                        <DropdownMenuContent>
+  1421→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'active')}>Active</DropdownMenuItem>
+  1422→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'completed')}>Completed</DropdownMenuItem>
+  1423→                          <DropdownMenuItem onClick={() => handleStatusChange(p.id, 'archived')}>Archived</DropdownMenuItem>
+  1424→                        </DropdownMenuContent>
+  1425→                      </DropdownMenu>
+  1426→                    </TableCell>
+  1427→                    <TableCell>
+  1428→                      <AlertDialog>
+  1429→                        <AlertDialogTrigger asChild>
+  1430→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
+  1431→                            <Trash2 className="h-4 w-4" />
+  1432→                          </Button>
+  1433→                        </AlertDialogTrigger>
+  1434→                        <AlertDialogContent>
+  1435→                          <AlertDialogHeader>
+  1436→                            <AlertDialogTitle>Delete Project</AlertDialogTitle>
+  1437→                            <AlertDialogDescription>
+  1438→                              Are you sure you want to delete &quot;{p.name}&quot;? This action cannot be undone.
+  1439→                            </AlertDialogDescription>
+  1440→                          </AlertDialogHeader>
+  1441→                          <AlertDialogFooter>
+  1442→                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1443→                            <AlertDialogAction onClick={() => handleDelete(p.id)} className="bg-rose-600 hover:bg-rose-700">
+  1444→                              Delete
+  1445→                            </AlertDialogAction>
+  1446→                          </AlertDialogFooter>
+  1447→                        </AlertDialogContent>
+  1448→                      </AlertDialog>
+  1449→                    </TableCell>
+  1450→                  </TableRow>
+  1451→                )
+  1452→              })}
+  1453→            </TableBody>
+  1454→          </Table>
+  1455→        </CardContent>
+  1456→      </Card>
+  1457→
+  1458→      {/* Create Project Dialog */}
+  1459→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+  1460→        <DialogContent>
+  1461→          <DialogHeader>
+  1462→            <DialogTitle>Create New Project</DialogTitle>
+  1463→            <DialogDescription>Add a new project to your workspace</DialogDescription>
+  1464→          </DialogHeader>
+  1465→          <div className="space-y-4 py-2">
+  1466→            <div className="space-y-2">
+  1467→              <Label>Name</Label>
+  1468→              <Input placeholder="Project name" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
+  1469→            </div>
+  1470→            <div className="space-y-2">
+  1471→              <Label>Description</Label>
+  1472→              <Textarea placeholder="Brief description (optional)" value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} rows={3} />
+  1473→            </div>
+  1474→            <div className="grid grid-cols-2 gap-4">
+  1475→              <div className="space-y-2">
+  1476→                <Label>Priority</Label>
+  1477→                <Select value={form.priority} onValueChange={(v) => setForm(p => ({ ...p, priority: v }))}>
+  1478→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1479→                  <SelectContent>
+  1480→                    <SelectItem value="low">Low</SelectItem>
+  1481→                    <SelectItem value="medium">Medium</SelectItem>
+  1482→                    <SelectItem value="high">High</SelectItem>
+  1483→                    <SelectItem value="urgent">Urgent</SelectItem>
+  1484→                  </SelectContent>
+  1485→                </Select>
+  1486→              </div>
+  1487→              <div className="space-y-2">
+  1488→                <Label>Due Date</Label>
+  1489→                <Popover>
+  1490→                  <PopoverTrigger asChild>
+  1491→                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+  1492→                      <CalendarIcon className="mr-2 h-4 w-4" />
+  1493→                      {form.dueDate ? format(form.dueDate, 'MMM dd, yyyy') : 'Pick a date'}
+  1494→                    </Button>
+  1495→                  </PopoverTrigger>
+  1496→                  <PopoverContent className="w-auto p-0" align="start">
+  1497→                    <Calendar
+  1498→                      mode="single"
+  1499→                      selected={form.dueDate ?? undefined}
+  1500→                      onSelect={(d: Date | undefined) => setForm(p => ({ ...p, dueDate: d ?? null }))}
+  1501→                    />
+  1502→                  </PopoverContent>
+  1503→                </Popover>
+  1504→              </div>
+  1505→            </div>
+  1506→            <div className="space-y-2">
+  1507→              <Label>Color</Label>
+  1508→              <div className="flex gap-2 flex-wrap">
+  1509→                {PRESET_COLORS.map((c) => (
+  1510→                  <button
+  1511→                    key={c}
+  1512→                    className={`h-8 w-8 rounded-full border-2 transition-all ${form.color === c ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'}`}
+  1513→                    style={{ backgroundColor: c }}
+  1514→                    onClick={() => setForm(p => ({ ...p, color: c }))}
+  1515→                  />
+  1516→                ))}
+  1517→              </div>
+  1518→            </div>
+  1519→            <div className="space-y-2">
+  1520→              <Label>Assign Members</Label>
+  1521→              <p className="text-xs text-muted-foreground">Select team members who will have access to this project</p>
+  1522→              {activeUsers.length === 0 ? (
+  1523→                <p className="text-sm text-muted-foreground py-2">No active users found</p>
+  1524→              ) : (
+  1525→                <ScrollArea className="max-h-48 rounded-md border">
+  1526→                  <div className="p-2 space-y-1">
+  1527→                    {activeUsers.map((u) => (
+  1528→                      <label
+  1529→                        key={u.id}
+  1530→                        className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer"
+  1531→                      >
+  1532→                        <Checkbox
+  1533→                          checked={selectedMemberIds.includes(u.id)}
+  1534→                          onCheckedChange={(checked) => {
+  1535→                            setSelectedMemberIds(prev =>
+  1536→                              checked
+  1537→                                ? [...prev, u.id]
+  1538→                                : prev.filter(id => id !== u.id)
+  1539→                            )
+  1540→                          }}
+  1541→                        />
+  1542→                        <Avatar className="h-6 w-6">
+  1543→                          <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+  1544→                        </Avatar>
+  1545→                        <div className="flex-1 min-w-0">
+  1546→                          <span className="text-sm font-medium truncate block">{u.name}</span>
+  1547→                        </div>
+  1548→                        <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>
+  1549→                          {u.role}
+  1550→                        </Badge>
+  1551→                      </label>
+  1552→                    ))}
+  1553→                  </div>
+  1554→                </ScrollArea>
+  1555→              )}
+  1556→              {selectedMemberIds.length > 0 && (
+  1557→                <p className="text-xs text-muted-foreground">{selectedMemberIds.length} member(s) selected</p>
+  1558→              )}
+  1559→            </div>
+  1560→          </div>
+  1561→          <DialogFooter>
+  1562→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+  1563→            <Button onClick={handleCreate} disabled={!form.name.trim() || creating} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+  1564→              {creating ? 'Creating...' : 'Create Project'}
+  1565→            </Button>
+  1566→          </DialogFooter>
+  1567→        </DialogContent>
+  1568→      </Dialog>
+  1569→
+  1570→      {/* Manage Members Dialog */}
+  1571→      <Dialog open={manageMembersOpen} onOpenChange={setManageMembersOpen}>
+  1572→        <DialogContent className="max-w-md">
+  1573→          <DialogHeader>
+  1574→            <DialogTitle>Manage Members</DialogTitle>
+  1575→            <DialogDescription>
+  1576→              Members of &quot;{manageProjectName}&quot;
+  1577→            </DialogDescription>
+  1578→          </DialogHeader>
+  1579→          <div className="space-y-4 py-2">
+  1580→            {membersLoading ? (
+  1581→              <div className="flex items-center justify-center py-8">
+  1582→                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+  1583→              </div>
+  1584→            ) : (
+  1585→              <>
+  1586→                {/* Current members */}
+  1587→                <div className="space-y-2">
+  1588→                  <Label className="text-sm font-medium">Current Members</Label>
+  1589→                  {projectMembers.length === 0 ? (
+  1590→                    <p className="text-sm text-muted-foreground py-2">No members yet</p>
+  1591→                  ) : (
+  1592→                    <ScrollArea className="max-h-48 rounded-md border">
+  1593→                      <div className="p-2 space-y-1">
+  1594→                        {projectMembers.map((m) => (
+  1595→                          <div key={m.id} className="flex items-center gap-3 px-2 py-1.5">
+  1596→                            <Avatar className="h-6 w-6">
+  1597→                              <AvatarFallback className="text-[10px]">{getInitials(m.user.name)}</AvatarFallback>
+  1598→                            </Avatar>
+  1599→                            <div className="flex-1 min-w-0">
+  1600→                              <span className="text-sm font-medium truncate block">{m.user.name}</span>
+  1601→                              <span className="text-xs text-muted-foreground">{m.user.email}</span>
+  1602→                            </div>
+  1603→                            <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(m.user.role))}>
+  1604→                              {m.role === 'owner' ? 'owner' : m.user.role}
+  1605→                            </Badge>
+  1606→                            {m.role !== 'owner' && (
+  1607→                              <Button
+  1608→                                variant="ghost"
+  1609→                                size="icon"
+  1610→                                className="h-6 w-6 text-muted-foreground hover:text-rose-500"
+  1611→                                onClick={() => handleRemoveMember(m.userId)}
+  1612→                              >
+  1613→                                <X className="h-3.5 w-3.5" />
+  1614→                              </Button>
+  1615→                            )}
+  1616→                          </div>
+  1617→                        ))}
+  1618→                      </div>
+  1619→                    </ScrollArea>
+  1620→                  )}
+  1621→                </div>
+  1622→
+  1623→                {/* Add new members */}
+  1624→                <div className="space-y-2">
+  1625→                  <Label className="text-sm font-medium">Add Members</Label>
+  1626→                  {activeUsers.filter(u => !projectMembers.some(m => m.userId === u.id)).length === 0 ? (
+  1627→                    <p className="text-xs text-muted-foreground">All active users are already members</p>
+  1628→                  ) : (
+  1629→                    <ScrollArea className="max-h-40 rounded-md border">
+  1630→                      <div className="p-2 space-y-1">
+  1631→                        {activeUsers
+  1632→                          .filter(u => !projectMembers.some(m => m.userId === u.id))
+  1633→                          .map((u) => (
+  1634→                            <div key={u.id} className="flex items-center gap-3 px-2 py-1.5 hover:bg-muted/50 rounded-md">
+  1635→                              <Avatar className="h-6 w-6">
+  1636→                                <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+  1637→                              </Avatar>
+  1638→                              <div className="flex-1 min-w-0">
+  1639→                                <span className="text-sm font-medium truncate block">{u.name}</span>
+  1640→                              </div>
+  1641→                              <Badge variant="secondary" className={cn('text-[10px]', getRoleBadgeClasses(u.role))}>
+  1642→                                {u.role}
+  1643→                              </Badge>
+  1644→                              <Button
+  1645→                                variant="outline"
+  1646→                                size="sm"
+  1647→                                className="h-6 text-xs"
+  1648→                                onClick={() => handleAddMembers([u.id])}
+  1649→                              >
+  1650→                                <UserPlus className="h-3 w-3 mr-1" />
+  1651→                                Add
+  1652→                              </Button>
+  1653→                            </div>
+  1654→                          ))}
+  1655→                      </div>
+  1656→                    </ScrollArea>
+  1657→                  )}
+  1658→                </div>
+  1659→              </>
+  1660→            )}
+  1661→          </div>
+  1662→        </DialogContent>
+  1663→      </Dialog>
+  1664→    </motion.div>
+  1665→  )
+  1666→}
+  1667→
+  1668→// ─── AdminTasks ────────────────────────────────────────────────────────────────
+  1669→
+  1670→const STATUS_FILTERS = ['all', 'todo', 'in_progress', 'in_review', 'done'] as const
+  1671→type StatusFilter = typeof STATUS_FILTERS[number]
+  1672→
+  1673→const STATUS_LABELS: Record<string, string> = {
+  1674→  all: 'All', todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done'
+  1675→}
+  1676→
+  1677→export function AdminTasks() {
+  1678→  const { user } = useAuthStore()
+  1679→  const [loading, setLoading] = useState(true)
+  1680→  const [tasks, setTasks] = useState<Task[]>([])
+  1681→  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  1682→  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  1683→  const [detailOpen, setDetailOpen] = useState(false)
+  1684→  const [comments, setComments] = useState<CommentType[]>([])
+  1685→  const [allTeamUsers, setAllTeamUsers] = useState<User[]>([])
+  1686→  const [assigneeOpen, setAssigneeOpen] = useState(false)
+  1687→
+  1688→  // ─── Buffered edit state ───────────────────────────────────────
+  1689→  const [editStatus, setEditStatus] = useState('')
+  1690→  const [editPriority, setEditPriority] = useState('')
+  1691→  const [editDueDate, setEditDueDate] = useState<Date | null>(null)
+  1692→  const [pendingAssigneeIds, setPendingAssigneeIds] = useState<Set<string>>(new Set())
+  1693→  const [saving, setSaving] = useState(false)
+  1694→
+  1695→  const hasChanges = selectedTask ? (
+  1696→    editStatus !== selectedTask.status ||
+  1697→    editPriority !== selectedTask.priority ||
+  1698→    (editDueDate ? editDueDate.toISOString() : null) !== (selectedTask.dueDate || null) ||
+  1699→    pendingAssigneeIds.size !== new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).size ||
+  1700→    ![...pendingAssigneeIds].every(id => new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)).has(id))
+  1701→  ) : false
+  1702→
+  1703→  const fetchTasks = useCallback(async (status: StatusFilter) => {
+  1704→    setLoading(true)
+  1705→    try {
+  1706→      const url = status === 'all' ? '/api/tasks' : `/api/tasks?status=${status}`
+  1707→      const res = await fetch(url)
+  1708→      if (!res.ok) throw new Error('Failed')
+  1709→      const data = await res.json()
+  1710→      setTasks(data.tasks ?? [])
+  1711→    } catch {
+  1712→      toast.error('Failed to load tasks')
+  1713→    } finally {
+  1714→      setLoading(false)
+  1715→    }
+  1716→  }, [])
+  1717→
+  1718→  useEffect(() => { fetchTasks(statusFilter) }, [statusFilter, fetchTasks])
+  1719→
+  1720→  // Fetch all team/admin users for assignee selection
+  1721→  useEffect(() => {
+  1722→    fetch('/api/users')
+  1723→      .then(r => r.json())
+  1724→      .then(d => {
+  1725→        const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'training' || u.role === 'admin')
+  1726→        setAllTeamUsers(members)
+  1727→      })
+  1728→      .catch(() => {})
+  1729→  }, [])
+  1730→
+  1731→  async function openTaskDetail(task: Task) {
+  1732→    setSelectedTask(task)
+  1733→    setDetailOpen(true)
+  1734→    // Initialize edit state from the task
+  1735→    setEditStatus(task.status)
+  1736→    setEditPriority(task.priority)
+  1737→    setEditDueDate(task.dueDate ? new Date(task.dueDate) : null)
+  1738→    const aIds = new Set((task.assignees || []).map((a: { userId: string }) => a.userId))
+  1739→    setPendingAssigneeIds(aIds)
+  1740→    // Fetch full task with comments
+  1741→    try {
+  1742→      const detailRes = await fetch(`/api/tasks/${task.id}`)
+  1743→      if (detailRes.ok) {
+  1744→        const data = await detailRes.json()
+  1745→        const fullTask = data.task
+  1746→        setSelectedTask(fullTask)
+  1747→        setComments(fullTask?.comments ?? [])
+  1748→        setEditStatus(fullTask.status)
+  1749→        setEditPriority(fullTask.priority)
+  1750→        setEditDueDate(fullTask.dueDate ? new Date(fullTask.dueDate) : null)
+  1751→        setPendingAssigneeIds(new Set((fullTask?.assignees || []).map((a: { userId: string }) => a.userId)))
+  1752→      }
+  1753→    } catch { /* use basic data */ }
+  1754→  }
+  1755→
+  1756→  function handleTogglePendingAssignee(userId: string) {
+  1757→    setPendingAssigneeIds(prev => {
+  1758→      const next = new Set(prev)
+  1759→      if (next.has(userId)) {
+  1760→        next.delete(userId)
+  1761→      } else {
+  1762→        next.add(userId)
+  1763→      }
+  1764→      return next
+  1765→    })
+  1766→  }
+  1767→
+  1768→  const assignedUsersList = allTeamUsers.filter(u => pendingAssigneeIds.has(u.id))
+  1769→
+  1770→  async function handleSave() {
+  1771→    if (!selectedTask || !hasChanges) return
+  1772→    setSaving(true)
+  1773→    try {
+  1774→      // Build updates for task fields
+  1775→      const updates: Record<string, unknown> = {}
+  1776→      if (editStatus !== selectedTask.status) updates.status = editStatus
+  1777→      if (editPriority !== selectedTask.priority) updates.priority = editPriority
+  1778→      const newDueDateStr = editDueDate ? editDueDate.toISOString() : null
+  1779→      if (newDueDateStr !== (selectedTask.dueDate || null)) updates.dueDate = newDueDateStr
+  1780→
+  1781→      if (Object.keys(updates).length > 0) {
+  1782→        const patchRes = await fetch(`/api/tasks/${selectedTask.id}`, {
+  1783→          method: 'PATCH',
+  1784→          headers: { 'Content-Type': 'application/json' },
+  1785→          body: JSON.stringify(updates)
+  1786→        })
+  1787→        if (!patchRes.ok) throw new Error()
+  1788→      }
+  1789→
+  1790→      // Handle assignee changes
+  1791→      const originalIds = new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId))
+  1792→      const toRemove = [...originalIds].filter(id => !pendingAssigneeIds.has(id))
+  1793→      const toAdd = [...pendingAssigneeIds].filter(id => !originalIds.has(id))
+  1794→
+  1795→      for (const userId of toRemove) {
+  1796→        await fetch('/api/tasks/assignments', {
+  1797→          method: 'DELETE',
+  1798→          headers: { 'Content-Type': 'application/json' },
+  1799→          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+  1800→        })
+  1801→      }
+  1802→      for (const userId of toAdd) {
+  1803→        await fetch('/api/tasks/assignments', {
+  1804→          method: 'POST',
+  1805→          headers: { 'Content-Type': 'application/json' },
+  1806→          body: JSON.stringify({ userId, taskId: selectedTask.id }),
+  1807→        })
+  1808→      }
+  1809→
+  1810→      toast.success('Task updated')
+  1811→      fetchTasks(statusFilter)
+  1812→      // Refresh selected task
+  1813→      const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
+  1814→      if (fresh.ok) {
+  1815→        const data = await fresh.json()
+  1816→        const updatedTask = data.task
+  1817→        setSelectedTask(updatedTask)
+  1818→        setComments(updatedTask?.comments ?? [])
+  1819→        setEditStatus(updatedTask.status)
+  1820→        setEditPriority(updatedTask.priority)
+  1821→        setEditDueDate(updatedTask.dueDate ? new Date(updatedTask.dueDate) : null)
+  1822→        setPendingAssigneeIds(new Set((updatedTask?.assignees || []).map((a: { userId: string }) => a.userId)))
+  1823→      }
+  1824→    } catch {
+  1825→      toast.error('Failed to update task')
+  1826→    } finally {
+  1827→      setSaving(false)
+  1828→    }
+  1829→  }
+  1830→
+  1831→  function handleDiscard() {
+  1832→    if (!selectedTask) return
+  1833→    setEditStatus(selectedTask.status)
+  1834→    setEditPriority(selectedTask.priority)
+  1835→    setEditDueDate(selectedTask.dueDate ? new Date(selectedTask.dueDate) : null)
+  1836→    setPendingAssigneeIds(new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)))
+  1837→  }
+  1838→
+  1839→  const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
+  1840→
+  1841→  if (loading && tasks.length === 0) {
+  1842→    return (
+  1843→      <div className="space-y-4">
+  1844→        <Skeleton className="h-10 w-48" />
+  1845→        <Card><CardContent className="p-4"><Skeleton className="h-64 w-full" /></CardContent></Card>
+  1846→      </div>
+  1847→    )
+  1848→  }
+  1849→
+  1850→  return (
+  1851→    <motion.div {...fadeIn} className="space-y-6">
+  1852→      <div>
+  1853→        <h2 className="text-xl font-semibold">Task Dashboard</h2>
+  1854→        <p className="text-sm text-muted-foreground">View and manage all tasks across projects</p>
+  1855→      </div>
+  1856→
+  1857→      {/* Status Filter Tabs */}
+  1858→      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+  1859→        <TabsList>
+  1860→          {STATUS_FILTERS.map((s) => (
+  1861→            <TabsTrigger key={s} value={s} className="text-sm">
+  1862→              {STATUS_LABELS[s]}
+  1863→            </TabsTrigger>
+  1864→          ))}
+  1865→        </TabsList>
+  1866→      </Tabs>
+  1867→
+  1868→      <Card>
+  1869→        <CardContent className="p-0">
+  1870→          <Table>
+  1871→            <TableHeader>
+  1872→              <TableRow>
+  1873→                <TableHead>Title</TableHead>
+  1874→                <TableHead>Status</TableHead>
+  1875→                <TableHead>Priority</TableHead>
+  1876→                <TableHead className="hidden md:table-cell">Assignees</TableHead>
+  1877→                <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+  1878→                <TableHead className="hidden lg:table-cell">Project</TableHead>
+  1879→              </TableRow>
+  1880→            </TableHeader>
+  1881→            <TableBody>
+  1882→              {filteredTasks.length === 0 && (
+  1883→                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tasks found</TableCell></TableRow>
+  1884→              )}
+  1885→              {filteredTasks.map((task) => {
+  1886→                const sCfg = getStatusConfig(task.status)
+  1887→                const pCfg = getPriorityConfig(task.priority)
+  1888→                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done'
+  1889→                return (
+  1890→                  <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openTaskDetail(task)}>
+  1891→                    <TableCell>
+  1892→                      <div className="flex items-center gap-2">
+  1893→                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${sCfg.dotColor}`} />
+  1894→                        <span className="font-medium text-sm">{task.title}</span>
+  1895→                      </div>
+  1896→                    </TableCell>
+  1897→                    <TableCell>
+  1898→                      <Badge variant="secondary" className={`${sCfg.color} text-xs`}>{sCfg.label}</Badge>
+  1899→                    </TableCell>
+  1900→                    <TableCell>
+  1901→                      <Badge variant="secondary" className={`${pCfg.color} text-xs`}>{pCfg.label}</Badge>
+  1902→                    </TableCell>
+  1903→                    <TableCell className="hidden md:table-cell">
+  1904→                      <div className="flex -space-x-2">
+  1905→                        {task.assignees?.slice(0, 3).map((a) => (
+  1906→                          <TooltipProvider key={a.id}>
+  1907→                            <Tooltip>
+  1908→                              <TooltipTrigger>
+  1909→                                <Avatar className="h-7 w-7 border-2 border-background">
+  1910→                                  {a.user?.avatar ? <AvatarImage src={a.user.avatar} /> : null}
+  1911→                                  <AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">
+  1912→                                    {a.user ? getInitials(a.user.name) : '?'}
+  1913→                                  </AvatarFallback>
+  1914→                                </Avatar>
+  1915→                              </TooltipTrigger>
+  1916→                              <TooltipContent><p>{a.user?.name}</p></TooltipContent>
+  1917→                            </Tooltip>
+  1918→                          </TooltipProvider>
+  1919→                        ))}
+  1920→                        {(task.assignees?.length ?? 0) > 3 && (
+  1921→                          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-medium border-2 border-background">
+  1922→                            +{task.assignees!.length - 3}
+  1923→                          </div>
+  1924→                        )}
+  1925→                      </div>
+  1926→                    </TableCell>
+  1927→                    <TableCell className="hidden sm:table-cell">
+  1928→                      {task.dueDate ? (
+  1929→                        <span className={`text-sm ${isOverdue ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
+  1930→                          {formatDate(task.dueDate)}
+  1931→                        </span>
+  1932→                      ) : <span className="text-sm text-muted-foreground">—</span>}
+  1933→                    </TableCell>
+  1934→                    <TableCell className="hidden lg:table-cell">
+  1935→                      <div className="flex items-center gap-2">
+  1936→                        {task.project && <div className="h-2 w-2 rounded-full" style={{ backgroundColor: task.project.color }} />}
+  1937→                        <span className="text-sm text-muted-foreground">{task.project?.name ?? '—'}</span>
+  1938→                      </div>
+  1939→                    </TableCell>
+  1940→                  </TableRow>
+  1941→                )
+  1942→              })}
+  1943→            </TableBody>
+  1944→          </Table>
+  1945→        </CardContent>
+  1946→      </Card>
+  1947→
+  1948→      {/* Task Detail Dialog */}
+  1949→      <Dialog open={detailOpen} onOpenChange={(open) => {
+  1950→        if (!open && hasChanges) {
+  1951→          // If closing with unsaved changes, discard them
+  1952→          handleDiscard()
+  1953→        }
+  1954→        setDetailOpen(open)
+  1955→      }}>
+  1956→        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+  1957→          {selectedTask && (
+  1958→            <>
+  1959→              <DialogHeader>
+  1960→                <DialogTitle className="text-lg">{selectedTask.title}</DialogTitle>
+  1961→                <DialogDescription>
+  1962→                  {selectedTask.project?.name ?? 'Project'} · Created {formatRelativeTime(selectedTask.createdAt)}
+  1963→                </DialogDescription>
+  1964→              </DialogHeader>
+  1965→
+  1966→              {/* Unsaved changes indicator */}
+  1967→              {hasChanges && (
+  1968→                <div className="flex items-center gap-2 px-1">
+  1969→                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+  1970→                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
+  1971→                </div>
+  1972→              )}
+  1973→
+  1974→              <ScrollArea className="flex-1 -mx-6 px-6">
+  1975→                <div className="space-y-6 py-2">
+  1976→                  {/* Status & Priority */}
+  1977→                  <div className="grid grid-cols-2 gap-4">
+  1978→                    <div className="space-y-2">
+  1979→                      <Label className="text-xs text-muted-foreground">Status</Label>
+  1980→                      <Select value={editStatus} onValueChange={setEditStatus}>
+  1981→                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1982→                        <SelectContent>
+  1983→                          <SelectItem value="todo">To Do</SelectItem>
+  1984→                          <SelectItem value="in_progress">In Progress</SelectItem>
+  1985→                          <SelectItem value="in_review">In Review</SelectItem>
+  1986→                          <SelectItem value="done">Done</SelectItem>
+  1987→                        </SelectContent>
+  1988→                      </Select>
+  1989→                    </div>
+  1990→                    <div className="space-y-2">
+  1991→                      <Label className="text-xs text-muted-foreground">Priority</Label>
+  1992→                      <Select value={editPriority} onValueChange={setEditPriority}>
+  1993→                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1994→                        <SelectContent>
+  1995→                          <SelectItem value="low">Low</SelectItem>
+  1996→                          <SelectItem value="medium">Medium</SelectItem>
+  1997→                          <SelectItem value="high">High</SelectItem>
+  1998→                          <SelectItem value="urgent">Urgent</SelectItem>
+  1999→                        </SelectContent>
+  2000→                      </Select>
+
+[showing lines 1-2000 of 3837; use offset=2001 with limit to continue reading]

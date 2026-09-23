@@ -1,0 +1,881 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from 'react'
+     4→import { Card, CardContent, CardHeader } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { ScrollArea } from '@/components/ui/scroll-area'
+     8→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Progress } from '@/components/ui/progress'
+    12→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    13→import {
+    14→  Table,
+    15→  TableBody,
+    16→  TableCell,
+    17→  TableHead,
+    18→  TableHeader,
+    19→  TableRow,
+    20→} from '@/components/ui/table'
+    21→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    22→import { AnimatePresence, motion } from 'framer-motion'
+    23→import { toast } from 'sonner'
+    24→import { format, isPast, isToday } from 'date-fns'
+    25→import {
+    26→  Plus,
+    27→  LayoutGrid,
+    28→  List,
+    29→  Clock,
+    30→  FolderOpen,
+    31→  Calendar,
+    32→  Users,
+    33→  CheckCircle2,
+    34→  Circle,
+    35→  Eye,
+    36→  Loader2,
+    37→} from 'lucide-react'
+    38→import { useAuthStore } from '@/stores/auth'
+    39→import { TaskCard, priorityConfig, getInitials } from './TaskCard'
+    40→import { TaskDetail } from './TaskDetail'
+    41→import { CreateTaskModal } from './CreateTaskModal'
+    42→import type { Task, Project, TeamView, User } from '@/types'
+    43→
+    44→// ─── Column Configuration ────────────────────────────────────────────────────
+    45→
+    46→type TaskStatus = Task['status']
+    47→
+    48→interface ColumnConfig {
+    49→  key: TaskStatus
+    50→  label: string
+    51→  color: string
+    52→  dotColor: string
+    53→  borderColor: string
+    54→  icon: typeof Circle
+    55→}
+    56→
+    57→const columns: ColumnConfig[] = [
+    58→  {
+    59→    key: 'todo',
+    60→    label: 'To Do',
+    61→    color: 'bg-slate-500',
+    62→    dotColor: 'bg-slate-400',
+    63→    borderColor: 'border-l-slate-400',
+    64→    icon: Circle,
+    65→  },
+    66→  {
+    67→    key: 'in_progress',
+    68→    label: 'In Progress',
+    69→    color: 'bg-amber-500',
+    70→    dotColor: 'bg-amber-500',
+    71→    borderColor: 'border-l-amber-500',
+    72→    icon: Clock,
+    73→  },
+    74→  {
+    75→    key: 'in_review',
+    76→    label: 'In Review',
+    77→    color: 'bg-purple-500',
+    78→    dotColor: 'bg-purple-500',
+    79→    borderColor: 'border-l-purple-500',
+    80→    icon: Eye,
+    81→  },
+    82→  {
+    83→    key: 'done',
+    84→    label: 'Done',
+    85→    color: 'bg-emerald-500',
+    86→    dotColor: 'bg-emerald-500',
+    87→    borderColor: 'border-l-emerald-500',
+    88→    icon: CheckCircle2,
+    89→  },
+    90→]
+    91→
+    92→const statusBadgeConfig: Record<TaskStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive'; className: string }> = {
+    93→  todo: { label: 'To Do', variant: 'outline', className: 'text-slate-500 border-slate-300' },
+    94→  in_progress: { label: 'In Progress', variant: 'outline', className: 'text-amber-600 border-amber-300 bg-amber-50' },
+    95→  in_review: { label: 'In Review', variant: 'outline', className: 'text-purple-600 border-purple-300 bg-purple-50' },
+    96→  done: { label: 'Done', variant: 'outline', className: 'text-emerald-600 border-emerald-300 bg-emerald-50' },
+    97→}
+    98→
+    99→// ─── Animation Variants ──────────────────────────────────────────────────────
+   100→
+   101→const viewTransition = {
+   102→  initial: { opacity: 0, y: 12 },
+   103→  animate: { opacity: 1, y: 0 },
+   104→  exit: { opacity: 0, y: -12 },
+   105→  transition: { duration: 0.2, ease: 'easeOut' },
+   106→}
+   107→
+   108→const cardStagger = {
+   109→  animate: { transition: { staggerChildren: 0.04 } },
+   110→}
+   111→
+   112→const cardItem = {
+   113→  initial: { opacity: 0, y: 8 },
+   114→  animate: { opacity: 1, y: 0 },
+   115→  exit: { opacity: 0, y: -8 },
+   116→}
+   117→
+   118→// ─── Loading Skeletons ───────────────────────────────────────────────────────
+   119→
+   120→function BoardSkeleton() {
+   121→  return (
+   122→    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+   123→      {Array.from({ length: 4 }).map((_, ci) => (
+   124→        <div key={ci} className="space-y-3">
+   125→          <div className="flex items-center gap-2">
+   126→            <Skeleton className="h-3 w-3 rounded-full" />
+   127→            <Skeleton className="h-4 w-24" />
+   128→            <Skeleton className="h-5 w-6 rounded-full" />
+   129→          </div>
+   130→          <Separator />
+   131→          {Array.from({ length: 3 }).map((_, i) => (
+   132→            <Card key={i} className="p-4">
+   133→              <div className="space-y-2">
+   134→                <Skeleton className="h-3 w-16" />
+   135→                <Skeleton className="h-4 w-full" />
+   136→                <Skeleton className="h-3 w-20" />
+   137→                <div className="flex justify-between">
+   138→                  <Skeleton className="h-3 w-16" />
+   139→                  <Skeleton className="h-3 w-3 rounded-full" />
+   140→                </div>
+   141→              </div>
+   142→            </Card>
+   143→          ))}
+   144→        </div>
+   145→      ))}
+   146→    </div>
+   147→  )
+   148→}
+   149→
+   150→function ListSkeleton() {
+   151→  return (
+   152→    <Card>
+   153→      <CardContent className="p-0">
+   154→        <Table>
+   155→          <TableHeader>
+   156→            <TableRow>
+   157→              <TableHead className="w-[40%]">Title</TableHead>
+   158→              <TableHead>Status</TableHead>
+   159→              <TableHead>Priority</TableHead>
+   160→              <TableHead>Assignees</TableHead>
+   161→              <TableHead>Due Date</TableHead>
+   162→              <TableHead>Project</TableHead>
+   163→            </TableRow>
+   164→          </TableHeader>
+   165→          <TableBody>
+   166→            {Array.from({ length: 6 }).map((_, i) => (
+   167→              <TableRow key={i}>
+   168→                <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+   169→                <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+   170→                <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+   171→                <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+   172→                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+   173→                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+   174→              </TableRow>
+   175→            ))}
+   176→          </TableBody>
+   177→        </Table>
+   178→      </CardContent>
+   179→    </Card>
+   180→  )
+   181→}
+   182→
+   183→function TimelineSkeleton() {
+   184→  return (
+   185→    <div className="space-y-6">
+   186→      {Array.from({ length: 3 }).map((_, i) => (
+   187→        <Card key={i}>
+   188→          <CardHeader className="pb-3">
+   189→            <div className="flex items-center justify-between">
+   190→              <div className="flex items-center gap-3">
+   191→                <Skeleton className="h-8 w-8 rounded-md" />
+   192→                <Skeleton className="h-5 w-36" />
+   193→              </div>
+   194→              <Skeleton className="h-4 w-20" />
+   195→            </div>
+   196→          </CardHeader>
+   197→          <CardContent className="space-y-3">
+   198→            <Progress value={0} className="h-2" />
+   199→            <div className="space-y-2">
+   200→              {Array.from({ length: 2 }).map((_, j) => (
+   201→                <div key={j} className="flex items-center justify-between">
+   202→                  <Skeleton className="h-4 w-48" />
+   203→                  <Skeleton className="h-4 w-16" />
+   204→                </div>
+   205→              ))}
+   206→            </div>
+   207→          </CardContent>
+   208→        </Card>
+   209→      ))}
+   210→    </div>
+   211→  )
+   212→}
+   213→
+   214→// ─── Board Column ────────────────────────────────────────────────────────────
+   215→
+   216→interface BoardColumnProps {
+   217→  config: ColumnConfig
+   218→  tasks: Task[]
+   219→  onTaskClick: (task: Task) => void
+   220→  onCreateTask: () => void
+   221→  showCreateButton: boolean
+   222→}
+   223→
+   224→function BoardColumn({ config, tasks, onTaskClick, onCreateTask, showCreateButton }: BoardColumnProps) {
+   225→  const Icon = config.icon
+   226→
+   227→  return (
+   228→    <motion.div
+   229→      className="flex flex-col rounded-lg bg-muted/30 border"
+   230→      initial={{ opacity: 0, y: 20 }}
+   231→      animate={{ opacity: 1, y: 0 }}
+   232→      transition={{ duration: 0.3, delay: columns.indexOf(config) * 0.08 }}
+   233→    >
+   234→      {/* Column Header */}
+   235→      <div className="flex items-center justify-between px-4 py-3 border-b">
+   236→        <div className="flex items-center gap-2.5">
+   237→          <div className={`w-2.5 h-2.5 rounded-full ${config.dotColor}`} />
+   238→          <span className="text-sm font-semibold">{config.label}</span>
+   239→          <Badge variant="secondary" className="h-5 min-w-[20px] flex items-center justify-center text-[11px] px-1.5">
+   240→            {tasks.length}
+   241→          </Badge>
+   242→        </div>
+   243→        <Icon className="w-4 h-4 text-muted-foreground" />
+   244→      </div>
+   245→
+   246→      {/* Create Task Button */}
+   247→      {showCreateButton && (
+   248→        <div className="px-3 pt-3">
+   249→          <Button
+   250→            variant="ghost"
+   251→            size="sm"
+   252→            className="w-full h-8 text-xs text-muted-foreground border border-dashed hover:bg-accent hover:text-accent-foreground"
+   253→            onClick={onCreateTask}
+   254→          >
+   255→            <Plus className="w-3.5 h-3.5 mr-1.5" />
+   256→            Create Task
+   257→          </Button>
+   258→        </div>
+   259→      )}
+   260→
+   261→      {/* Task List */}
+   262→      <ScrollArea className="flex-1 max-h-[calc(100vh-320px)]">
+   263→        <motion.div
+   264→          className="p-3 space-y-2.5"
+   265→          variants={cardStagger}
+   266→          initial="initial"
+   267→          animate="animate"
+   268→        >
+   269→          <AnimatePresence mode="popLayout">
+   270→            {tasks.map((task) => (
+   271→              <motion.div key={task.id} variants={cardItem} layout>
+   272→                <TaskCard task={task} onClick={onTaskClick} />
+   273→              </motion.div>
+   274→            ))}
+   275→          </AnimatePresence>
+   276→
+   277→          {tasks.length === 0 && (
+   278→            <div className="py-8 text-center">
+   279→              <p className="text-xs text-muted-foreground">No tasks</p>
+   280→            </div>
+   281→          )}
+   282→        </motion.div>
+   283→      </ScrollArea>
+   284→    </motion.div>
+   285→  )
+   286→}
+   287→
+   288→// ─── List View Row ───────────────────────────────────────────────────────────
+   289→
+   290→interface ListViewProps {
+   291→  tasks: Task[]
+   292→  projects: Project[]
+   293→  onTaskClick: (task: Task) => void
+   294→  onCreateTask: () => void
+   295→}
+   296→
+   297→function ListView({ tasks, projects, onTaskClick, onCreateTask }: ListViewProps) {
+   298→  const projectMap = useMemo(() => {
+   299→    const map = new Map<string, Project>()
+   300→    for (const p of projects) map.set(p.id, p)
+   301→    return map
+   302→  }, [projects])
+   303→
+   304→  return (
+   305→    <Card>
+   306→      <CardHeader className="flex flex-row items-center justify-between pb-3">
+   307→        <div className="flex items-center gap-2">
+   308→          <List className="w-4 h-4 text-muted-foreground" />
+   309→          <h3 className="text-sm font-semibold">All Tasks</h3>
+   310→          <Badge variant="secondary" className="text-[11px]">{tasks.length}</Badge>
+   311→        </div>
+   312→        <Button size="sm" className="h-8 text-xs" onClick={onCreateTask}>
+   313→          <Plus className="w-3.5 h-3.5 mr-1.5" />
+   314→          Create Task
+   315→        </Button>
+   316→      </CardHeader>
+   317→      <CardContent className="p-0">
+   318→        <ScrollArea className="max-h-[calc(100vh-260px)]">
+   319→          <Table>
+   320→            <TableHeader>
+   321→              <TableRow>
+   322→                <TableHead className="w-[35%] min-w-[200px]">Title</TableHead>
+   323→                <TableHead className="w-[12%]">Status</TableHead>
+   324→                <TableHead className="w-[10%]">Priority</TableHead>
+   325→                <TableHead className="w-[18%]">Assignees</TableHead>
+   326→                <TableHead className="w-[13%]">Due Date</TableHead>
+   327→                <TableHead className="w-[12%]">Project</TableHead>
+   328→              </TableRow>
+   329→            </TableHeader>
+   330→            <TableBody>
+   331→              <AnimatePresence mode="popLayout">
+   332→                {tasks.map((task) => {
+   333→                  const statusCfg = statusBadgeConfig[task.status]
+   334→                  const priorityCfg = priorityConfig[task.priority]
+   335→                  const project = projectMap.get(task.projectId)
+   336→                  const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate))
+   337→
+   338→                  return (
+   339→                    <motion.tr
+   340→                      key={task.id}
+   341→                      variants={cardItem}
+   342→                      initial="initial"
+   343→                      animate="animate"
+   344→                      exit="exit"
+   345→                      className="cursor-pointer border-b hover:bg-muted/50 transition-colors"
+   346→                      onClick={() => onTaskClick(task)}
+   347→                    >
+   348→                      <TableCell className="py-3">
+   349→                        <div className="flex items-center gap-2">
+   350→                          <span className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+   351→                            {task.title}
+   352→                          </span>
+   353→                        </div>
+   354→                      </TableCell>
+   355→                      <TableCell className="py-3">
+   356→                        <Badge variant={statusCfg.variant} className={`text-[10px] px-2 py-0.5 ${statusCfg.className}`}>
+   357→                          {statusCfg.label}
+   358→                        </Badge>
+   359→                      </TableCell>
+   360→                      <TableCell className="py-3">
+   361→                        <Badge className={`text-[10px] px-2 py-0 border-0 ${priorityCfg.color}`}>
+   362→                          {priorityCfg.label}
+   363→                        </Badge>
+   364→                      </TableCell>
+   365→                      <TableCell className="py-3">
+   366→                        <div className="flex -space-x-1.5">
+   367→                          {task.assignees && task.assignees.length > 0 ? (
+   368→                            <>
+   369→                              {task.assignees.slice(0, 3).map((a) => (
+   370→                                <Avatar key={a.userId} className="w-6 h-6 border-2 border-background">
+   371→                                  <AvatarFallback className="text-[9px] bg-primary/10 text-primary">
+   372→                                    {a.user ? getInitials(a.user.name) : '?'}
+   373→                                  </AvatarFallback>
+   374→                                </Avatar>
+   375→                              ))}
+   376→                              {task.assignees.length > 3 && (
+   377→                                <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[9px] font-medium border-2 border-background">
+   378→                                  +{task.assignees.length - 3}
+   379→                                </div>
+   380→                              )}
+   381→                            </>
+   382→                          ) : (
+   383→                            <span className="text-xs text-muted-foreground">Unassigned</span>
+   384→                          )}
+   385→                        </div>
+   386→                      </TableCell>
+   387→                      <TableCell className="py-3">
+   388→                        {task.dueDate ? (
+   389→                          <span className={`text-xs flex items-center gap-1.5 ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+   390→                            <Calendar className="w-3 h-3" />
+   391→                            {format(new Date(task.dueDate), 'MMM d, yyyy')}
+   392→                          </span>
+   393→                        ) : (
+   394→                          <span className="text-xs text-muted-foreground">—</span>
+   395→                        )}
+   396→                      </TableCell>
+   397→                      <TableCell className="py-3">
+   398→                        {project ? (
+   399→                          <div className="flex items-center gap-1.5">
+   400→                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: project.color }} />
+   401→                            <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+   402→                              {project.name}
+   403→                            </span>
+   404→                          </div>
+   405→                        ) : (
+   406→                          <span className="text-xs text-muted-foreground">—</span>
+   407→                        )}
+   408→                      </TableCell>
+   409→                    </motion.tr>
+   410→                  )
+   411→                })}
+   412→              </AnimatePresence>
+   413→
+   414→              {tasks.length === 0 && (
+   415→                <TableRow>
+   416→                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+   417→                    No tasks found. Create your first task to get started.
+   418→                  </TableCell>
+   419→                </TableRow>
+   420→              )}
+   421→            </TableBody>
+   422→          </Table>
+   423→        </ScrollArea>
+   424→      </CardContent>
+   425→    </Card>
+   426→  )
+   427→}
+   428→
+   429→// ─── Timeline View ───────────────────────────────────────────────────────────
+   430→
+   431→interface TimelineViewProps {
+   432→  tasks: Task[]
+   433→  projects: Project[]
+   434→  onTaskClick: (task: Task) => void
+   435→  onCreateTask: () => void
+   436→}
+   437→
+   438→function TimelineView({ tasks, projects, onTaskClick, onCreateTask }: TimelineViewProps) {
+   439→  const grouped = useMemo(() => {
+   440→    const map = new Map<string, { project: Project; tasks: Task[] }>()
+   441→    for (const project of projects) {
+   442→      map.set(project.id, { project, tasks: [] })
+   443→    }
+   444→    for (const task of tasks) {
+   445→      const group = map.get(task.projectId)
+   446→      if (group) group.tasks.push(task)
+   447→    }
+   448→    return Array.from(map.values()).filter((g) => g.tasks.length > 0)
+   449→  }, [tasks, projects])
+   450→
+   451→  const overallCompleted = tasks.filter((t) => t.status === 'done').length
+   452→  const overallTotal = tasks.length
+   453→  const overallPercent = overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0
+   454→
+   455→  return (
+   456→    <motion.div {...viewTransition} className="space-y-6">
+   457→      {/* Overall Summary */}
+   458→      <Card>
+   459→        <CardContent className="p-4">
+   460→          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+   461→            <div className="flex items-center gap-3">
+   462→              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+   463→                <FolderOpen className="w-4 h-4 text-primary" />
+   464→              </div>
+   465→              <div>
+   466→                <h3 className="text-sm font-semibold">Overall Progress</h3>
+   467→                <p className="text-xs text-muted-foreground">
+   468→                  {overallCompleted} of {overallTotal} tasks completed
+   469→                </p>
+   470→              </div>
+   471→            </div>
+   472→            <div className="flex items-center gap-3 flex-1 max-w-md">
+   473→              <Progress value={overallPercent} className="h-2.5 flex-1" />
+   474→              <span className="text-sm font-semibold w-10 text-right">{overallPercent}%</span>
+   475→            </div>
+   476→          </div>
+   477→        </CardContent>
+   478→      </Card>
+   479→
+   480→      {/* Per-Project Groups */}
+   481→      <div className="space-y-4">
+   482→        {grouped.map(({ project, tasks: projectTasks }) => {
+   483→          const completed = projectTasks.filter((t) => t.status === 'done').length
+   484→          const total = projectTasks.length
+   485→          const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+   486→          const inProgress = projectTasks.filter((t) => t.status === 'in_progress').length
+   487→          const inReview = projectTasks.filter((t) => t.status === 'in_review').length
+   488→          const todo = projectTasks.filter((t) => t.status === 'todo').length
+   489→
+   490→          return (
+   491→            <Card key={project.id}>
+   492→              <CardHeader className="pb-3">
+   493→                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+   494→                  <div className="flex items-center gap-3">
+   495→                    <div
+   496→                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+   497→                      style={{ backgroundColor: `${project.color}20` }}
+   498→                    >
+   499→                      <FolderOpen className="w-4 h-4" style={{ color: project.color }} />
+   500→                    </div>
+   501→                    <div>
+   502→                      <h4 className="text-sm font-semibold">{project.name}</h4>
+   503→                      <p className="text-xs text-muted-foreground">
+   504→                        {project._count?.tasks ?? total} tasks
+   505→                      </p>
+   506→                    </div>
+   507→                  </div>
+   508→                  <div className="flex items-center gap-2">
+   509→                    <Badge variant="outline" className="text-[10px] text-slate-500">
+   510→                      {todo} To Do
+   511→                    </Badge>
+   512→                    <Badge variant="outline" className="text-[10px] text-amber-600">
+   513→                      {inProgress} Active
+   514→                    </Badge>
+   515→                    <Badge variant="outline" className="text-[10px] text-purple-600">
+   516→                      {inReview} Review
+   517→                    </Badge>
+   518→                    <Badge variant="outline" className="text-[10px] text-emerald-600">
+   519→                      {completed} Done
+   520→                    </Badge>
+   521→                  </div>
+   522→                </div>
+   523→              </CardHeader>
+   524→              <CardContent className="space-y-3">
+   525→                {/* Progress Bar */}
+   526→                <div className="flex items-center gap-3">
+   527→                  <Progress value={percent} className="h-2 flex-1" />
+   528→                  <span className="text-xs font-medium text-muted-foreground w-10 text-right">
+   529→                    {percent}%
+   530→                  </span>
+   531→                </div>
+   532→
+   533→                {/* Task List */}
+   534→                <div className="space-y-1">
+   535→                  {projectTasks.map((task) => {
+   536→                    const statusCfg = statusBadgeConfig[task.status]
+   537→                    const isDone = task.status === 'done'
+   538→                    return (
+   539→                      <div
+   540→                        key={task.id}
+   541→                        className="flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer hover:bg-muted/60 transition-colors"
+   542→                        onClick={() => onTaskClick(task)}
+   543→                      >
+   544→                        <div className="flex items-center gap-2.5 min-w-0">
+   545→                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'in_progress' ? 'bg-amber-500' : task.status === 'in_review' ? 'bg-purple-500' : 'bg-slate-400'}`} />
+   546→                          <span className={`text-sm truncate ${isDone ? 'line-through text-muted-foreground' : ''}`}>
+   547→                            {task.title}
+   548→                          </span>
+   549→                        </div>
+   550→                        <Badge variant={statusCfg.variant} className={`text-[10px] px-2 py-0 shrink-0 ml-2 ${statusCfg.className}`}>
+   551→                          {statusCfg.label}
+   552→                        </Badge>
+   553→                      </div>
+   554→                    )
+   555→                  })}
+   556→                </div>
+   557→              </CardContent>
+   558→            </Card>
+   559→          )
+   560→        })}
+   561→
+   562→        {grouped.length === 0 && (
+   563→          <Card>
+   564→            <CardContent className="py-12 text-center">
+   565→              <FolderOpen className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+   566→              <p className="text-sm text-muted-foreground">No tasks across projects yet</p>
+   567→              <Button size="sm" className="mt-4 h-8 text-xs" onClick={onCreateTask}>
+   568→                <Plus className="w-3.5 h-3.5 mr-1.5" />
+   569→                Create Task
+   570→              </Button>
+   571→            </CardContent>
+   572→          </Card>
+   573→        )}
+   574→      </div>
+   575→    </motion.div>
+   576→  )
+   577→}
+   578→
+   579→// ─── Main TeamDashboard Component ────────────────────────────────────────────
+   580→
+   581→export default function TeamDashboard() {
+   582→  const { user, teamView, selectedProjectId, setSelectedProjectId, setSelectedTaskId } = useAuthStore()
+   583→
+   584→  const [projects, setProjects] = useState<Project[]>([])
+   585→  const [tasks, setTasks] = useState<Task[]>([])
+   586→  const [loading, setLoading] = useState(true)
+   587→  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+   588→  const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+   589→  const [createModalOpen, setCreateModalOpen] = useState(false)
+   590→  const [mobileColumn, setMobileColumn] = useState<TaskStatus>('todo')
+   591→
+   592→  // ── Data Fetching ──
+   593→
+   594→  const fetchProjects = useCallback(async () => {
+   595→    try {
+   596→      const res = await fetch('/api/projects')
+   597→      if (!res.ok) throw new Error('Failed to fetch projects')
+   598→      const data = await res.json()
+   599→      let projectList: Project[] = data.projects || []
+   600→
+   601→      // If user is team member, filter to only their projects
+   602→      if (user?.role === 'team') {
+   603→        projectList = projectList.filter((p: Project) =>
+   604→          p.members?.some((m) => m.userId === user.id)
+   605→        )
+   606→      }
+   607→
+   608→      setProjects(projectList)
+   609→
+   610→      // Auto-select first project if none selected
+   611→      if (!selectedProjectId && projectList.length > 0) {
+   612→        setSelectedProjectId(projectList[0].id)
+   613→      }
+   614→    } catch {
+   615→      toast.error('Failed to load projects')
+   616→    }
+   617→  }, [user, selectedProjectId, setSelectedProjectId])
+   618→
+   619→  const fetchTasks = useCallback(async (projectId: string) => {
+   620→    if (!projectId) return
+   621→    setLoading(true)
+   622→    try {
+   623→      const res = await fetch(`/api/tasks?projectId=${projectId}`)
+   624→      if (!res.ok) throw new Error('Failed to fetch tasks')
+   625→      const data = await res.json()
+   626→      setTasks(data.tasks || [])
+   627→    } catch {
+   628→      toast.error('Failed to load tasks')
+   629→      setTasks([])
+   630→    } finally {
+   631→      setLoading(false)
+   632→    }
+   633→  }, [])
+   634→
+   635→  useEffect(() => {
+   636→    fetchProjects()
+   637→  }, [fetchProjects])
+   638→
+   639→  useEffect(() => {
+   640→    if (selectedProjectId) {
+   641→      fetchTasks(selectedProjectId)
+   642→    }
+   643→  }, [selectedProjectId, fetchTasks])
+   644→
+   645→  // ── Handlers ──
+   646→
+   647→  const handleTaskClick = useCallback((task: Task) => {
+   648→    setSelectedTask(task)
+   649→    setSelectedTaskId(task.id)
+   650→    setTaskDetailOpen(true)
+   651→  }, [setSelectedTaskId])
+   652→
+   653→  const handleTaskUpdate = useCallback(() => {
+   654→    if (selectedProjectId) {
+   655→      fetchTasks(selectedProjectId)
+   656→    }
+   657→    // Re-fetch the selected task for detail view
+   658→    if (selectedTask?.id) {
+   659→      fetch(`/api/tasks/${selectedTask.id}`)
+   660→        .then((r) => r.json())
+   661→        .then((d) => {
+   662→          if (d.task) setSelectedTask(d.task)
+   663→        })
+   664→        .catch(() => {})
+   665→    }
+   666→  }, [selectedProjectId, selectedTask?.id])
+   667→
+   668→  const handleTaskCreated = useCallback(() => {
+   669→    if (selectedProjectId) {
+   670→      fetchTasks(selectedProjectId)
+   671→    }
+   672→  }, [selectedProjectId, fetchTasks])
+   673→
+   674→  const handleTaskDetailClose = useCallback(() => {
+   675→    setTaskDetailOpen(false)
+   676→    setSelectedTask(null)
+   677→    setSelectedTaskId(null)
+   678→  }, [setSelectedTaskId])
+   679→
+   680→  // ── Derived Data ──
+   681→
+   682→  const activeProject = useMemo(
+   683→    () => projects.find((p) => p.id === selectedProjectId),
+   684→    [projects, selectedProjectId]
+   685→  )
+   686→
+   687→  const projectMembers = useMemo(() => {
+   688→    if (!activeProject?.members) return []
+   689→    return activeProject.members
+   690→      .map((m) => m.user)
+   691→      .filter((u): u is User => !!u)
+   692→  }, [activeProject])
+   693→
+   694→  const tasksByStatus = useMemo(() => {
+   695→    const map = new Map<TaskStatus, Task[]>()
+   696→    for (const col of columns) {
+   697→      map.set(col.key, tasks.filter((t) => t.status === col.key))
+   698→    }
+   699→    return map
+   700→  }, [tasks])
+   701→
+   702→  // ── Render ──
+   703→
+   704→  if (projects.length === 0 && !loading) {
+   705→    return (
+   706→      <div className="flex flex-col items-center justify-center py-20 text-center">
+   707→        <FolderOpen className="w-12 h-12 text-muted-foreground/40 mb-4" />
+   708→        <h3 className="text-lg font-semibold mb-1">No Projects Yet</h3>
+   709→        <p className="text-sm text-muted-foreground max-w-sm">
+   710→          You don&apos;t have any projects assigned to you. Contact your admin to get started.
+   711→        </p>
+   712→      </div>
+   713→    )
+   714→  }
+   715→
+   716→  return (
+   717→    <div className="space-y-4">
+   718→      {/* ── Toolbar ── */}
+   719→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   720→        <div className="flex items-center gap-3">
+   721→          {/* Project Selector */}
+   722→          <Select
+   723→            value={selectedProjectId || ''}
+   724→            onValueChange={(val) => setSelectedProjectId(val)}
+   725→          >
+   726→            <SelectTrigger className="w-[220px]">
+   727→              <SelectValue placeholder="Select a project" />
+   728→            </SelectTrigger>
+   729→            <SelectContent>
+   730→              {projects.map((project) => (
+   731→                <SelectItem key={project.id} value={project.id}>
+   732→                  <div className="flex items-center gap-2">
+   733→                    <div
+   734→                      className="w-2.5 h-2.5 rounded-full shrink-0"
+   735→                      style={{ backgroundColor: project.color }}
+   736→                    />
+   737→                    {project.name}
+   738→                  </div>
+   739→                </SelectItem>
+   740→              ))}
+   741→            </SelectContent>
+   742→          </Select>
+   743→
+   744→          {activeProject && (
+   745→            <Badge variant="outline" className="text-[11px] hidden sm:flex">
+   746→              <Users className="w-3 h-3 mr-1" />
+   747→              {activeProject.members?.length ?? 0} members
+   748→            </Badge>
+   749→          )}
+   750→        </div>
+   751→
+   752→        <Button
+   753→          size="sm"
+   754→          className="h-8 text-xs"
+   755→          onClick={() => setCreateModalOpen(true)}
+   756→          disabled={!selectedProjectId}
+   757→        >
+   758→          <Plus className="w-3.5 h-3.5 mr-1.5" />
+   759→          Create Task
+   760→        </Button>
+   761→      </div>
+   762→
+   763→      {/* ── Mobile Column Tab Selector (Board view only) ── */}
+   764→      {teamView === 'board' && (
+   765→        <div className="md:hidden">
+   766→          <Tabs
+   767→            value={mobileColumn}
+   768→            onValueChange={(val) => setMobileColumn(val as TaskStatus)}
+   769→          >
+   770→            <TabsList className="w-full grid grid-cols-4 h-9">
+   771→              {columns.map((col) => (
+   772→                <TabsTrigger
+   773→                  key={col.key}
+   774→                  value={col.key}
+   775→                  className="text-xs gap-1.5 data-[state=active]:shadow-sm"
+   776→                >
+   777→                  <div className={`w-2 h-2 rounded-full ${col.dotColor}`} />
+   778→                  <span className="hidden xs:inline">{col.label}</span>
+   779→                  <span className="xs:hidden">{tasksByStatus.get(col.key)?.length ?? 0}</span>
+   780→                </TabsTrigger>
+   781→              ))}
+   782→            </TabsList>
+   783→          </Tabs>
+   784→        </div>
+   785→      )}
+   786→
+   787→      {/* ── View Content ── */}
+   788→      <AnimatePresence mode="wait">
+   789→        {teamView === 'board' && (
+   790→          <motion.div
+   791→            key="board-view"
+   792→            {...viewTransition}
+   793→          >
+   794→            {loading ? (
+   795→              <BoardSkeleton />
+   796→            ) : (
+   797→              <>
+   798→                {/* Desktop: Full grid */}
+   799→                <div className="hidden md:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+   800→                  {columns.map((col) => (
+   801→                    <BoardColumn
+   802→                      key={col.key}
+   803→                      config={col}
+   804→                      tasks={tasksByStatus.get(col.key) || []}
+   805→                      onTaskClick={handleTaskClick}
+   806→                      onCreateTask={() => setCreateModalOpen(true)}
+   807→                      showCreateButton={col.key === 'todo'}
+   808→                    />
+   809→                  ))}
+   810→                </div>
+   811→
+   812→                {/* Mobile: Single column */}
+   813→                <div className="md:hidden">
+   814→                  {columns
+   815→                    .filter((col) => col.key === mobileColumn)
+   816→                    .map((col) => (
+   817→                      <BoardColumn
+   818→                        key={col.key}
+   819→                        config={col}
+   820→                        tasks={tasksByStatus.get(col.key) || []}
+   821→                        onTaskClick={handleTaskClick}
+   822→                        onCreateTask={() => setCreateModalOpen(true)}
+   823→                        showCreateButton={col.key === 'todo'}
+   824→                      />
+   825→                    ))}
+   826→                </div>
+   827→              </>
+   828→            )}
+   829→          </motion.div>
+   830→        )}
+   831→
+   832→        {teamView === 'list' && (
+   833→          <motion.div key="list-view" {...viewTransition}>
+   834→            {loading ? (
+   835→              <ListSkeleton />
+   836→            ) : (
+   837→              <ListView
+   838→                tasks={tasks}
+   839→                projects={projects}
+   840→                onTaskClick={handleTaskClick}
+   841→                onCreateTask={() => setCreateModalOpen(true)}
+   842→              />
+   843→            )}
+   844→          </motion.div>
+   845→        )}
+   846→
+   847→        {teamView === 'timeline' && (
+   848→          <motion.div key="timeline-view" {...viewTransition}>
+   849→            {loading ? (
+   850→              <TimelineSkeleton />
+   851→            ) : (
+   852→              <TimelineView
+   853→                tasks={tasks}
+   854→                projects={projects}
+   855→                onTaskClick={handleTaskClick}
+   856→                onCreateTask={() => setCreateModalOpen(true)}
+   857→              />
+   858→            )}
+   859→          </motion.div>
+   860→        )}
+   861→      </AnimatePresence>
+   862→
+   863→      {/* ── Task Detail Dialog ── */}
+   864→      <TaskDetail
+   865→        task={selectedTask}
+   866→        open={taskDetailOpen}
+   867→        onClose={handleTaskDetailClose}
+   868→        onUpdate={handleTaskUpdate}
+   869→      />
+   870→
+   871→      {/* ── Create Task Modal ── */}
+   872→      <CreateTaskModal
+   873→        open={createModalOpen}
+   874→        onClose={() => setCreateModalOpen(false)}
+   875→        projectId={selectedProjectId || ''}
+   876→        projectMembers={projectMembers}
+   877→        onCreated={handleTaskCreated}
+   878→      />
+   879→    </div>
+   880→  )
+   881→}
