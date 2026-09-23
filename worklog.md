@@ -1940,3 +1940,33 @@ Stage Summary:
 - Step navigation works both forward and backward
 - Draft auto-save prevents data loss when navigating between steps
 - All API calls return 200 (previously 404 on form detail)
+---
+Task ID: 9
+Agent: main
+Task: Fix client portal onboarding - can't upload documents and images
+
+Work Log:
+- Discovered root cause: /api/upload route did NOT exist - returned 404 for all file uploads
+- Created /api/upload/route.ts with full file upload support:
+  - Supported types: images (JPEG, PNG, GIF, WebP, SVG, BMP, TIFF), documents (PDF, Word, Excel, PowerPoint), text (plain, CSV, Markdown), archives (ZIP), data (JSON, XML)
+  - Max file size: 10MB with clear error message
+  - Files stored in public/uploads/ directory with timestamp + random ID naming
+  - Returns { url, originalName, filename, size, type } as expected by frontend
+  - Fallback extension check when MIME type is unrecognized
+- Added client-side validation to FileUploadZone in ClientOnboardingWizard.tsx:
+  - 10MB size limit check before upload attempt
+  - Empty file check
+  - Better success/error toast messages
+- Added client-side validation to both upload handlers in client-dashboard.tsx
+- Removed broken next.config.ts rewrite (/upload/:path* -> /api/upload/serve/:path*) since files in public/ are served automatically by Next.js
+- Tested with curl: PNG, PDF, TXT uploads all return 200 with correct response
+- Tested with Agent Browser: image and document uploads work from browser context
+- Tested error handling: .exe rejected, >10MB rejected with clear error messages
+- Verified uploaded files are accessible at their URL paths (200 response)
+
+Stage Summary:
+- File upload API is now fully functional at /api/upload
+- All onboarding wizard uploads (company logo, brand guidelines, contract, payment form, work order) work
+- Client dashboard file uploads also fixed (same /api/upload endpoint)
+- Client-side and server-side validation for file type and size
+- Broken next.config.ts rewrite removed

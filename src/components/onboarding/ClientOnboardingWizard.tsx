@@ -81,6 +81,16 @@ function FileUploadZone({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = async (fileObj: File) => {
+    // Client-side validation before upload
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (fileObj.size > maxSize) {
+      toast.error(`File size (${(fileObj.size / 1024 / 1024).toFixed(1)}MB) exceeds 10MB limit`)
+      return
+    }
+    if (fileObj.size === 0) {
+      toast.error('File is empty')
+      return
+    }
     setUploading(true)
     try {
       const formData = new FormData()
@@ -98,7 +108,7 @@ function FileUploadZone({
         size: data.size,
         type: data.type,
       })
-      toast.success('File uploaded')
+      toast.success('File uploaded successfully')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Upload failed')
     } finally {

@@ -155,6 +155,13 @@ export function ClientProjects() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       try {
+        // Client-side validation
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds 10MB limit`)
+        }
+        if (file.size === 0) {
+          throw new Error('File is empty')
+        }
         const formData = new FormData()
         formData.append('file', file)
         const res = await fetch('/api/upload', { method: 'POST', body: formData })
@@ -260,6 +267,8 @@ export function ClientProjects() {
                   for (let i = 0; i < files.length; i++) {
                     const file = files[i]
                     try {
+                      if (file.size > 10 * 1024 * 1024) throw new Error(`File size exceeds 10MB limit`)
+                      if (file.size === 0) throw new Error('File is empty')
                       const formData = new FormData()
                       formData.append('file', file)
                       const res = await fetch('/api/upload', { method: 'POST', body: formData })
