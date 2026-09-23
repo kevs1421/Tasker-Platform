@@ -185,7 +185,8 @@ function StepCard({
 }) {
   const Icon = STEP_ICONS[index]
   const isCurrent = index === currentStep
-  const isClickable = isCompleted || index === currentStep
+  const isNextStep = index === currentStep + 1
+  const isClickable = isCompleted || isCurrent || isNextStep
 
   return (
     <button
@@ -259,13 +260,17 @@ export default function ClientOnboardingWizard() {
     setFormLoading(true)
     try {
       const res = await fetch(`/api/onboarding/${formId}?clientId=${user?.id}`)
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to load form')
+      }
       const data = await res.json()
       setSelectedForm(data.form)
       setCurrentStep(0)
       setResponses({})
       setFiles({})
-    } catch {
-      toast.error('Failed to load form')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load form')
     } finally {
       setFormLoading(false)
     }
@@ -299,11 +304,13 @@ export default function ClientOnboardingWizard() {
       case 0:
         return !!(responses.businessName?.trim() && responses.businessEmail?.trim())
       case 1:
-        return !!files.companyLogo
+        // Brand Assets: company logo is recommended but not required to proceed
+        return true
       case 2:
         return !!(responses.projectGoals?.trim() && responses.targetAudience?.trim())
       case 3:
-        return !!(files.contractForm && files.paymentForm && files.workOrderAgreement)
+        // Documents: at least one document should be uploaded to proceed, but all are not required
+        return !!(files.contractForm || files.paymentForm || files.workOrderAgreement)
       default:
         return true
     }
@@ -314,11 +321,17 @@ export default function ClientOnboardingWizard() {
 
   const goToStep = (step: number) => {
     if (isLocked) return
-    if (step <= currentStep) setCurrentStep(step)
+    // Allow going back to any completed step, or forward to completed steps
+    // Also allow clicking the current step
+    if (step <= currentStep || step <= currentStep + 1) setCurrentStep(step)
   }
 
   const handleNext = () => {
-    if (currentStep < totalSteps - 1 && currentStepValid) {
+    if (!currentStepValid) {
+      toast.error('Please fill in the required fields before proceeding')
+      return
+    }
+    if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -327,19 +340,64 @@ export default function ClientOnboardingWizard() {
     if (currentStep > 0) setCurrentStep(currentStep - 1)
   }
 
+  // Save draft silently (no loading state, no toast on success)
+  const saveDraft = useCallback(async () => {
+    const submissionId = mySubmission?.id
+    if (!submissionId) return
+    try {
+      const submissionData = JSON.stringify({ responses, files })
+      await fetch(`/api/onboarding/${submissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveDraft',
+          responsesJson: submissionData,
+        }),
+      })
+    } catch { /* silent */ }
+  }, [mySubmission?.id, responses, files])
+
+  // Auto-save draft when navigating between steps
+  const handleNextWithSave = () => {
+    if (!currentStepValid) {
+      toast.error('Please fill in the required fields before proceeding')
+      return
+    }
+    saveDraft()
+    if (currentStep < totalSteps - 1) {
+      setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const handlePrevWithSave = () => {
+    if (currentStep > 0) {
+      saveDraft()
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!selectedForm || !user?.id) return
+    if (!currentStepValid) {
+      toast.error('Please complete all required fields before submitting')
+      return
+    }
     setSubmitting(true)
     try {
       const submissionData = JSON.stringify({ responses, files })
+      // Always use the submission ID if we have one (from auto-created or existing submission)
       const submissionId = mySubmission?.id
-      const res = await fetch(`/api/onboarding/${submissionId || selectedForm.id}`, {
+      if (!submissionId) {
+        toast.error('No submission found. Please try reloading the form.')
+        setSubmitting(false)
+        return
+      }
+      const res = await fetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'submit',
           responsesJson: submissionData,
-          ...(submissionId ? {} : { formId: selectedForm.id, clientId: user.id }),
         }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Submission failed') }
@@ -805,7 +863,7 @@ export default function ClientOnboardingWizard() {
           <div className="flex items-center justify-between">
             <Button
               variant="outline"
-              onClick={handlePrev}
+              onClick={handlePrevWithSave}
               disabled={currentStep === 0}
             >
               <ChevronLeft className="w-4 h-4 mr-1" /> Previous
@@ -816,7 +874,7 @@ export default function ClientOnboardingWizard() {
             </div>
 
             {currentStep < totalSteps - 1 ? (
-              <Button onClick={handleNext} disabled={!currentStepValid} className="bg-primary hover:bg-primary/90">
+              <Button onClick={handleNextWithSave} disabled={!currentStepValid} className="bg-primary hover:bg-primary/90">
                 Next Step <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             ) : (

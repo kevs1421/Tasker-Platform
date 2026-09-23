@@ -23,13 +23,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     if (!form) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    // If clientId is provided, verify the form's project belongs to this client
+    // If clientId is provided, verify the client has access to this form
+    // (either directly assigned or via project membership)
     if (clientId) {
-      const ownership = await db.clientProject.findUnique({
-        where: { clientId_projectId: { clientId, projectId: form.projectId } }
-      })
-      if (!ownership) {
-        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      const directAccess = form.clientId === clientId
+      if (!directAccess) {
+        const projectAccess = await db.clientProject.findUnique({
+          where: { clientId_projectId: { clientId, projectId: form.projectId } }
+        })
+        if (!projectAccess) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        }
+      }
+
+      // Auto-create an in_progress submission for this client if none exists
+      const existingSub = form.submissions.find((s: { clientId: string }) => s.clientId === clientId)
+      if (!existingSub) {
+        const newSub = await db.onboarding.create({
+          data: {
+            formId: id,
+            clientId,
+            status: 'in_progress',
+            responsesJson: '{}',
+          },
+          include: { client: { select: { id: true, name: true, email: true, company: true, avatar: true } }, reviewer: { select: { id: true, name: true } } }
+        })
+        form.submissions = [newSub, ...form.submissions]
       }
     }
 
@@ -44,32 +63,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json()
     const { action, ...data } = body
 
-    if (action === 'submit') {
-      // Client submits onboarding — no admin required
+    if (action === 'saveDraft' || action === 'submit') {
+      // Client saves draft or submits onboarding — no admin required
       const { formId, clientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
 
-      let result
       const existingSubmission = await db.onboarding.findUnique({ where: { id } })
 
       if (existingSubmission) {
-        result = await db.onboarding.update({
+        const updateData: Record<string, unknown> = {
+          responsesJson: responsesJson || existingSubmission.responsesJson,
+          updatedAt: new Date(),
+        }
+        if (action === 'submit') {
+          updateData.status = 'submitted'
+          updateData.submittedAt = new Date()
+        }
+        const result = await db.onboarding.update({
           where: { id },
-          data: { status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || existingSubmission.responsesJson, updatedAt: new Date() },
+          data: updateData,
           include: { form: true, client: { select: { id: true, name: true } } }
         })
+        if (action === 'submit') {
+          await db.activityLog.create({ data: { action: 'onboarding_submitted', details: `Submitted onboarding for "${result.form.title}"`, userId: result.clientId } })
+        }
+        return NextResponse.json({ onboarding: result })
       } else if (formId && clientId) {
-        result = await db.onboarding.upsert({
+        const result = await db.onboarding.upsert({
           where: { formId_clientId: { formId, clientId } },
-          create: { formId, clientId, status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || '{}' },
-          update: { status: 'submitted', submittedAt: new Date(), responsesJson: responsesJson || '{}', updatedAt: new Date() },
+          create: { formId, clientId, status: action === 'submit' ? 'submitted' : 'in_progress', submittedAt: action === 'submit' ? new Date() : null, responsesJson: responsesJson || '{}' },
+          update: { status: action === 'submit' ? 'submitted' : 'in_progress', submittedAt: action === 'submit' ? new Date() : null, responsesJson: responsesJson || '{}', updatedAt: new Date() },
           include: { form: true, client: { select: { id: true, name: true } } }
         })
+        if (action === 'submit') {
+          await db.activityLog.create({ data: { action: 'onboarding_submitted', details: `Submitted onboarding for "${result.form.title}"`, userId: result.clientId } })
+        }
+        return NextResponse.json({ onboarding: result })
       } else {
         return NextResponse.json({ error: 'Missing formId and clientId for new submission' }, { status: 400 })
       }
 
-      await db.activityLog.create({ data: { action: 'onboarding_submitted', details: `Submitted onboarding for "${result.form.title}"`, userId: result.clientId } })
-      return NextResponse.json({ onboarding: result })
     }
 
     // All other actions (review, update form) require admin
