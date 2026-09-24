@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 // GET /api/message-groups/[id]?userId=xxx — Get group detail
 export async function GET(
@@ -7,6 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(request)
     const { id } = await params
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
@@ -28,8 +30,8 @@ export async function GET(
     }
 
     return NextResponse.json({ group })
-  } catch {
-    return NextResponse.json({ error: 'Failed to load group' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
@@ -39,6 +41,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(request)
     const { id } = await params
     const body = await request.json()
     const { name, addMemberIds, removeMemberIds } = body as {
@@ -74,8 +77,8 @@ export async function PATCH(
     })
 
     return NextResponse.json({ group })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update group' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
@@ -85,10 +88,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(request)
     const { id } = await params
     await db.messageGroup.delete({ where: { id } })
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete group' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

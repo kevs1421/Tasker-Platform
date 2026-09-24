@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, AuthError } from '@/lib/session'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAuth(req)
     const { searchParams } = new URL(req.url)
     const clientId = searchParams.get('clientId')
 
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     })
     return NextResponse.json({ forms })
-  } catch { return NextResponse.json({ error: 'Failed to fetch onboarding forms' }, { status: 500 }) }
+  } catch (error) { return handleApiError(error) }
 }
 
 export async function POST(request: NextRequest) {
@@ -66,9 +67,6 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json({ form }, { status: 201 })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Failed to process onboarding request' }, { status: 500 })
+    return handleApiError(error)
   }
 }

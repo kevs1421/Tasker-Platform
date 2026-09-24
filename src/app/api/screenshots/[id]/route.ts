@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { unlink } from 'fs/promises'
 import path from 'path'
-import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 // DELETE /api/screenshots/[id] — delete a screenshot (owner or admin)
 export async function DELETE(

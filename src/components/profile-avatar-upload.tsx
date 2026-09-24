@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { getInitials } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { authFetch } from '@/lib/client-fetch'
 
 interface ProfileAvatarUploadProps {
   userId: string
@@ -59,7 +60,7 @@ export function ProfileAvatarUpload({ userId, name, avatar, size = 'md', onAvata
       formData.append('avatar', file)
       formData.append('userId', userId)
 
-      const res = await fetch('/api/avatar', {
+      const res = await authFetch('/api/avatar', {
         method: 'POST',
         body: formData,
       })
@@ -84,7 +85,7 @@ export function ProfileAvatarUpload({ userId, name, avatar, size = 'md', onAvata
 
   const handleRemove = async () => {
     try {
-      const res = await fetch(`/api/avatar?userId=${userId}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/avatar?userId=${userId}`, { method: 'DELETE' })
       if (res.ok) {
         setPreview(null)
         onAvatarChange?.(null)

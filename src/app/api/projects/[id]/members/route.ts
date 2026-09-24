@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 // GET - list members of a project
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const members = await db.projectMember.findMany({
       where: { projectId: id },
@@ -11,14 +13,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       orderBy: { role: 'asc' }
     })
     return NextResponse.json({ members })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch project members' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 // POST - add members to a project
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAdmin(req)
     const { id } = await params
     const { userIds } = await req.json()
     if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -44,14 +47,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
 
     return NextResponse.json({ members })
-  } catch {
-    return NextResponse.json({ error: 'Failed to add project members' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 // DELETE - remove a member from a project
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAdmin(req)
     const { id } = await params
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
@@ -59,7 +63,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     await db.projectMember.deleteMany({ where: { projectId: id, userId } })
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to remove project member' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

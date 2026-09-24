@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 // GET /api/message-groups?userId=xxx — List groups for a user
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
@@ -32,14 +34,15 @@ export async function GET(request: NextRequest) {
     }))
 
     return NextResponse.json({ groups: groupsWithUnread })
-  } catch {
-    return NextResponse.json({ error: 'Failed to load groups' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 // POST /api/message-groups — Create a new group
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { name, createdBy, memberIds } = await request.json()
     if (!name || !createdBy || !Array.isArray(memberIds)) {
       return NextResponse.json({ error: 'name, createdBy, memberIds required' }, { status: 400 })
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ group }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to create group' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

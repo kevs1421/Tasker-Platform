@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword, hashPassword } from '@/lib/auth'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
@@ -14,13 +16,14 @@ export async function GET(request: NextRequest) {
     })
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ user })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch user profile' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { userId, name, phone, company, email, currentPassword, newPassword } = await request.json()
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
 
@@ -42,10 +45,10 @@ export async function PATCH(request: NextRequest) {
     const user = await db.user.update({ where: { id: userId }, data })
     const { password: _, ...safeUser } = user
     return NextResponse.json({ user: safeUser })
-  } catch (e: unknown) {
-    if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'P2002') {
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
     }
-    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 })
+    return handleApiError(error)
   }
 }

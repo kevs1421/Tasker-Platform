@@ -2,9 +2,14 @@ import { Server } from 'socket.io'
 
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean)
 
+if (ALLOWED_ORIGINS.length === 0) {
+  console.error('CORS_ORIGINS environment variable is required. Set it to comma-separated allowed origins (e.g., "http://localhost:3000,https://yourdomain.com")')
+  process.exit(1)
+}
+
 const io = new Server({
   cors: {
-    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : '*',
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
   },
 })

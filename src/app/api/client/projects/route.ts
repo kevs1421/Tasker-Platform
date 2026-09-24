@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 /**
  * GET /api/client/projects?clientId=xxx
@@ -10,6 +11,7 @@ import { db } from '@/lib/db'
  */
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const clientId = searchParams.get('clientId')
 
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
       })
 
     return NextResponse.json({ projects })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

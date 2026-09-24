@@ -15,7 +15,10 @@ async function main() {
   const adminEmail = 'admin@yberdigitals.com'
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
   if (!existing) {
-    const adminPassword = process.env.ADMIN_SEED_PASSWORD || 'admin123'
+    const adminPassword = process.env.ADMIN_SEED_PASSWORD
+    if (!adminPassword) {
+      throw new Error('ADMIN_SEED_PASSWORD environment variable is required. Set it before running the seed script.')
+    }
     await prisma.user.create({
       data: {
         email: adminEmail,

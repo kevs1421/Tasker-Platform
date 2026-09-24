@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { writeFile, unlink } from 'fs/promises'
 import path from 'path'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'avatars')
 const MAX_SIZE = 2 * 1024 * 1024 // 2MB
@@ -10,6 +11,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 // POST /api/avatar — Upload profile image
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth(req)
     const formData = await req.formData()
     const file = formData.get('avatar') as File | null
     const userId = formData.get('userId') as string | null
@@ -49,13 +51,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ avatar: avatarUrl })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to upload avatar' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/avatar?userId=xxx
 export async function DELETE(req: NextRequest) {
   try {
+    await requireAuth(req)
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
     if (!userId) {
@@ -75,6 +78,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, avatar: null })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to remove avatar' }, { status: 500 })
+    return handleApiError(error)
   }
 }

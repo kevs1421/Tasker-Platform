@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(request)
     const { id } = await params
     const body = await request.json()
     const { action, description, projectId, taskId, timeIn, timeOut } = body
@@ -85,8 +87,8 @@ export async function PATCH(
       },
     })
     return NextResponse.json({ timeEntry: updated })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update time entry' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
@@ -95,10 +97,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(request)
     const { id } = await params
     await db.timeEntry.delete({ where: { id } })
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete time entry' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

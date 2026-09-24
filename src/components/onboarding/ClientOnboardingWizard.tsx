@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { OnboardingForm, Onboarding } from '@/types'
 import { getInitials, formatRelativeTime, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { authFetch } from '@/lib/client-fetch'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -95,7 +96,7 @@ function FileUploadZone({
     try {
       const formData = new FormData()
       formData.append('file', fileObj)
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const res = await authFetch('/api/upload', { method: 'POST', body: formData })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || 'Upload failed')
@@ -254,7 +255,7 @@ export default function ClientOnboardingWizard() {
   const fetchForms = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/onboarding?clientId=${user.id}`)
+      const res = await authFetch(`/api/onboarding?clientId=${user.id}`)
       const data = await res.json()
       setForms(data.forms || [])
     } catch {
@@ -269,7 +270,7 @@ export default function ClientOnboardingWizard() {
   const openForm = async (formId: string) => {
     setFormLoading(true)
     try {
-      const res = await fetch(`/api/onboarding/${formId}?clientId=${user?.id}`)
+      const res = await authFetch(`/api/onboarding/${formId}?clientId=${user?.id}`)
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || 'Failed to load form')
@@ -356,7 +357,7 @@ export default function ClientOnboardingWizard() {
     if (!submissionId) return
     try {
       const submissionData = JSON.stringify({ responses, files })
-      await fetch(`/api/onboarding/${submissionId}`, {
+      await authFetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -402,7 +403,7 @@ export default function ClientOnboardingWizard() {
         setSubmitting(false)
         return
       }
-      const res = await fetch(`/api/onboarding/${submissionId}`, {
+      const res = await authFetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

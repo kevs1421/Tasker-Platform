@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuthStore, authHeaders } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -88,7 +89,7 @@ export function AdminScreenshotReport() {
   const fetchScreenshots = useCallback(async () => {
     if (!user) return
     try {
-      const res = await fetch(`/api/screenshots`, { headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots`, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         setScreenshots(data.screenshots || [])
@@ -104,7 +105,7 @@ export function AdminScreenshotReport() {
   const fetchConfig = useCallback(async () => {
     if (!user) return
     try {
-      const res = await fetch(`/api/screenshot-config?userId=${user.id}`)
+      const res = await authFetch(`/api/screenshot-config?userId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         if (data.isAdmin) {
@@ -124,7 +125,7 @@ export function AdminScreenshotReport() {
     if (!user) return
     setSavingConfig(true)
     try {
-      const res = await fetch('/api/screenshot-config', {
+      const res = await authFetch('/api/screenshot-config', {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -150,7 +151,7 @@ export function AdminScreenshotReport() {
     if (!deleteTarget || !user) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) throw new Error('Delete failed')
       toast.success('Screenshot deleted')
       setDeleteOpen(false)

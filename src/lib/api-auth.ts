@@ -73,6 +73,11 @@ export function handleApiError(error: unknown): Response {
   if (error instanceof AuthError) {
     return Response.json({ error: error.message }, { status: error.status })
   }
-  console.error('API Error:', error)
+  // Log sanitized error for server-side debugging (no stack traces in production response)
+  if (error instanceof Error) {
+    console.error(`[API Error] ${error.message}`)
+  } else {
+    console.error('[API Error] Unknown error')
+  }
   return Response.json({ error: 'Internal server error' }, { status: 500 })
 }

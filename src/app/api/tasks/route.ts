@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const taskInclude = {
   assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } }, orderBy: { assignedAt: 'asc' } },
@@ -10,6 +11,7 @@ const taskInclude = {
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
@@ -31,13 +33,14 @@ export async function GET(request: NextRequest) {
       assignees: t.assignments
     }))
     return NextResponse.json({ tasks: result })
-  } catch {
-    return NextResponse.json({ error: 'Failed to process task request' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: Request) {
   try {
+    await requireAuth(request)
     const body = await request.json()
     const { title, description, status, priority, dueDate, projectId, createdById, assigneeIds, tags } = body
     if (!title || !projectId || !createdById) return NextResponse.json({ error: 'Title, projectId, createdById required' }, { status: 400 })
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
     const taskWithAssignees = { ...task, assignees: task.assignments }
     await db.activityLog.create({ data: { action: 'task_created', details: `Created task "${title}"`, userId: createdById, projectId, taskId: task.id } })
     return NextResponse.json({ task: taskWithAssignees }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to process task request' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

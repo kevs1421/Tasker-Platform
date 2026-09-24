@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const taskInclude = {
   assignments: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } },
@@ -11,17 +12,19 @@ const taskInclude = {
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const task = await db.task.findUnique({ where: { id }, include: taskInclude })
     if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ task: { ...task, assignees: task.assignments } })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const body = await req.json()
     const { title, description, status, priority, dueDate, tags, updatedBy } = body
@@ -44,13 +47,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await db.activityLog.create({ data: { action: 'task_moved', details: `Moved "${task.title}" to ${status.replace('_', ' ')}`, userId: updatedBy, projectId: task.projectId, taskId: task.id } })
     }
     return NextResponse.json({ task: { ...task, assignees: task.assignments } })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     let deletedBy = ''
     try { const b = await req.json(); deletedBy = b.deletedBy || '' } catch { /* no body */ }
@@ -67,7 +71,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.task.delete({ where: { id } })
     if (task) await db.activityLog.create({ data: { action: 'task_deleted', details: `Deleted "${task.title}"`, userId: deletedBy || task.createdById, projectId: task.projectId, taskId: task.id } })
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

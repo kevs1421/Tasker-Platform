@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
@@ -51,13 +53,14 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({ timeEntries, total })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch time entries' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth(request)
     const body = await request.json()
     const { userId, projectId, taskId, description, date, action } = body
 
@@ -134,7 +137,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action. Use "time_in" or "manual".' }, { status: 400 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ error: `Failed to create time entry: ${message}` }, { status: 500 })
+    return handleApiError(error)
   }
 }

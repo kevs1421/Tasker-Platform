@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import type { CalendarNote } from '@/types'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -49,7 +50,7 @@ export function CalendarNotesDashboard() {
     if (!userId) return
     try {
       setLoading(true)
-      const res = await fetch(`/api/calendar-notes?month=${monthStr}&userId=${userId}`)
+      const res = await authFetch(`/api/calendar-notes?month=${monthStr}&userId=${userId}`)
       if (res.ok) {
         const data = await res.json()
         setNotes(data)
@@ -121,7 +122,7 @@ export function CalendarNotesDashboard() {
     setSaving(true)
     try {
       if (editingNote) {
-        const res = await fetch('/api/calendar-notes', {
+        const res = await authFetch('/api/calendar-notes', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingNote.id, userId, content: noteText, color: noteColor }),
@@ -130,7 +131,7 @@ export function CalendarNotesDashboard() {
         else toast.error('Failed to update note')
       } else {
         const dateStr = format(selectedDate!, 'yyyy-MM-dd')
-        const res = await fetch('/api/calendar-notes', {
+        const res = await authFetch('/api/calendar-notes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, date: dateStr, content: noteText, color: noteColor }),
@@ -150,7 +151,7 @@ export function CalendarNotesDashboard() {
   const handleDeleteNote = async (noteId: string) => {
     setDeletingId(noteId)
     try {
-      const res = await fetch(`/api/calendar-notes/${noteId}?userId=${userId}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/calendar-notes/${noteId}?userId=${userId}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Note deleted')
         fetchNotes()

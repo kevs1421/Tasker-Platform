@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 // DELETE /api/calendar-notes/[id]?userId=xxx
 export async function DELETE(
@@ -7,6 +8,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
@@ -27,6 +29,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete note' }, { status: 500 })
+    return handleApiError(error)
   }
 }

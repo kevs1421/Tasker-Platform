@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuthStore } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -116,7 +117,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     setSwitchTasks([])
     setLoadingSwitchTasks(false)
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       if (res.ok) {
         const data = await res.json()
         setSwitchProjects(data.projects ?? [])
@@ -128,7 +129,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     if (activeSession.projectId) {
       setLoadingSwitchTasks(true)
       try {
-        const res = await fetch(`/api/projects/${activeSession.projectId}`)
+        const res = await authFetch(`/api/projects/${activeSession.projectId}`)
         if (res.ok) {
           const data = await res.json()
           setSwitchTasks(data.project?.tasks ?? [])
@@ -149,7 +150,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     if (!projectId) return
     setLoadingSwitchTasks(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}`)
+      const res = await authFetch(`/api/projects/${projectId}`)
       if (res.ok) {
         const data = await res.json()
         setSwitchTasks(data.project?.tasks ?? [])
@@ -170,7 +171,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       if (switchProjectId) body.projectId = switchProjectId
       if (switchTaskId) body.taskId = switchTaskId
 
-      const res = await fetch(`/api/time-entries/${activeSession.id}`, {
+      const res = await authFetch(`/api/time-entries/${activeSession.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -211,7 +212,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
 
   // Fetch screenshot config on mount (for interval)
   useEffect(() => {
-    fetch(`/api/screenshot-config?userId=${userId}`)
+    authFetch(`/api/screenshot-config?userId=${userId}`)
       .then(r => r.json())
       .then(d => {
         if (d.intervalMinutes) useScreenshotStore.getState().setIntervalMinutes(d.intervalMinutes)
@@ -243,7 +244,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
   // Fetch active timer on mount
   const fetchActiveTimer = useCallback(async () => {
     try {
-      const res = await fetch(`/api/time-entries?userId=${userId}&active=true`)
+      const res = await authFetch(`/api/time-entries?userId=${userId}&active=true`)
       if (res.ok) {
         const data = await res.json()
         const entries = data.timeEntries || []
@@ -263,7 +264,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
           // Re-start screenshot session if we find an active timer (page reload)
           const user = useAuthStore.getState().user
           if (user && user.role !== 'client') {
-            fetch(`/api/screenshot-config?userId=${userId}`)
+            authFetch(`/api/screenshot-config?userId=${userId}`)
               .then(r => r.json())
               .then(config => {
                 if (config.autoEnabled) {
@@ -337,7 +338,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     setTasks([])
     setLoadingProjects(true)
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects ?? [])
@@ -357,7 +358,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     if (!projectId) return
     setLoadingTasks(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}`)
+      const res = await authFetch(`/api/projects/${projectId}`)
       if (res.ok) {
         const data = await res.json()
         setTasks(data.project?.tasks ?? [])
@@ -379,7 +380,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       if (selectedTaskId) body.taskId = selectedTaskId
       if (description.trim()) body.description = description.trim()
 
-      const res = await fetch('/api/time-entries', {
+      const res = await authFetch('/api/time-entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -407,7 +408,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
       // Start periodic screenshot session in background (admin-controlled)
       if (user && user.role !== 'client') {
         const currentInterval = useScreenshotStore.getState().intervalMinutes
-        fetch(`/api/screenshot-config?userId=${userId}`)
+        authFetch(`/api/screenshot-config?userId=${userId}`)
           .then(r => r.json())
           .then(config => {
             if (config.autoEnabled) {
@@ -447,7 +448,7 @@ function TimeInOutWidget({ userId }: { userId: string }) {
     resetScreenshotState()
 
     try {
-      const res = await fetch(`/api/time-entries/${activeSession.id}`, {
+      const res = await authFetch(`/api/time-entries/${activeSession.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'time_out' }),
@@ -678,7 +679,7 @@ export function AppHeader() {
 
   useEffect(() => {
     if (user) {
-      fetch(`/api/messages?userId=${user.id}`)
+      authFetch(`/api/messages?userId=${user.id}`)
         .then(r => r.json())
         .then(d => setUnreadCount(d.conversations?.reduce((sum: number, c: { unread: number }) => sum + c.unread, 0) || 0))
         .catch(() => {})

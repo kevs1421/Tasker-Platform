@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 // GET /api/calendar-notes?month=2025-01&userId=xxx
 export async function GET(req: NextRequest) {
   try {
+    await requireAuth(req)
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
     if (!userId) {
@@ -28,13 +30,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(notes)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 // POST /api/calendar-notes
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth(req)
     const body = await req.json()
     const { userId, date, content, color } = body
 
@@ -53,13 +56,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(note, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create note' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 // PUT /api/calendar-notes
 export async function PUT(req: NextRequest) {
   try {
+    await requireAuth(req)
     const body = await req.json()
     const { id, userId, content, color } = body
 
@@ -85,6 +89,6 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update note' }, { status: 500 })
+    return handleApiError(error)
   }
 }

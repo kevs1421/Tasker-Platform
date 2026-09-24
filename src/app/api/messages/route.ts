@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const otherId = searchParams.get('otherId')
@@ -146,13 +148,14 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ messages })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { content, senderId, receiverId, groupId, projectId } = await request.json()
     if (!content || !senderId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -181,8 +184,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ message }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
@@ -191,6 +194,7 @@ export async function POST(request: NextRequest) {
 // DELETE /api/messages?deleteConversation=true&userId=xxx&groupId=xxx — Delete group (and all its messages)
 export async function DELETE(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const messageId = searchParams.get('id')
@@ -240,7 +244,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid delete request' }, { status: 400 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete message' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

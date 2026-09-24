@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import type { Task, User } from '@/types'
 import { getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -110,7 +111,7 @@ export function TeamMyTasks() {
     setLoading(true)
     try {
       // Step 1: Get all projects the user is a member of
-      const projectsRes = await fetch('/api/projects')
+      const projectsRes = await authFetch('/api/projects')
       const projectsData = await projectsRes.json()
       const userProjects = (projectsData.projects || []).filter((p: { members?: { userId: string }[] }) =>
         p.members?.some((m) => m.userId === user.id)
@@ -119,7 +120,7 @@ export function TeamMyTasks() {
       // Step 2: Fetch tasks from each project in parallel
       const taskPromises = userProjects.map(async (project: { id: string; name: string; color: string }) => {
         try {
-          const res = await fetch(`/api/tasks?projectId=${project.id}`)
+          const res = await authFetch(`/api/tasks?projectId=${project.id}`)
           const data = await res.json()
           const projectTasks: TaskWithProject[] = (data.tasks || [])
             .filter((t: Task) => t.assignees?.some((a) => a.userId === user.id))

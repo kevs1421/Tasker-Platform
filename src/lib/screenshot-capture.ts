@@ -3,7 +3,7 @@
  * Provides the ScreenshotSessionManager class for periodic capture during active sessions
  */
 import html2canvas from 'html2canvas-pro'
-import { getAuthToken } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 
 /**
  * Create a screenshot session manager
@@ -170,10 +170,8 @@ export class ScreenshotSessionManager {
       if (this.projectId) formData.append('projectId', this.projectId)
       if (this.taskId) formData.append('taskId', this.taskId)
 
-      const token = getAuthToken()
-      const res = await fetch('/api/screenshots/auto', {
+      const res = await authFetch('/api/screenshots/auto', {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       })
 

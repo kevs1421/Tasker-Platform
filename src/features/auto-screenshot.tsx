@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { useAuthStore, authHeaders } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import type { ScreenshotConfig } from '@/types'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
@@ -57,7 +58,7 @@ export function useAutoScreenshot() {
   const fetchConfig = useCallback(async () => {
     if (!user) return
     try {
-      const res = await fetch(`/api/screenshot-config?userId=${user.id}`)
+      const res = await authFetch(`/api/screenshot-config?userId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setConfig(data.config)
@@ -76,7 +77,7 @@ export function useAutoScreenshot() {
     if (!user) return
     setSavingConfig(true)
     try {
-      const res = await fetch('/api/screenshot-config', {
+      const res = await authFetch('/api/screenshot-config', {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ userId: user.id, ...updates }),
@@ -141,7 +142,7 @@ export function useAutoScreenshot() {
         formData.append('isAuto', 'true')
 
         try {
-          const res = await fetch('/api/screenshots', { method: 'POST', body: formData })
+          const res = await authFetch('/api/screenshots', { method: 'POST', body: formData })
           if (res.ok) {
             setCaptureCount(prev => prev + 1)
             toast.success('Auto screenshot captured', { duration: 2000 })

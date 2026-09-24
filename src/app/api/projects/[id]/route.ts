@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const project = await db.project.findUnique({
       where: { id },
@@ -27,13 +29,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       assignees: t.assignments
     }))
     return NextResponse.json({ project: { ...project, tasks } })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAdmin(req)
     const { id } = await params
     const body = await req.json()
     const project = await db.project.update({
@@ -49,17 +52,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: { _count: { select: { tasks: true, members: true } } }
     })
     return NextResponse.json({ project })
-  } catch {
-    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAdmin(req)
     const { id } = await params
     await db.project.delete({ where: { id } })
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

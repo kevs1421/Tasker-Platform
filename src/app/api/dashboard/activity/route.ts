@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
 
@@ -43,6 +45,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ activities: enriched })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch activities' }, { status: 500 })
+    return handleApiError(error)
   }
 }

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { useVideoCall } from '@/hooks/use-video-call'
 import { VideoCallPanel, VideoCallButtons, GroupCallButtons, IncomingCallOverlay } from './VideoCall'
+import { authFetch } from '@/lib/client-fetch'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ function CreateGroupDialog({
     setName('')
     setSelectedIds([])
     setSearch('')
-    fetch('/api/users')
+    authFetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
         setUsers((d.users ?? []).filter((u: User) => {
@@ -121,7 +122,7 @@ function CreateGroupDialog({
     if (!name.trim() || selectedIds.length === 0) return
     setCreating(true)
     try {
-      const res = await fetch('/api/message-groups', {
+      const res = await authFetch('/api/message-groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), createdBy: currentUser.id, memberIds: selectedIds }),
@@ -227,7 +228,7 @@ function NewMessageDialog({
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    fetch('/api/users')
+    authFetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
@@ -314,7 +315,7 @@ function GroupInfoDialog({
     setLoading(true)
     setSearch('')
     setShowAddUser(false)
-    fetch(`/api/message-groups/${group.id}?userId=${currentUserId}`)
+    authFetch(`/api/message-groups/${group.id}?userId=${currentUserId}`)
       .then((r) => r.json())
       .then((d) => {
         setMembers((d.group?.members ?? []) as (GroupMember & { user: User })[])
@@ -326,7 +327,7 @@ function GroupInfoDialog({
   const handleAddMember = async (userId: string) => {
     if (!group) return
     try {
-      const res = await fetch(`/api/message-groups/${group.id}`, {
+      const res = await authFetch(`/api/message-groups/${group.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ addMemberIds: [userId] }),
@@ -343,7 +344,7 @@ function GroupInfoDialog({
   const handleRemoveMember = async (userId: string) => {
     if (!group) return
     try {
-      const res = await fetch(`/api/message-groups/${group.id}`, {
+      const res = await authFetch(`/api/message-groups/${group.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ removeMemberIds: [userId] }),
@@ -358,7 +359,7 @@ function GroupInfoDialog({
   }
 
   const handleLoadUsers = () => {
-    fetch('/api/users')
+    authFetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
         const memberIds = members.map((m) => m.userId)
@@ -491,7 +492,7 @@ export function MessagesPanel() {
     if (!user?.id) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/messages?userId=${user.id}`)
+      const res = await authFetch(`/api/messages?userId=${user.id}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setConversations(data.conversations ?? [])
@@ -527,7 +528,7 @@ export function MessagesPanel() {
         if (!convo.user) return
         url += `&otherId=${convo.user.id}`
       }
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setMessages(data.messages ?? [])
@@ -562,7 +563,7 @@ export function MessagesPanel() {
         body.receiverId = selectedConvo.user.id
       }
 
-      const res = await fetch('/api/messages', {
+      const res = await authFetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -590,7 +591,7 @@ export function MessagesPanel() {
   const deleteMessage = async (messageId: string) => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/messages?id=${messageId}&userId=${user.id}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/messages?id=${messageId}&userId=${user.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       setMessages((prev) => prev.filter((m) => m.id !== messageId))
       toast.success('Message deleted')
@@ -610,7 +611,7 @@ export function MessagesPanel() {
       } else if (selectedConvo.user) {
         url += `&otherId=${selectedConvo.user.id}`
       }
-      const res = await fetch(url, { method: 'DELETE' })
+      const res = await authFetch(url, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       setSelectedConvo(null)
       setMessages([])

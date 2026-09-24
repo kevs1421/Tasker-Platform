@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore, authHeaders } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
@@ -87,8 +88,8 @@ export function AdminOverview() {
     async function fetchData() {
       try {
         const [statsRes, actRes] = await Promise.all([
-          fetch('/api/admin', { headers: authHeaders() }),
-          fetch('/api/admin/activity', { headers: authHeaders() })
+          authFetch('/api/admin', { headers: authHeaders() }),
+          authFetch('/api/admin/activity', { headers: authHeaders() })
         ])
         if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
         const statsData = await statsRes.json()
@@ -325,7 +326,7 @@ export function AdminOnboarding() {
 
   const fetchForms = useCallback(async () => {
     try {
-      const res = await fetch('/api/onboarding')
+      const res = await authFetch('/api/onboarding')
       if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       setForms(data.forms ?? [])
@@ -338,7 +339,7 @@ export function AdminOnboarding() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects ?? [])
@@ -348,7 +349,7 @@ export function AdminOnboarding() {
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await fetch('/api/users', { headers: authHeaders() })
+      const res = await authFetch('/api/users', { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
@@ -364,7 +365,7 @@ export function AdminOnboarding() {
 
   async function openForm(form: OnboardingForm) {
     try {
-      const res = await fetch(`/api/onboarding/${form.id}`)
+      const res = await authFetch(`/api/onboarding/${form.id}`)
       if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       setSelectedForm(data.form)
@@ -384,7 +385,7 @@ export function AdminOnboarding() {
           return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
         })
       )
-      const res = await fetch('/api/onboarding', {
+      const res = await authFetch('/api/onboarding', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -416,7 +417,7 @@ export function AdminOnboarding() {
     setReviewing(submissionId)
     try {
       const notes = reviewNotes[submissionId] || ''
-      const patchRes = await fetch(`/api/onboarding/${submissionId}`, {
+      const patchRes = await authFetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
@@ -428,7 +429,7 @@ export function AdminOnboarding() {
       toast.success(`Submission ${status === 'approved' ? 'approved' : 'rejected'} successfully`)
       // Refresh
       if (selectedForm) {
-        const fresh = await fetch(`/api/onboarding/${selectedForm.id}`)
+        const fresh = await authFetch(`/api/onboarding/${selectedForm.id}`)
         if (fresh.ok) {
           const data = await fresh.json()
           setSelectedForm(data.form)
@@ -444,7 +445,7 @@ export function AdminOnboarding() {
 
   async function handleDeleteForm(formId: string, formTitle: string) {
     try {
-      const res = await fetch(`/api/onboarding/${formId}`, {
+      const res = await authFetch(`/api/onboarding/${formId}`, {
         method: 'DELETE',
         headers: authHeaders(),
       })
@@ -479,7 +480,7 @@ export function AdminOnboarding() {
           return { id: stepId, label: config?.label ?? stepId, description: config?.description ?? '', required: config?.required ?? false }
         })
       )
-      const res = await fetch(`/api/onboarding/${editFormId}`, {
+      const res = await authFetch(`/api/onboarding/${editFormId}`, {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -1201,7 +1202,7 @@ export function AdminProjects() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       setProjects(data.projects ?? [])
@@ -1214,7 +1215,7 @@ export function AdminProjects() {
 
   // Fetch active admin + team users for member picker
   useEffect(() => {
-    fetch('/api/users', { headers: authHeaders() })
+    authFetch('/api/users', { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team' || u.role === 'training') && u.status === 'active')
@@ -1229,7 +1230,7 @@ export function AdminProjects() {
     if (!user || !form.name.trim()) return
     setCreating(true)
     try {
-      const createRes = await fetch('/api/projects', {
+      const createRes = await authFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1260,7 +1261,7 @@ export function AdminProjects() {
 
   async function handleStatusChange(projectId: string, status: string) {
     try {
-      const patchRes = await fetch(`/api/projects/${projectId}`, {
+      const patchRes = await authFetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -1275,7 +1276,7 @@ export function AdminProjects() {
 
   async function handleDelete(projectId: string) {
     try {
-      const delRes = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      const delRes = await authFetch(`/api/projects/${projectId}`, { method: 'DELETE' })
       if (!delRes.ok) throw new Error()
       toast.success('Project deleted')
       fetchProjects()
@@ -1290,7 +1291,7 @@ export function AdminProjects() {
     setManageMembersOpen(true)
     setMembersLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/members`)
+      const res = await authFetch(`/api/projects/${projectId}/members`)
       const data = await res.json()
       setProjectMembers(data.members || [])
     } catch {
@@ -1302,7 +1303,7 @@ export function AdminProjects() {
 
   async function handleAddMembers(userIds: string[]) {
     try {
-      const res = await fetch(`/api/projects/${manageProjectId}/members`, {
+      const res = await authFetch(`/api/projects/${manageProjectId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userIds })
@@ -1310,7 +1311,7 @@ export function AdminProjects() {
       if (!res.ok) throw new Error()
       toast.success(`${userIds.length} member(s) added`)
       // Refresh members list
-      const updated = await fetch(`/api/projects/${manageProjectId}/members`).then(r => r.json())
+      const updated = await authFetch(`/api/projects/${manageProjectId}/members`).then(r => r.json())
       setProjectMembers(updated.members || [])
       fetchProjects()
     } catch {
@@ -1320,7 +1321,7 @@ export function AdminProjects() {
 
   async function handleRemoveMember(userId: string) {
     try {
-      const res = await fetch(`/api/projects/${manageProjectId}/members?userId=${userId}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/projects/${manageProjectId}/members?userId=${userId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       toast.success('Member removed')
       setProjectMembers(prev => prev.filter(m => m.userId !== userId))
@@ -1692,7 +1693,7 @@ export function AdminTasks() {
     if (e) e.stopPropagation()
     setInlineStatusSaving(taskId)
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await authFetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, updatedBy: user?.id }),
@@ -1727,7 +1728,7 @@ export function AdminTasks() {
     setLoading(true)
     try {
       const url = status === 'all' ? '/api/tasks' : `/api/tasks?status=${status}`
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       setTasks(data.tasks ?? [])
@@ -1742,7 +1743,7 @@ export function AdminTasks() {
 
   // Fetch all team/admin users for assignee selection
   useEffect(() => {
-    fetch('/api/users', { headers: authHeaders() })
+    authFetch('/api/users', { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'training' || u.role === 'admin')
@@ -1762,7 +1763,7 @@ export function AdminTasks() {
     setPendingAssigneeIds(aIds)
     // Fetch full task with comments
     try {
-      const detailRes = await fetch(`/api/tasks/${task.id}`)
+      const detailRes = await authFetch(`/api/tasks/${task.id}`)
       if (detailRes.ok) {
         const data = await detailRes.json()
         const fullTask = data.task
@@ -1802,7 +1803,7 @@ export function AdminTasks() {
       if (newDueDateStr !== (selectedTask.dueDate || null)) updates.dueDate = newDueDateStr
 
       if (Object.keys(updates).length > 0) {
-        const patchRes = await fetch(`/api/tasks/${selectedTask.id}`, {
+        const patchRes = await authFetch(`/api/tasks/${selectedTask.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates)
@@ -1816,14 +1817,14 @@ export function AdminTasks() {
       const toAdd = [...pendingAssigneeIds].filter(id => !originalIds.has(id))
 
       for (const userId of toRemove) {
-        await fetch('/api/tasks/assignments', {
+        await authFetch('/api/tasks/assignments', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: selectedTask.id }),
         })
       }
       for (const userId of toAdd) {
-        await fetch('/api/tasks/assignments', {
+        await authFetch('/api/tasks/assignments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: selectedTask.id }),
@@ -1833,7 +1834,7 @@ export function AdminTasks() {
       toast.success('Task updated')
       fetchTasks(statusFilter)
       // Refresh selected task
-      const fresh = await fetch(`/api/tasks/${selectedTask.id}`)
+      const fresh = await authFetch(`/api/tasks/${selectedTask.id}`)
       if (fresh.ok) {
         const data = await fresh.json()
         const updatedTask = data.task
@@ -2226,7 +2227,7 @@ export function AdminUsers() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users', { headers: authHeaders() })
+      const res = await authFetch('/api/users', { headers: authHeaders() })
       if (!res.ok) throw new Error()
       const data = await res.json()
       setUsers(data.users ?? [])
@@ -2269,7 +2270,7 @@ export function AdminUsers() {
     }
     setAdding(true)
     try {
-      const res = await fetch('/api/register', {
+      const res = await authFetch('/api/register', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -2297,7 +2298,7 @@ export function AdminUsers() {
   async function handleToggleStatus(u: User) {
     const newStatus = u.status === 'active' ? 'inactive' : 'active'
     try {
-      const res = await fetch('/api/users', {
+      const res = await authFetch('/api/users', {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: u.id, status: newStatus })
@@ -2313,7 +2314,7 @@ export function AdminUsers() {
   async function handleChangeRole(u: User, newRole: string) {
     if (newRole === u.role) return
     try {
-      const res = await fetch('/api/users', {
+      const res = await authFetch('/api/users', {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: u.id, role: newRole })
@@ -2346,7 +2347,7 @@ export function AdminUsers() {
     }
     setEditing(true)
     try {
-      const res = await fetch('/api/users', {
+      const res = await authFetch('/api/users', {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -2394,7 +2395,7 @@ export function AdminUsers() {
     }
     setResetting(true)
     try {
-      const res = await fetch(`/api/users/${resetTarget.id}`, {
+      const res = await authFetch(`/api/users/${resetTarget.id}`, {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -2415,7 +2416,7 @@ export function AdminUsers() {
   async function handleDeleteUser(u: User) {
     setDeletingId(u.id)
     try {
-      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', headers: authHeaders() })
+      const res = await authFetch(`/api/users/${u.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || 'Failed')
@@ -2916,7 +2917,7 @@ export function AdminProfile() {
     if (!currentUserId) return
     async function fetchData() {
       try {
-        const res = await fetch(`/api/user/profile?userId=${currentUserId}`)
+        const res = await authFetch(`/api/user/profile?userId=${currentUserId}`)
         if (!res.ok) throw new Error('Failed')
         const data = await res.json()
         setProfile({
@@ -2959,7 +2960,7 @@ export function AdminProfile() {
         body.currentPassword = passwords.currentPassword
         body.newPassword = passwords.newPassword
       }
-      const patchRes = await fetch('/api/user/profile', {
+      const patchRes = await authFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -3207,8 +3208,8 @@ export function AdminTimeTracking() {
     async function fetchMetadata() {
       try {
         const [usersRes, projectsRes] = await Promise.all([
-          fetch('/api/users?role=team', { headers: authHeaders() }),
-          fetch('/api/projects'),
+          authFetch('/api/users?role=team', { headers: authHeaders() }),
+          authFetch('/api/projects'),
         ])
         if (usersRes.ok) {
           const data = await usersRes.json()
@@ -3236,7 +3237,7 @@ export function AdminTimeTracking() {
       if (from) params.set('dateFrom', from)
       if (to) params.set('dateTo', to)
 
-      const res = await fetch(`/api/time-entries?${params.toString()}`)
+      const res = await authFetch(`/api/time-entries?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setTimeEntries(data.timeEntries ?? [])
@@ -3291,7 +3292,7 @@ export function AdminTimeTracking() {
   async function handleTimeOut(entryId: string) {
     setStoppingId(entryId)
     try {
-      const res = await fetch(`/api/time-entries/${entryId}`, {
+      const res = await authFetch(`/api/time-entries/${entryId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'time_out' }),
@@ -3312,7 +3313,7 @@ export function AdminTimeTracking() {
   async function handleDelete(entryId: string) {
     setDeletingId(entryId)
     try {
-      const res = await fetch(`/api/time-entries/${entryId}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/time-entries/${entryId}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Time entry deleted')
         fetchEntries()
@@ -3348,7 +3349,7 @@ export function AdminTimeTracking() {
       if (from) params.set('dateFrom', from)
       if (to) params.set('dateTo', to)
 
-      const res = await fetch(`/api/time-entries/export?${params.toString()}`)
+      const res = await authFetch(`/api/time-entries/export?${params.toString()}`)
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)

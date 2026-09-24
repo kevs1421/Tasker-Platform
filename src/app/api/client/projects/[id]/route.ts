@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 /**
  * GET /api/client/projects/:id?clientId=xxx
@@ -12,6 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const { searchParams } = new URL(req.url)
     const clientId = searchParams.get('clientId')
@@ -60,7 +62,7 @@ export async function GET(
     }))
 
     return NextResponse.json({ project: { ...project, tasks } })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

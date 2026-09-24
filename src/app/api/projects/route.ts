@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const projects = await db.project.findMany({
       include: {
         creator: { select: { id: true, name: true, email: true, role: true } },
@@ -29,13 +31,14 @@ export async function GET() {
     })
 
     return NextResponse.json({ projects: projectsWithStats })
-  } catch {
-    return NextResponse.json({ error: 'Failed to process project request' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAdmin(request)
     const { name, description, color, priority, dueDate, createdBy, memberIds } = await request.json()
     if (!name || !createdBy) return NextResponse.json({ error: 'Name and createdBy required' }, { status: 400 })
 
@@ -57,7 +60,6 @@ export async function POST(request: NextRequest) {
     await db.activityLog.create({ data: { action: 'project_created', details: `Created project "${name}"`, userId: createdBy, projectId: project.id } })
     return NextResponse.json({ project }, { status: 201 })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to process project request'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }

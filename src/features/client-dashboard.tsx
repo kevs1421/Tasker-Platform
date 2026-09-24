@@ -6,10 +6,10 @@ import { toast } from 'sonner'
 import {
   FolderKanban, UserCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
-  Check,
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import type { Project } from '@/types'
 import {
   getRoleBadgeClasses, getPriorityConfig,
@@ -117,7 +117,7 @@ export function ClientProjects() {
     try {
       // Use the client-only endpoint that queries through ClientProject table
       // This ensures only projects explicitly assigned to this client are returned
-      const res = await fetch(`/api/client/projects?clientId=${user.id}`)
+      const res = await authFetch(`/api/client/projects?clientId=${user.id}`)
       const data = await res.json()
       setProjects(data.projects || [])
     } catch {
@@ -164,7 +164,7 @@ export function ClientProjects() {
         }
         const formData = new FormData()
         formData.append('file', file)
-        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        const res = await authFetch('/api/upload', { method: 'POST', body: formData })
         if (!res.ok) {
           const d = await res.json()
           throw new Error(d.error || 'Upload failed')
@@ -271,7 +271,7 @@ export function ClientProjects() {
                       if (file.size === 0) throw new Error('File is empty')
                       const formData = new FormData()
                       formData.append('file', file)
-                      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                      const res = await authFetch('/api/upload', { method: 'POST', body: formData })
                       if (!res.ok) {
                         const d = await res.json()
                         throw new Error(d.error || 'Upload failed')
@@ -580,7 +580,7 @@ export function ClientProfile() {
     if (!user?.id) return
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`/api/user/profile?userId=${user.id}`)
+        const res = await authFetch(`/api/user/profile?userId=${user.id}`)
         const data = await res.json()
         if (data.user) {
           setName(data.user.name || '')
@@ -601,7 +601,7 @@ export function ClientProfile() {
     if (!user?.id) return
     setSaving(true)
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await authFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, name, email, phone, company })
@@ -640,7 +640,7 @@ export function ClientProfile() {
     }
     setSavingPassword(true)
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await authFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

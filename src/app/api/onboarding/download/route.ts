@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const submissionId = searchParams.get('submissionId')
 
@@ -107,7 +109,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${encodeURIComponent(safeFilename)}"`,
       },
     })
-  } catch {
-    return NextResponse.json({ error: 'Failed to generate download' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

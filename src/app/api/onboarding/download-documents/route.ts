@@ -3,9 +3,11 @@ import { db } from '@/lib/db'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import JSZip from 'jszip'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const submissionId = searchParams.get('submissionId')
     const fileId = searchParams.get('fileId')
@@ -100,7 +102,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${encodeURIComponent(safeName)}"`,
       },
     })
-  } catch {
-    return NextResponse.json({ error: 'Failed to download documents' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

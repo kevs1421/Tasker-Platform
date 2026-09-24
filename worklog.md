@@ -1970,3 +1970,48 @@ Stage Summary:
 - Client dashboard file uploads also fixed (same /api/upload endpoint)
 - Client-side and server-side validation for file type and size
 - Broken next.config.ts rewrite removed
+---
+Task ID: cleanup
+Agent: main
+Task: Clean up code, remove debugging artifacts, and prepare for deployment
+
+Work Log:
+- Frontend cleanup:
+  - Removed unused imports: Check from client-dashboard.tsx, UserMinus from team-dashboard.tsx
+  - No console.log/debug/warn found in any frontend files
+  - No TODO/FIXME/HACK/XXX comments found
+  - No dead code, no commented-out blocks, no test data, no data-testid attributes
+- Backend cleanup:
+  - Added requireAuth/requireAdmin to ALL 25+ previously unauthenticated API routes
+  - Removed hardcoded 'admin123' fallback password from seed.ts (now requires ADMIN_SEED_PASSWORD env var)
+  - Removed unused requireAdmin import from screenshots/[id]/route.ts
+  - Sanitized console.error in api-auth.ts (now logs only error.message, not full object)
+  - Created authFetch client-side helper (src/lib/client-fetch.ts) for automatic auth header injection
+  - Migrated ALL frontend fetch('/api/...') calls to use authFetch (13 files, 100+ calls)
+- Mini-services cleanup:
+  - Removed wildcard CORS fallback ('*') from video-call-service - now requires CORS_ORIGINS env var
+- File cleanup:
+  - Deleted 2 corrupt .jpg files that were actually HTML 404 pages
+  - Deleted 1 test .txt file containing "test"
+  - Deleted dev.log debug file
+  - Removed 'tee dev.log' from dev script in package.json
+  - Removed unused @types/html2canvas dependency
+- Environment:
+  - Added ADMIN_SEED_PASSWORD and CORS_ORIGINS to .env
+  - Removed broken next.config.ts rewrite for /upload/:path*
+- Verification:
+  - All API routes return 401 without auth token
+  - All API routes return 200 with valid auth token
+  - Client portal onboarding works with authFetch (forms load, wizard navigates, upload zones present)
+  - Lint passes with zero errors
+  - Zero console.log/debug/warn in source
+  - Zero TODO/FIXME/HACK comments
+  - No corrupt upload files remain
+
+Stage Summary:
+- Codebase is production-clean and ready to deploy
+- All API routes are authenticated
+- All frontend fetch calls include auth tokens
+- No debugging artifacts remain
+- No hardcoded credentials or insecure defaults
+- No corrupt or test files in uploads

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads')
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -49,6 +50,8 @@ function generateId(): string {
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth(req)
+
     const formData = await req.formData()
     const file = formData.get('file') as File | null
 
@@ -98,7 +101,6 @@ export async function POST(req: NextRequest) {
       type: file.type,
     })
   } catch (error) {
-    console.error('[upload] Error:', error)
-    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })
+    return handleApiError(error)
   }
 }

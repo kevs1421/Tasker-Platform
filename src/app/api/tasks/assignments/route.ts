@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { userId, taskId, assignedBy } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -27,14 +29,15 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ assignment }, { status: 201 })
-  } catch { return NextResponse.json({ error: 'Failed to assign task' }, { status: 500 }) }
+  } catch (error) { return handleApiError(error) }
 }
 
 export async function DELETE(request: Request) {
   try {
+    await requireAuth(request)
     const { userId, taskId } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     await db.taskAssignment.deleteMany({ where: { userId, taskId } })
     return NextResponse.json({ success: true })
-  } catch { return NextResponse.json({ error: 'Failed to remove task assignment' }, { status: 500 }) }
+  } catch (error) { return handleApiError(error) }
 }

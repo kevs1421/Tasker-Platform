@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 function sanitizeCsv(value: string): string {
   // Prevent CSV injection by escaping dangerous characters
@@ -11,6 +12,7 @@ function sanitizeCsv(value: string): string {
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${fileName}"`,
       },
     })
-  } catch {
-    return NextResponse.json({ error: 'Failed to export time entries' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }

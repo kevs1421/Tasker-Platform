@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { CheckCircle2, Loader2, Sun, Moon } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { authFetch } from '@/lib/client-fetch'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
@@ -23,7 +24,7 @@ export default function LoginPage() {
     if (!loginData.email || !loginData.password) { toast.error('Please fill in all fields'); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginData) })
+      const res = await authFetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginData) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       login(data.user, data.token)

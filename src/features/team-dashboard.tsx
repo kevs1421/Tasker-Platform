@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth'
+import { authFetch } from '@/lib/client-fetch'
 import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { Project, Task, Comment, User } from '@/types'
 import {
@@ -80,7 +81,7 @@ import {
   Clock, Circle, Play,
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Lock, Shield,
-  MessageCircle, Hash, AlertCircle, UserPlus, UserMinus,
+  MessageCircle, Hash, AlertCircle, UserPlus,
   Save, RotateCcw, Timer, GripVertical,
 } from 'lucide-react'
 
@@ -193,7 +194,7 @@ export function TeamProjects() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       const data = await res.json()
       const filtered = (data.projects || []).filter((p: Project) =>
         p.members?.some((m) => m.userId === user?.id)
@@ -210,7 +211,7 @@ export function TeamProjects() {
 
   // Fetch all active admin + team users for assignee picker
   useEffect(() => {
-    fetch('/api/users')
+    authFetch('/api/users')
       .then(r => r.json())
       .then(d => {
         const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
@@ -229,7 +230,7 @@ export function TeamProjects() {
     setTaskFilter('all')
     setExpandedLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}`)
+      const res = await authFetch(`/api/projects/${projectId}`)
       const data = await res.json()
       setExpandedTasks(data.project?.tasks || [])
     } catch {
@@ -244,7 +245,7 @@ export function TeamProjects() {
     if (!user?.id) { toast.error('Not authenticated'); return }
     setCreateTaskLoading(true)
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await authFetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -906,7 +907,7 @@ export function TeamTasks() {
     )
 
     try {
-      const res = await fetch(`/api/tasks/${activeId}`, {
+      const res = await authFetch(`/api/tasks/${activeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: targetStatus, updatedBy: user?.id }),
@@ -935,7 +936,7 @@ export function TeamTasks() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/projects')
+      const res = await authFetch('/api/projects')
       const data = await res.json()
       const filtered = (data.projects || []).filter((p: Project) =>
         p.members?.some((m) => m.userId === user?.id)
@@ -953,7 +954,7 @@ export function TeamTasks() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/tasks?projectId=${selectedProject}`)
+      const res = await authFetch(`/api/tasks?projectId=${selectedProject}`)
       const data = await res.json()
       setTasks(data.tasks || [])
     } catch {
@@ -968,7 +969,7 @@ export function TeamTasks() {
 
   // Fetch all active admin + team users for assignee pickers
   useEffect(() => {
-    fetch('/api/users')
+    authFetch('/api/users')
       .then(r => r.json())
       .then(d => {
         const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
@@ -990,7 +991,7 @@ export function TeamTasks() {
     setSelectedProjectId(task.projectId)
 
     try {
-      const cmRes = await fetch(`/api/comments?taskId=${task.id}`)
+      const cmRes = await authFetch(`/api/comments?taskId=${task.id}`)
       const cmData = await cmRes.json()
       setComments(cmData.comments || [])
     } catch {
@@ -1012,7 +1013,7 @@ export function TeamTasks() {
 
       if (Object.keys(updates).length === 0) { setUpdating(false); return }
 
-      const res = await fetch(`/api/tasks/${detailTask.id}`, {
+      const res = await authFetch(`/api/tasks/${detailTask.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...updates, updatedBy: user?.id }),
@@ -1047,7 +1048,7 @@ export function TeamTasks() {
     if (!detailTask) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/tasks/${detailTask.id}`, { method: 'DELETE' })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to delete task') }
       toast.success('Task deleted')
       setDetailOpen(false)
@@ -1064,13 +1065,13 @@ export function TeamTasks() {
     if (!detailTask || !newComment.trim() || !user) return
     setCommentLoading(true)
     try {
-      await fetch('/api/comments', {
+      await authFetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newComment, taskId: detailTask.id, userId: user.id }),
       })
       setNewComment('')
-      const res = await fetch(`/api/comments?taskId=${detailTask.id}`)
+      const res = await authFetch(`/api/comments?taskId=${detailTask.id}`)
       const data = await res.json()
       setComments(data.comments || [])
       fetchTasks()
@@ -1085,7 +1086,7 @@ export function TeamTasks() {
     if (!cTitle.trim() || !selectedProject || !user) return
     setCreateLoading(true)
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await authFetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1126,14 +1127,14 @@ export function TeamTasks() {
     setAssigneeLoading(userId)
     try {
       if (isAssigned) {
-        await fetch('/api/tasks/assignments', {
+        await authFetch('/api/tasks/assignments', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: task.id }),
         })
         toast.success('Assignee removed')
       } else {
-        const res = await fetch('/api/tasks/assignments', {
+        const res = await authFetch('/api/tasks/assignments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: task.id, assignedBy: user.id }),
@@ -1875,7 +1876,7 @@ export function TeamProfile() {
     if (!user) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/user/profile?userId=${user.id}`)
+      const res = await authFetch(`/api/user/profile?userId=${user.id}`)
       const data = await res.json()
       const u = data.user || user
       setProfile(u)
@@ -1899,7 +1900,7 @@ export function TeamProfile() {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await authFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id, name, email, phone: phone || null, company: company || null }),
@@ -1933,7 +1934,7 @@ export function TeamProfile() {
     }
     setPasswordSaving(true)
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await authFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id, currentPassword, newPassword }),
@@ -2208,7 +2209,7 @@ export function TeamTimeTracking() {
     setLoading(true)
     try {
       const { dateFrom, dateTo } = getDateRange(filter, from, to)
-      const res = await fetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      const res = await authFetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
       const data = await res.json()
       setEntries(data.timeEntries || [])
     } catch {
@@ -2230,9 +2231,9 @@ export function TeamTimeTracking() {
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 
       const [todayRes, weekRes, monthRes] = await Promise.all([
-        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${today}&dateTo=${today}`),
-        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfWeek, 'yyyy-MM-dd')}&dateTo=${today}`),
-        fetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfMonth, 'yyyy-MM-dd')}&dateTo=${today}`),
+        authFetch(`/api/time-entries?userId=${user.id}&dateFrom=${today}&dateTo=${today}`),
+        authFetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfWeek, 'yyyy-MM-dd')}&dateTo=${today}`),
+        authFetch(`/api/time-entries?userId=${user.id}&dateFrom=${format(startOfMonth, 'yyyy-MM-dd')}&dateTo=${today}`),
       ])
 
       const [todayData, weekData, monthData] = await Promise.all([
@@ -2282,7 +2283,7 @@ export function TeamTimeTracking() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/time-entries/${deleteId}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/time-entries/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to delete entry') }
       toast.success('Entry deleted')
       setDeleteId(null)

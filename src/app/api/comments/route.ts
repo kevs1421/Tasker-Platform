@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get('taskId')
     if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
@@ -13,13 +15,14 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'asc' }
     })
     return NextResponse.json({ comments })
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch comments' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: Request) {
   try {
+    await requireAuth(request)
     const { content, taskId, userId } = await request.json()
     if (!content || !taskId || !userId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
     const task = await db.task.findUnique({ where: { id: taskId } })
     if (task) await db.activityLog.create({ data: { action: 'comment_added', details: `Commented on "${task.title}"`, userId, projectId: task.projectId, taskId } })
     return NextResponse.json({ comment }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Failed to create comment' }, { status: 500 })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
