@@ -696,7 +696,7 @@ export function AppHeader() {
   const roleInfo = getRoleBadgeClasses(user.role)
 
   return (
-    <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
+    <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 lg:px-6 z-10">
       <div className="flex items-center gap-3">
         <button onClick={() => useAuthStore.getState().toggleSidebar()} className="lg:hidden p-1.5 rounded-md hover:bg-accent">
           <Menu className="w-5 h-5" />
@@ -818,6 +818,7 @@ function getNavItems(role: string): NavItem[] {
   return [ // client
     { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'client-dashboard', tab: 'onboarding' } },
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'client-dashboard', tab: 'project' } },
+    { id: 'task', label: 'Tasks', icon: Kanban, route: { page: 'client-dashboard', tab: 'task' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'client-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'client-dashboard', tab: 'profile' } },
   ]
@@ -923,14 +924,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <OfflineBanner />
-      <AppHeader />
       <div className="flex flex-1 overflow-hidden">
         <AppSidebar />
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-            {children}
-          </div>
-        </main>
+        <div className="flex flex-1 flex-col min-w-0">
+          <AppHeader />
+          <main className="flex-1 overflow-y-auto">
+            <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   )

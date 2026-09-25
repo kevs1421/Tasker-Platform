@@ -96,6 +96,7 @@ const HASH_ROUTES: Record<string, AppRoute> = {
   'client': { page: 'client-dashboard', tab: 'project' },
   'client/onboarding': { page: 'client-dashboard', tab: 'onboarding' },
   'client/projects': { page: 'client-dashboard', tab: 'project' },
+  'client/tasks': { page: 'client-dashboard', tab: 'task' },
   'client/messages': { page: 'client-dashboard', tab: 'messages' },
   'client/profile': { page: 'client-dashboard', tab: 'profile' },
 }
