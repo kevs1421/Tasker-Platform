@@ -18,9 +18,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Admin: look up the stored config (use a sentinel user or global config)
-    const config = await db.screenshotConfig.findFirst({
-      where: { userId: 'GLOBAL_CONFIG' },
+    // Admin: look up the stored config using their actual user ID
+    const config = await db.screenshotConfig.findUnique({
+      where: { userId: user.id },
     })
 
     return NextResponse.json({
@@ -42,21 +42,21 @@ export async function GET(request: NextRequest) {
 // Admin-only: update global screenshot settings
 export async function PUT(request: NextRequest) {
   try {
-    // Verify admin via session
-    await requireAdmin(request)
+    // Verify admin via session and get their user ID
+    const admin = await requireAdmin(request)
 
     const body = await request.json()
     const { autoEnabled, intervalMinutes } = body
 
-    // Upsert global config using sentinel ID
+    // Upsert config using the admin's actual user ID (satisfies FK constraint)
     const config = await db.screenshotConfig.upsert({
-      where: { userId: 'GLOBAL_CONFIG' },
+      where: { userId: admin.id },
       update: {
         autoEnabled: autoEnabled ?? true,
         intervalMinutes: intervalMinutes ?? 5,
       },
       create: {
-        userId: 'GLOBAL_CONFIG',
+        userId: admin.id,
         autoEnabled: autoEnabled ?? true,
         intervalMinutes: intervalMinutes ?? 5,
       },
