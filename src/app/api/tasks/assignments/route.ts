@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   } catch (error) { return handleApiError(error) }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
     await requireAuth(request)
     const { userId, taskId } = await request.json()

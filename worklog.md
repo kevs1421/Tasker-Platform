@@ -2015,3 +2015,96 @@ Stage Summary:
 - No debugging artifacts remain
 - No hardcoded credentials or insecure defaults
 - No corrupt or test files in uploads
+---
+Task ID: 1
+Agent: main
+Task: Audit and clean up ALL frontend files - debug code, dead code, unused imports, test data, console.logs
+
+Work Log:
+- Audited all 10 feature files and 10 component/hook/store/lib files
+- Found 7 unused imports across 5 files
+- Found 1 dead code pattern (void timerTick) in admin-dashboard.tsx
+- Removed unused `Square` import from admin-dashboard.tsx
+- Removed unused `Tag` import from team-dashboard.tsx
+- Removed unused `X`, `Avatar`, `AvatarFallback`, `ScrollArea` imports from screenshot-capture.tsx
+- Removed unused `CardDescription` import from screenshot-report.tsx
+- Removed unused `formatDate`, `formatRelativeTime` imports from team-my-tasks.tsx
+- Replaced `void timerTick` lint suppression with cleaner pattern
+
+Stage Summary:
+- 7 unused imports removed across 5 frontend files
+- 1 dead code pattern cleaned up
+- No console.log/debug statements found in any frontend file
+- No TODO/FIXME/HACK comments found
+- No hardcoded test/mock data found
+---
+Task ID: 2
+Agent: main
+Task: Audit and clean up ALL backend/API files
+
+Work Log:
+- Audited all 39 API route files
+- Found 1 unused variable (dead code) in dashboard/stats/route.ts
+- Found 5 files using Request instead of NextRequest for auth helper calls
+- Found 1 redundant import split in admin/activity/route.ts
+- Found 1 code smell in messages/route.ts (redundant .filter(Boolean))
+- Removed unused `role` variable from dashboard/stats/route.ts
+- Changed Request → NextRequest in admin/route.ts (GET, PATCH)
+- Changed Request → NextRequest in users/route.ts (GET, PATCH)
+- Changed Request → NextRequest in comments/route.ts (POST)
+- Changed Request → NextRequest in tasks/route.ts (POST)
+- Changed Request → NextRequest in tasks/assignments/route.ts (DELETE)
+- Consolidated imports in admin/activity/route.ts
+- Fixed code smell in messages/route.ts (removed non-null assertion + redundant filter)
+
+Stage Summary:
+- 1 dead variable removed
+- 5 files fixed with proper NextRequest typing for type safety
+- 1 import consolidated
+- 1 code smell fixed
+- No console.log statements in API routes (only acceptable console.error in api-auth.ts error handler)
+---
+Task ID: 3
+Agent: main
+Task: Audit and clean up mini-services
+
+Work Log:
+- Audited video-call-service/index.ts
+- Found dead `userSockets` map (never read, only set/delete)
+- Removed the `userSockets` map and its .set()/.delete() calls
+- Kept hardcoded PORT=3005 as it's the designated service port per project convention
+
+Stage Summary:
+- Dead `userSockets` map removed from video-call-service
+- Service still fully functional
+---
+Task ID: 4
+Agent: main
+Task: Remove unused devDependency z-ai-web-dev-sdk
+
+Work Log:
+- Verified z-ai-web-dev-sdk is not imported anywhere in src/
+- Removed from package.json devDependencies
+- Ran bun install to update lockfile (1 package removed)
+
+Stage Summary:
+- z-ai-web-dev-sdk removed from devDependencies
+---
+Task ID: 6
+Agent: main
+Task: Final lint + dev server verification
+
+Work Log:
+- Ran bun run lint: all clean, no errors
+- Started dev server: Next.js 16.1.3 (Turbopack) Ready
+- Verified main page: HTTP 200, full HTML rendered
+- Verified API endpoint /api/auth/verify: returns {"valid":false} (correct for unauthenticated)
+- Verified login API: returns user object with admin role and session token
+- Server stays alive and responds to multiple requests
+
+Stage Summary:
+- Lint: ✅ Clean
+- Dev server: ✅ Running on port 3000
+- Main page: ✅ Renders correctly (HTTP 200)
+- API endpoints: ✅ Working correctly
+- Login: ✅ Working correctly

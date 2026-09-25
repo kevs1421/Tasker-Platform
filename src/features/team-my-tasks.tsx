@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import type { Task, User } from '@/types'
-import { getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
+import { getInitials, getPriorityConfig, getStatusConfig } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 
 // shadcn/ui

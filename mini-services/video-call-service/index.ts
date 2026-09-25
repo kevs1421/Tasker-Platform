@@ -21,16 +21,10 @@ const rooms = new Map<string, {
   participants: Map<string, { name: string; avatar?: string; socketId: string }>
 }>
 
-// Map userId -> socketId for targeted messaging
-const userSockets = new Map<string, string>()
-
 io.on('connection', (socket) => {
   const userId = socket.handshake.auth.userId
   const userName = socket.handshake.auth.userName
   const userAvatar = socket.handshake.auth.userAvatar
-
-  // Register user-to-socket mapping
-  userSockets.set(userId, socket.id)
 
   // Track which rooms this socket has joined
   const joinedRooms = new Set<string>()
@@ -179,7 +173,6 @@ io.on('connection', (socket) => {
 
   // Disconnect
   socket.on('disconnect', () => {
-    userSockets.delete(userId)
     for (const roomId of joinedRooms) {
       if (rooms.has(roomId)) {
         const room = rooms.get(roomId)!

@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
     await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
-    const role = searchParams.get('role')
 
     const totalTasks = await db.task.count()
     const completedTasks = await db.task.count({ where: { status: 'done' } })

@@ -77,7 +77,7 @@ import { CSS } from '@dnd-kit/utilities'
 // lucide-react
 import {
   Plus, Trash2, LayoutGrid, List, CheckCircle2,
-  Send, CalendarIcon, Tag, Users, FolderKanban,
+  Send, CalendarIcon, Users, FolderKanban,
   Clock, Circle, Play,
   X, Loader2, Check, FileText, Pencil, Phone, Building2,
   Lock, Shield,

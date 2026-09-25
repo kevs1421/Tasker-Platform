@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       // Direct conversations
       const sent = await db.message.findMany({ where: { senderId: userId, groupId: null }, distinct: ['receiverId'], select: { receiverId: true } })
       const received = await db.message.findMany({ where: { receiverId: userId, groupId: null }, distinct: ['senderId'], select: { senderId: true } })
-      const conversationIds = [...new Set([...sent.map((m) => m.receiverId!).filter(Boolean), ...received.map((m) => m.senderId)])]
+      const conversationIds = [...new Set([...sent.map((m) => m.receiverId), ...received.map((m) => m.senderId)])].filter(Boolean) as string[]
 
       const conversations = await Promise.all(
         conversationIds.map(async (otherUserId) => {

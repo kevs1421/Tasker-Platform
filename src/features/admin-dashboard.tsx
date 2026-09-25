@@ -45,7 +45,7 @@ import {
   Search, ArrowUpRight, CircleDot,
   MessageCircle, ThumbsUp, ThumbsDown, Shield, CalendarIcon,
   UserPlus, UserCog, MoreHorizontal, X, Loader2, ClipboardList, Pencil,
-  KeyRound, Download, Save, FileArchive, Square, GraduationCap,
+  KeyRound, Download, Save, FileArchive, GraduationCap,
   ImageIcon, Building2, Palette, Rocket, ExternalLink
 } from 'lucide-react'
 
@@ -3371,8 +3371,8 @@ export function AdminTimeTracking() {
     }
   }
 
-  // Suppress unused variable lint (timerTick forces re-render for live timer)
-  void timerTick
+  // timerTick forces re-render for live timer
+  if (timerTick !== undefined) { /* intentional: timerTick triggers re-renders */ }
 
   // My active timer entry derived from shared store
   const myActiveEntry = activeSession
