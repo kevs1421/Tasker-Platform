@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
     // ── Conversation list (no otherId, no groupId) ─────────
     if (!otherId) {
       try {
+      // Get current user role for visibility filtering
+      const currentUser = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
+
+      // Helper: check if senderRole can message receiverRole
+      const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
+        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
+        if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
+        return false
+      }
+
       // Direct conversations
       const sent = await db.message.findMany({ where: { senderId: userId, groupId: null }, distinct: ['receiverId'], select: { receiverId: true } })
       const received = await db.message.findMany({ where: { receiverId: userId, groupId: null }, distinct: ['senderId'], select: { senderId: true } })
@@ -47,6 +58,8 @@ export async function GET(request: NextRequest) {
             where: { id: otherUserId },
             select: { id: true, name: true, email: true, role: true, avatar: true, company: true },
           })
+          // Filter out conversations with users this role cannot message
+          if (otherUser && currentUser && !canMessageRole(currentUser.role, otherUser.role)) return null
           const lastMessage = await db.message.findFirst({
             where: {
               OR: [
@@ -63,6 +76,9 @@ export async function GET(request: NextRequest) {
           return { type: 'direct' as const, user: otherUser, lastMessage, unread }
         })
       )
+
+      // Filter out null entries (conversations with users this role cannot message)
+      const visibleConversations = conversations.filter((c): c is NonNullable<typeof c> => c !== null)
 
       // Group conversations
       const groups = await db.messageGroup.findMany({
@@ -102,7 +118,7 @@ export async function GET(request: NextRequest) {
 
       // Merge and sort all by most recent message
       const allConversations = [
-        ...conversations.map((c) => {
+        ...visibleConversations.map((c) => {
           const t = c.lastMessage?.createdAt
           return { ...c, lastTime: t instanceof Date ? t.toISOString() : (t ?? '') }
         }),
@@ -162,6 +178,30 @@ export async function POST(request: NextRequest) {
     // Must target either a user or a group, not both
     if (!receiverId && !groupId) {
       return NextResponse.json({ error: 'receiverId or groupId required' }, { status: 400 })
+    }
+
+    // ── Role-based messaging permission (server-side enforcement) ───────
+    // admin & team → can message admin, team, client (NOT training)
+    // training    → can message admin, team only
+    // client      → can message admin, team only
+    if (receiverId) {
+      const sender = await db.user.findUnique({ where: { id: senderId }, select: { role: true } })
+      const receiver = await db.user.findUnique({ where: { id: receiverId }, select: { role: true } })
+      if (sender && receiver) {
+        const senderRole = sender.role
+        const receiverRole = receiver.role
+        let allowed = false
+        if (senderRole === 'admin' || senderRole === 'team') {
+          allowed = receiverRole !== 'training'
+        } else if (senderRole === 'training') {
+          allowed = receiverRole === 'admin' || receiverRole === 'team'
+        } else if (senderRole === 'client') {
+          allowed = receiverRole === 'admin' || receiverRole === 'team'
+        }
+        if (!allowed) {
+          return NextResponse.json({ error: 'Not allowed to message this user' }, { status: 403 })
+        }
+      }
     }
 
     const message = await db.message.create({

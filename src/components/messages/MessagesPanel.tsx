@@ -32,6 +32,26 @@ import { useVideoCall } from '@/hooks/use-video-call'
 import { VideoCallPanel, VideoCallButtons, GroupCallButtons, IncomingCallOverlay } from './VideoCall'
 import { authFetch } from '@/lib/client-fetch'
 
+// ─── Role-based messaging visibility ───────────────────────────────────────────
+// admin & team → can message admin, team, client (NOT training)
+// training   → can message admin, team only
+// client     → can message admin, team only
+function canMessageRole(myRole: string, theirRole: string): boolean {
+  if (myRole === 'admin' || myRole === 'team') {
+    // admin/team can message admin, team, client (not training)
+    return theirRole !== 'training'
+  }
+  if (myRole === 'training') {
+    // training can message admin, team only
+    return theirRole === 'admin' || theirRole === 'team'
+  }
+  if (myRole === 'client') {
+    // client can message admin, team only
+    return theirRole === 'admin' || theirRole === 'team'
+  }
+  return false
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
 interface DirectConversation {
@@ -105,8 +125,7 @@ function CreateGroupDialog({
       .then((d) => {
         setUsers((d.users ?? []).filter((u: User) => {
           if (u.id === currentUser.id) return false
-          // Training users cannot message clients
-          if (currentUser.role === 'training' && u.role === 'client') return false
+          if (!canMessageRole(currentUser.role, u.role)) return false
           return true
         }))
       })
@@ -234,8 +253,7 @@ function NewMessageDialog({
         if (cancelled) return
         setUsers((d.users ?? []).filter((u: User) => {
           if (u.id === currentUser.id) return false
-          // Training users cannot message clients
-          if (currentUser.role === 'training' && u.role === 'client') return false
+          if (!canMessageRole(currentUser.role, u.role)) return false
           return true
         }))
         setLoading(false)
@@ -365,8 +383,7 @@ function GroupInfoDialog({
         const memberIds = members.map((m) => m.userId)
         setUsers((d.users ?? []).filter((u: User) => {
           if (memberIds.includes(u.id)) return false
-          // Training users cannot add clients to groups
-          if (currentUserRole === 'training' && u.role === 'client') return false
+          if (!canMessageRole(currentUserRole, u.role)) return false
           return true
         }))
       })
@@ -495,7 +512,11 @@ export function MessagesPanel() {
       const res = await authFetch(`/api/messages?userId=${user.id}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setConversations(data.conversations ?? [])
+      // Filter conversations based on role-based messaging visibility
+      setConversations((data.conversations ?? []).filter((c: Conversation) => {
+        if (c.type === 'direct' && c.user && !canMessageRole(user.role, c.user.role)) return false
+        return true
+      }))
     } catch {
       toast.error('Failed to load conversations')
     } finally {

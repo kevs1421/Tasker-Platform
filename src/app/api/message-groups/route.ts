@@ -48,6 +48,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'name, createdBy, memberIds required' }, { status: 400 })
     }
 
+    // ── Role-based group membership check ──────────────────────
+    // Same rules as messaging: admin/team can add admin/team/client,
+    // training can add admin/team, client can add admin/team
+    const creator = await db.user.findUnique({ where: { id: createdBy }, select: { role: true } })
+    if (creator) {
+      const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
+        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
+        if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
+        return false
+      }
+      const members = await db.user.findMany({ where: { id: { in: memberIds } }, select: { id: true, role: true } })
+      for (const member of members) {
+        if (!canMessageRole(creator.role, member.role)) {
+          return NextResponse.json({ error: `Cannot add user with role '${member.role}' to group` }, { status: 403 })
+        }
+      }
+    }
+
     // Creator must be a member
     const allMemberIds = [...new Set([...memberIds, createdBy])]
 
