@@ -1,13 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, handleApiError } from '@/lib/api-auth'
+import { requireAdmin, requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin(request)
+    // Allow all authenticated users to fetch the user list (needed for messaging).
+    // If the user is an admin, return the full user list with counts and all statuses.
+    // Non-admin users get a simplified list of active users only.
+    const authed = await requireAuth(request)
+
+    if (authed.role === 'admin') {
+      const users = await db.user.findMany({
+        select: { id: true, email: true, name: true, phone: true, company: true, avatar: true, role: true, status: true, createdAt: true, _count: { select: { assignedTasks: true, createdTasks: true, sentMessages: true } } },
+        orderBy: { createdAt: 'desc' }
+      })
+      return NextResponse.json({ users })
+    }
+
+    // Non-admin: return active users only, with minimal fields for messaging
     const users = await db.user.findMany({
-      select: { id: true, email: true, name: true, phone: true, company: true, avatar: true, role: true, status: true, createdAt: true, _count: { select: { assignedTasks: true, createdTasks: true, sentMessages: true } } },
-      orderBy: { createdAt: 'desc' }
+      where: { status: 'active' },
+      select: { id: true, email: true, name: true, phone: true, company: true, avatar: true, role: true, status: true, createdAt: true },
+      orderBy: { name: 'asc' }
     })
     return NextResponse.json({ users })
   } catch (error) {
