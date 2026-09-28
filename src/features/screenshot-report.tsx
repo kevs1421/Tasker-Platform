@@ -9,7 +9,7 @@ import {
   ArrowUpDown, Zap, Settings2, Save, Clock, Shield,
   X,
 } from 'lucide-react'
-import { useAuthStore, authHeaders } from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
@@ -89,7 +89,7 @@ export function AdminScreenshotReport() {
   const fetchScreenshots = useCallback(async () => {
     if (!user) return
     try {
-      const res = await authFetch(`/api/screenshots`, { headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots`)
       if (res.ok) {
         const data = await res.json()
         setScreenshots(data.screenshots || [])
@@ -127,7 +127,7 @@ export function AdminScreenshotReport() {
     try {
       const res = await authFetch('/api/screenshot-config', {
         method: 'PUT',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
           autoEnabled: configEnabled,
@@ -151,7 +151,7 @@ export function AdminScreenshotReport() {
     if (!deleteTarget || !user) return
     setDeleting(true)
     try {
-      const res = await authFetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Delete failed')
       toast.success('Screenshot deleted')
       setDeleteOpen(false)

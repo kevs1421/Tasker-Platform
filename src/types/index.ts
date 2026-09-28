@@ -83,7 +83,7 @@ export interface DashboardStats {
   totalTasks: number; completedTasks: number; inProgressTasks: number;
   inReviewTasks: number; todoTasks: number; overdueTasks: number;
   totalProjects: number; activeProjects: number; totalMembers: number;
-  totalClients: number; thisWeekCompleted: number; totalMessages: number;
+  totalClients: number; thisWeekCompleted: number;
 }
 
 export interface Screenshot {

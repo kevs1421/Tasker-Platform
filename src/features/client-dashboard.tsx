@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Task } from '@/types'
+import type { Task, User } from '@/types'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -126,10 +126,14 @@ export function ClientProjects() {
       // Use the client-only endpoint that queries through ClientProject table
       // This ensures only projects explicitly assigned to this client are returned
       const res = await authFetch(`/api/client/projects?clientId=${user.id}`)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to load projects')
+      }
       const data = await res.json()
       setProjects(data.projects || [])
-    } catch {
-      toast.error('Failed to load projects')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load projects')
     } finally {
       setLoading(false)
     }
@@ -173,11 +177,10 @@ export function ClientProjects() {
         const formData = new FormData()
         formData.append('file', file)
         const res = await authFetch('/api/upload', { method: 'POST', body: formData })
-        if (!res.ok) {
-          const d = await res.json()
-          throw new Error(d.error || 'Upload failed')
-        }
         const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data.error || 'Upload failed')
+        }
         newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
       } catch (e: unknown) {
         toast.error(`${file.name}: ${e instanceof Error ? e.message : 'Upload failed'}`)
@@ -280,11 +283,10 @@ export function ClientProjects() {
                       const formData = new FormData()
                       formData.append('file', file)
                       const res = await authFetch('/api/upload', { method: 'POST', body: formData })
-                      if (!res.ok) {
-                        const d = await res.json()
-                        throw new Error(d.error || 'Upload failed')
-                      }
                       const data = await res.json()
+                      if (!res.ok) {
+                        throw new Error(data.error || 'Upload failed')
+                      }
                       newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
                     } catch (err: unknown) {
                       toast.error(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
@@ -587,13 +589,17 @@ export function ClientTasks() {
     if (!user?.id) return
     try {
       const res = await authFetch(`/api/client/projects?clientId=${user.id}`)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to load projects')
+      }
       const data = await res.json()
       setProjects(data.projects || [])
       if ((data.projects || []).length > 0 && !selectedProject) {
         setSelectedProject(data.projects[0].id)
       }
-    } catch {
-      toast.error('Failed to load projects')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load projects')
     }
   }, [user?.id, selectedProject])
 
@@ -602,10 +608,14 @@ export function ClientTasks() {
     setLoading(true)
     try {
       const res = await authFetch(`/api/tasks?projectId=${selectedProject}`)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to load tasks')
+      }
       const data = await res.json()
       setTasks(data.tasks || [])
-    } catch {
-      toast.error('Failed to load tasks')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load tasks')
     } finally {
       setLoading(false)
     }
@@ -624,7 +634,9 @@ export function ClientTasks() {
         setDetailTask(data.task)
         setComments(data.task?.comments ?? [])
       }
-    } catch { /* use basic data */ }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load task details')
+    }
   }
 
   const currentProject = projects.find((p) => p.id === selectedProject)
@@ -797,7 +809,7 @@ export function ClientTasks() {
               ) : (
                 tasks.map((task) => {
                   const sConf = getStatusConfig(task.status)
-                  const assignees = (task.assignees || []).map((a) => a.user).filter(Boolean)
+                  const assignees = (task.assignees || []).map((a) => a.user).filter((u): u is User => !!u)
                   return (
                     <TableRow
                       key={task.id}
@@ -827,7 +839,7 @@ export function ClientTasks() {
                       </TableCell>
                       <TableCell>
                         <div className="flex -space-x-1.5">
-                          {assignees.slice(0, 3).map((u: { id: string; name: string; avatar?: string | null }) => (
+                          {assignees.slice(0, 3).map((u) => (
                             <Avatar key={u.id} className="h-6 w-6 border-2 border-background">
                               <AvatarImage src={u.avatar || undefined} />
                               <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
@@ -1001,6 +1013,10 @@ export function ClientProfile() {
     const fetchProfile = async () => {
       try {
         const res = await authFetch(`/api/user/profile?userId=${user.id}`)
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to load profile')
+        }
         const data = await res.json()
         if (data.user) {
           setName(data.user.name || '')
@@ -1008,8 +1024,8 @@ export function ClientProfile() {
           setPhone(data.user.phone || '')
           setCompany(data.user.company || '')
         }
-      } catch {
-        toast.error('Failed to load profile')
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Failed to load profile')
       } finally {
         setLoading(false)
       }
@@ -1026,11 +1042,10 @@ export function ClientProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, name, email, phone, company })
       })
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Failed')
       }
-      const data = await res.json()
       toast.success('Profile updated successfully')
       // Update user in store
       if (data.user && user) {
@@ -1054,8 +1069,8 @@ export function ClientProfile() {
       toast.error('New passwords do not match')
       return
     }
-    if (newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters')
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters')
       return
     }
     setSavingPassword(true)
@@ -1069,8 +1084,8 @@ export function ClientProfile() {
           newPassword
         })
       })
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Failed')
       }
       toast.success('Password changed successfully')

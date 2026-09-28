@@ -7,7 +7,7 @@ import {
   Camera, Upload, Trash2, Eye,
   Loader2, Search,
 } from 'lucide-react'
-import { useAuthStore, authHeaders } from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime } from '@/features/route-guard'
@@ -77,7 +77,7 @@ export function TeamScreenshots() {
   const fetchScreenshots = useCallback(async () => {
     if (!user) return
     try {
-      const res = await authFetch(`/api/screenshots`, { headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots`)
       if (res.ok) {
         const data = await res.json()
         setScreenshots(data.screenshots || [])
@@ -120,7 +120,6 @@ export function TeamScreenshots() {
 
       const res = await authFetch('/api/screenshots', {
         method: 'POST',
-        headers: authHeaders(),
         body: formData,
       })
       if (!res.ok) {
@@ -145,7 +144,7 @@ export function TeamScreenshots() {
     if (!deleteTarget || !user) return
     setDeleting(true)
     try {
-      const res = await authFetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
+      const res = await authFetch(`/api/screenshots/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Delete failed')
       toast.success('Screenshot deleted')
       setDeleteOpen(false)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useAuthStore, authHeaders } from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
@@ -88,8 +88,8 @@ export function AdminOverview() {
     async function fetchData() {
       try {
         const [statsRes, actRes] = await Promise.all([
-          authFetch('/api/admin', { headers: authHeaders() }),
-          authFetch('/api/admin/activity', { headers: authHeaders() })
+          authFetch('/api/admin'),
+          authFetch('/api/admin/activity')
         ])
         if (!statsRes.ok || !actRes.ok) throw new Error('Failed')
         const statsData = await statsRes.json()
@@ -275,6 +275,8 @@ function getOnboardingBadge(status: string) {
     case 'submitted': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'approved': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'rejected': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+    case 'draft': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+    case 'published': return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
     default: return 'bg-slate-100 text-slate-700'
   }
 }
@@ -340,21 +342,23 @@ export function AdminOnboarding() {
   const fetchProjects = useCallback(async () => {
     try {
       const res = await authFetch('/api/projects')
-      if (res.ok) {
-        const data = await res.json()
-        setProjects(data.projects ?? [])
-      }
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setProjects(data.projects ?? [])
+    } catch {
+      toast.error('Failed to load projects')
+    }
   }, [])
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await authFetch('/api/users', { headers: authHeaders() })
-      if (res.ok) {
-        const data = await res.json()
-        setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
-      }
-    } catch { /* ignore */ }
+      const res = await authFetch('/api/users')
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json()
+      setClients((data.users ?? []).filter((u: User) => u.role === 'client' && u.status === 'active'))
+    } catch {
+      toast.error('Failed to load clients')
+    }
   }, [])
 
   useEffect(() => {
@@ -387,7 +391,7 @@ export function AdminOnboarding() {
       )
       const res = await authFetch('/api/onboarding', {
         method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: createForm.title.trim(),
           description: createForm.description.trim() || null,
@@ -419,7 +423,7 @@ export function AdminOnboarding() {
       const notes = reviewNotes[submissionId] || ''
       const patchRes = await authFetch(`/api/onboarding/${submissionId}`, {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'review', reviewStatus: status, reviewNotes: notes, reviewedBy: user.id })
       })
       if (!patchRes.ok) {
@@ -447,7 +451,6 @@ export function AdminOnboarding() {
     try {
       const res = await authFetch(`/api/onboarding/${formId}`, {
         method: 'DELETE',
-        headers: authHeaders(),
       })
       if (!res.ok) throw new Error()
       toast.success(`"${formTitle}" deleted`)
@@ -482,7 +485,7 @@ export function AdminOnboarding() {
       )
       const res = await authFetch(`/api/onboarding/${editFormId}`, {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editForm.title.trim(),
           description: editForm.description.trim() || null,
@@ -769,7 +772,7 @@ export function AdminOnboarding() {
                         <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => window.open('/api/onboarding/download?submissionId=' + sub.id, '_blank')}>
                           <Download className="h-3.5 w-3.5" /> Download Report
                         </Button>
-                        {Object.keys(parsedFiles).filter(([, f]) => f).length > 0 && (
+                        {Object.entries(parsedFiles).filter(([, f]) => f).length > 0 && (
                           <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.open('/api/onboarding/download-documents?submissionId=' + sub.id, '_blank')}>
                             <FileArchive className="h-3.5 w-3.5" /> Download All Documents
                           </Button>
@@ -1215,8 +1218,11 @@ export function AdminProjects() {
 
   // Fetch active admin + team users for member picker
   useEffect(() => {
-    authFetch('/api/users', { headers: authHeaders() })
-      .then(r => r.json())
+    authFetch('/api/users')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed')
+        return r.json()
+      })
       .then(d => {
         const users = (d.users || []).filter((u: User) => (u.role === 'admin' || u.role === 'team' || u.role === 'training') && u.status === 'active')
         setActiveUsers(users)
@@ -1292,6 +1298,7 @@ export function AdminProjects() {
     setMembersLoading(true)
     try {
       const res = await authFetch(`/api/projects/${projectId}/members`)
+      if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       setProjectMembers(data.members || [])
     } catch {
@@ -1311,8 +1318,11 @@ export function AdminProjects() {
       if (!res.ok) throw new Error()
       toast.success(`${userIds.length} member(s) added`)
       // Refresh members list
-      const updated = await authFetch(`/api/projects/${manageProjectId}/members`).then(r => r.json())
-      setProjectMembers(updated.members || [])
+      const refreshRes = await authFetch(`/api/projects/${manageProjectId}/members`)
+      if (refreshRes.ok) {
+        const updated = await refreshRes.json()
+        setProjectMembers(updated.members || [])
+      }
       fetchProjects()
     } catch {
       toast.error('Failed to add members')
@@ -1696,7 +1706,7 @@ export function AdminTasks() {
       const res = await authFetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, updatedBy: user?.id }),
+        body: JSON.stringify({ status: newStatus }),
       })
       if (!res.ok) throw new Error()
       // Optimistic update
@@ -1743,8 +1753,11 @@ export function AdminTasks() {
 
   // Fetch all team/admin users for assignee selection
   useEffect(() => {
-    authFetch('/api/users', { headers: authHeaders() })
-      .then(r => r.json())
+    authFetch('/api/users')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed')
+        return r.json()
+      })
       .then(d => {
         const members = (d.users || []).filter((u: User) => u.role === 'team' || u.role === 'training' || u.role === 'admin')
         setAllTeamUsers(members)
@@ -1817,18 +1830,20 @@ export function AdminTasks() {
       const toAdd = [...pendingAssigneeIds].filter(id => !originalIds.has(id))
 
       for (const userId of toRemove) {
-        await authFetch('/api/tasks/assignments', {
+        const delRes = await authFetch('/api/tasks/assignments', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: selectedTask.id }),
         })
+        if (!delRes.ok) throw new Error('Failed to remove assignee')
       }
       for (const userId of toAdd) {
-        await authFetch('/api/tasks/assignments', {
+        const addRes = await authFetch('/api/tasks/assignments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: selectedTask.id }),
         })
+        if (!addRes.ok) throw new Error('Failed to add assignee')
       }
 
       toast.success('Task updated')
@@ -1859,8 +1874,6 @@ export function AdminTasks() {
     setEditDueDate(selectedTask.dueDate ? new Date(selectedTask.dueDate) : null)
     setPendingAssigneeIds(new Set((selectedTask.assignees || []).map((a: { userId: string }) => a.userId)))
   }
-
-  const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
 
   if (loading && tasks.length === 0) {
     return (
@@ -1903,10 +1916,10 @@ export function AdminTasks() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTasks.length === 0 && (
+              {tasks.length === 0 && (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tasks found</TableCell></TableRow>
               )}
-              {filteredTasks.map((task) => {
+              {tasks.map((task) => {
                 const sCfg = getStatusConfig(task.status)
                 const pCfg = getPriorityConfig(task.priority)
                 const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done'
@@ -2201,7 +2214,7 @@ export function AdminUsers() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [adding, setAdding] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<User | null>(null)
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null)
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', confirmPassword: '',
     role: 'team' as 'admin' | 'team' | 'training' | 'client',
@@ -2227,7 +2240,7 @@ export function AdminUsers() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await authFetch('/api/users', { headers: authHeaders() })
+      const res = await authFetch('/api/users')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setUsers(data.users ?? [])
@@ -2272,7 +2285,7 @@ export function AdminUsers() {
     try {
       const res = await authFetch('/api/register', {
         method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newUser.name,
           email: newUser.email,
@@ -2300,7 +2313,7 @@ export function AdminUsers() {
     try {
       const res = await authFetch('/api/users', {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: u.id, status: newStatus })
       })
       if (!res.ok) throw new Error()
@@ -2316,7 +2329,7 @@ export function AdminUsers() {
     try {
       const res = await authFetch('/api/users', {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: u.id, role: newRole })
       })
       if (!res.ok) throw new Error()
@@ -2349,7 +2362,7 @@ export function AdminUsers() {
     try {
       const res = await authFetch('/api/users', {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editForm.id,
           name: editForm.name,
@@ -2397,7 +2410,7 @@ export function AdminUsers() {
     try {
       const res = await authFetch(`/api/users/${resetTarget.id}`, {
         method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           newPassword: resetPassword,
         })
@@ -2416,14 +2429,14 @@ export function AdminUsers() {
   async function handleDeleteUser(u: User) {
     setDeletingId(u.id)
     try {
-      const res = await authFetch(`/api/users/${u.id}`, { method: 'DELETE', headers: authHeaders() })
+      const res = await authFetch(`/api/users/${u.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || 'Failed')
       }
       toast.success(`User "${u.name}" deleted`)
       fetchUsers()
-      setDeleteConfirmUserId(null)
+      setDeleteConfirmUser(null)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete user')
     } finally {
@@ -2615,7 +2628,7 @@ export function AdminUsers() {
                               )}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => setDeleteConfirmUserId(u)}
+                              onClick={() => setDeleteConfirmUser(u)}
                               disabled={u.id === adminUser?.id}
                               className="text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-900/20"
                             >
@@ -2635,18 +2648,18 @@ export function AdminUsers() {
       </Card>
 
       {/* Delete User Confirmation */}
-      <AlertDialog open={!!deleteConfirmUserId} onOpenChange={(open) => { if (!open) setDeleteConfirmUserId(null) }}>
+      <AlertDialog open={!!deleteConfirmUser} onOpenChange={(open) => { if (!open) setDeleteConfirmUser(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete User</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete {deleteConfirmUserId?.name}? This action cannot be undone.
+              Are you sure you want to delete {deleteConfirmUser?.name}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteConfirmUserId && handleDeleteUser(deleteConfirmUserId)}
+              onClick={() => deleteConfirmUser && handleDeleteUser(deleteConfirmUser)}
               disabled={!!deletingId}
               className="bg-rose-600 hover:bg-rose-700"
             >
@@ -2965,11 +2978,10 @@ export function AdminProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
-      if (!patchRes.ok) {
-        const d = await patchRes.json()
-        throw new Error(d.error)
-      }
       const data = await patchRes.json()
+      if (!patchRes.ok) {
+        throw new Error(data.error)
+      }
       toast.success('Profile updated successfully')
       // Update store user
       if (data.user && user) {
@@ -3177,7 +3189,6 @@ function getDateRange(preset: DatePreset, customFrom?: Date, customTo?: Date): {
 }
 
 export function AdminTimeTracking() {
-  const { user: currentUser } = useAuthStore()
 
   // Data state
   const [timeEntries, setTimeEntries] = useState<LocalTimeEntry[]>([])
@@ -3208,19 +3219,19 @@ export function AdminTimeTracking() {
     async function fetchMetadata() {
       try {
         const [usersRes, projectsRes] = await Promise.all([
-          authFetch('/api/users?role=team', { headers: authHeaders() }),
+          authFetch('/api/users?role=team'),
           authFetch('/api/projects'),
         ])
-        if (usersRes.ok) {
-          const data = await usersRes.json()
-          setTeamUsers(data.users ?? data ?? [])
+        if (!usersRes.ok || !projectsRes.ok) {
+          toast.error('Failed to load time tracking filters')
+          return
         }
-        if (projectsRes.ok) {
-          const data = await projectsRes.json()
-          setProjects(data.projects ?? data ?? [])
-        }
+        const usersData = await usersRes.json()
+        setTeamUsers(usersData.users ?? usersData ?? [])
+        const projectsData = await projectsRes.json()
+        setProjects(projectsData.projects ?? projectsData ?? [])
       } catch {
-        // silent fail
+        toast.error('Failed to load time tracking filters')
       }
     }
     fetchMetadata()
@@ -3327,16 +3338,6 @@ export function AdminTimeTracking() {
     }
   }
 
-  // Format live elapsed time from activeSession
-  const formatElapsedFromSession = useCallback((timeIn: string) => {
-    const elapsed = Date.now() - new Date(timeIn).getTime()
-    const totalSeconds = Math.floor(elapsed / 1000)
-    const h = Math.floor(totalSeconds / 3600)
-    const m = Math.floor((totalSeconds % 3600) / 60)
-    const s = totalSeconds % 60
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }, [])
-
   // Download report handler
   async function handleDownloadReport() {
     setExporting(true)
@@ -3371,8 +3372,9 @@ export function AdminTimeTracking() {
     }
   }
 
-  // timerTick forces re-render for live timer
-  if (timerTick !== undefined) { /* intentional: timerTick triggers re-renders */ }
+  // timerTick referenced to ensure live timer re-renders
+  const _timerTick = timerTick
+  void _timerTick
 
   // My active timer entry derived from shared store
   const myActiveEntry = activeSession
@@ -3417,7 +3419,7 @@ export function AdminTimeTracking() {
               <div className="flex flex-col items-start">
                 <span className="text-xs text-muted-foreground">You are currently clocked in</span>
                 <span className="text-2xl font-mono font-bold text-amber-600 dark:text-amber-400">
-                  {myActiveEntry.timeIn ? formatElapsedFromSession(myActiveEntry.timeIn) : '00:00:00'}
+                  {myActiveEntry.timeIn ? formatLiveTimer(myActiveEntry.timeIn) : '00:00:00'}
                 </span>
                 <div className="flex items-center gap-2 mt-0.5">
                   {myActiveEntry.project && (

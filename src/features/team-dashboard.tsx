@@ -195,6 +195,7 @@ export function TeamProjects() {
   const fetchProjects = useCallback(async () => {
     try {
       const res = await authFetch('/api/projects')
+      if (!res.ok) throw new Error('Failed to fetch projects')
       const data = await res.json()
       const filtered = (data.projects || []).filter((p: Project) =>
         p.members?.some((m) => m.userId === user?.id)
@@ -212,7 +213,7 @@ export function TeamProjects() {
   // Fetch all active admin + team users for assignee picker
   useEffect(() => {
     authFetch('/api/users')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error('Failed to fetch users'); return r.json() })
       .then(d => {
         const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
         setAllTeamUsers(members)
@@ -231,6 +232,7 @@ export function TeamProjects() {
     setExpandedLoading(true)
     try {
       const res = await authFetch(`/api/projects/${projectId}`)
+      if (!res.ok) throw new Error('Failed to fetch project')
       const data = await res.json()
       setExpandedTasks(data.project?.tasks || [])
     } catch {
@@ -686,7 +688,7 @@ function SortableTaskCard({
           {/* Bottom row: Assignees + Comments */}
           <div className="flex items-center justify-between pt-1">
             <Popover
-              open={assigneePopoverTaskId === task.id}
+              open={!isTraining && assigneePopoverTaskId === task.id}
               onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
             >
               <PopoverTrigger asChild>
@@ -695,7 +697,7 @@ function SortableTaskCard({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <AvatarStack users={assignees} max={2} />
-                  <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                  {!isTraining && <UserPlus className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-2" align="start" side="bottom">
@@ -937,6 +939,7 @@ export function TeamTasks() {
   const fetchProjects = useCallback(async () => {
     try {
       const res = await authFetch('/api/projects')
+      if (!res.ok) throw new Error('Failed to fetch projects')
       const data = await res.json()
       const filtered = (data.projects || []).filter((p: Project) =>
         p.members?.some((m) => m.userId === user?.id)
@@ -955,6 +958,7 @@ export function TeamTasks() {
     setLoading(true)
     try {
       const res = await authFetch(`/api/tasks?projectId=${selectedProject}`)
+      if (!res.ok) throw new Error('Failed to fetch tasks')
       const data = await res.json()
       setTasks(data.tasks || [])
     } catch {
@@ -970,7 +974,7 @@ export function TeamTasks() {
   // Fetch all active admin + team users for assignee pickers
   useEffect(() => {
     authFetch('/api/users')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error('Failed to fetch users'); return r.json() })
       .then(d => {
         const members = (d.users || []).filter((u: User) => (u.role === 'team' || u.role === 'training' || u.role === 'admin') && u.status === 'active')
         setAllTeamUsers(members)
@@ -1072,6 +1076,7 @@ export function TeamTasks() {
       })
       setNewComment('')
       const res = await authFetch(`/api/comments?taskId=${detailTask.id}`)
+      if (!res.ok) throw new Error('Failed to fetch comments')
       const data = await res.json()
       setComments(data.comments || [])
       fetchTasks()
@@ -1122,7 +1127,7 @@ export function TeamTasks() {
 
   // Inline assignee management
   const handleToggleAssignee = async (task: Task, userId: string) => {
-    if (!user) return
+    if (!user || isTraining) return
     const isAssigned = task.assignees?.some((a) => a.userId === userId)
     setAssigneeLoading(userId)
     try {
@@ -1457,7 +1462,7 @@ export function TeamTasks() {
                       </TableCell>
                       <TableCell>
                         <Popover
-                          open={assigneePopoverTaskId === task.id}
+                          open={!isTraining && assigneePopoverTaskId === task.id}
                           onOpenChange={(open) => setAssigneePopoverTaskId(open ? task.id : null)}
                         >
                           <PopoverTrigger asChild>
@@ -1466,7 +1471,7 @@ export function TeamTasks() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <AvatarStack users={assignees} max={2} />
-                              <UserPlus className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                              {!isTraining && <UserPlus className="h-3 w-3 text-muted-foreground hover:text-foreground" />}
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-56 p-2" align="start" side="bottom">
@@ -1580,7 +1585,7 @@ export function TeamTasks() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Status</Label>
-                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v)}>
+                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v)} disabled={isTraining}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todo">To Do</SelectItem>
@@ -1592,7 +1597,7 @@ export function TeamTasks() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Priority</Label>
-                    <Select value={editPriority} onValueChange={(v) => setEditPriority(v)}>
+                    <Select value={editPriority} onValueChange={(v) => setEditPriority(v)} disabled={isTraining}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
@@ -1604,9 +1609,9 @@ export function TeamTasks() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Due Date</Label>
-                    <Popover open={editCalendarOpen} onOpenChange={setEditCalendarOpen}>
+                    <Popover open={!isTraining && editCalendarOpen} onOpenChange={(open) => !isTraining && setEditCalendarOpen(open)}>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" className="h-9 w-full justify-start text-left font-normal gap-2 text-sm">
+                        <Button variant="outline" className="h-9 w-full justify-start text-left font-normal gap-2 text-sm" disabled={isTraining}>
                           <CalendarIcon className="h-3.5 w-3.5" />
                           {editDueDate ? format(editDueDate, 'PPP') : 'Set date'}
                         </Button>
@@ -1631,6 +1636,7 @@ export function TeamTasks() {
                     onChange={(e) => setEditDesc(e.target.value)}
                     className="text-sm min-h-[60px] resize-none"
                     rows={2}
+                    disabled={isTraining}
                   />
                 </div>
 
@@ -1663,12 +1669,14 @@ export function TeamTasks() {
                             <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1 group">
                               <MemberAvatar user={a.user} size="sm" />
                               <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
+                              {!isTraining && (
                               <button
                                 className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
                                 onClick={() => handleToggleAssignee(detailTask, a.userId)}
                               >
                                 <X className="h-3 w-3" />
                               </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1686,6 +1694,7 @@ export function TeamTasks() {
                       <p className="text-xs text-muted-foreground">No one assigned yet</p>
                     )}
                     {/* Add assignee button */}
+                    {!isTraining && (
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
@@ -1728,6 +1737,7 @@ export function TeamTasks() {
                         </div>
                       </PopoverContent>
                     </Popover>
+                    )}
                   </div>
 
                 </div>
@@ -1761,6 +1771,7 @@ export function TeamTasks() {
                       )}
                     </div>
                   </ScrollArea>
+                  {!isTraining && (
                   <div className="flex gap-2">
                     <Textarea
                       placeholder="Write a comment... (Ctrl+Enter to send)"
@@ -1779,6 +1790,7 @@ export function TeamTasks() {
                       {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -1805,6 +1817,7 @@ export function TeamTasks() {
                         Discard
                       </Button>
                     )}
+                    {!isTraining && (
                     <Button
                       size="sm"
                       className="gap-1.5"
@@ -1814,6 +1827,7 @@ export function TeamTasks() {
                       {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                       Save Changes
                     </Button>
+                    )}
                     {!isTraining && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -1877,6 +1891,7 @@ export function TeamProfile() {
     setLoading(true)
     try {
       const res = await authFetch(`/api/user/profile?userId=${user.id}`)
+      if (!res.ok) throw new Error('Failed to fetch profile')
       const data = await res.json()
       const u = data.user || user
       setProfile(u)
@@ -1905,11 +1920,11 @@ export function TeamProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id, name, email, phone: phone || null, company: company || null }),
       })
+      const data = await res.json()
       if (!res.ok) {
-        toast.error('Failed to save')
+        toast.error(data.error || 'Failed to save')
         return
       }
-      const data = await res.json()
       setProfile(data.user || profile)
       toast.success('Profile updated')
     } catch {
@@ -2000,7 +2015,7 @@ export function TeamProfile() {
               <div className="flex flex-wrap gap-2">
                 <Badge className={getRoleBadgeClasses(displayUser?.role || 'team')}>
                   <Shield className="h-3 w-3 mr-1" />
-                  Team Member
+                  {displayUser?.role === 'training' ? 'Training' : 'Team Member'}
                 </Badge>
                 {displayUser?.createdAt && (
                   <Badge variant="outline" className="text-xs">
@@ -2210,6 +2225,7 @@ export function TeamTimeTracking() {
     try {
       const { dateFrom, dateTo } = getDateRange(filter, from, to)
       const res = await authFetch(`/api/time-entries?userId=${user.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      if (!res.ok) throw new Error('Failed to fetch time entries')
       const data = await res.json()
       setEntries(data.timeEntries || [])
     } catch {

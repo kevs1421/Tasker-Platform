@@ -28,7 +28,7 @@ model User {
   phone         String?
   company       String?
   avatar        String?
-  role          String    @default("team") // admin, team, client
+  role          String    @default("team") // admin, team, training, client
   status        String    @default("active") // active, inactive, pending
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

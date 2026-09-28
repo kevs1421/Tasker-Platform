@@ -15,11 +15,10 @@ export async function GET(request: NextRequest) {
     const activeProjects = await db.project.count({ where: { status: 'active' } })
     const totalMembers = await db.user.count({ where: { role: { in: ['admin', 'team', 'training'] } } })
     const totalClients = await db.user.count({ where: { role: 'client' } })
-    const totalMessages = await db.message.count()
     const weekAgo = new Date(Date.now() - 7 * 86400000)
     const thisWeekCompleted = await db.task.count({ where: { status: 'done', updatedAt: { gte: weekAgo } } })
 
-    return NextResponse.json({ stats: { totalTasks, completedTasks, inProgressTasks, inReviewTasks, todoTasks, overdueTasks, totalProjects, activeProjects, totalMembers, totalClients, totalMessages, thisWeekCompleted } })
+    return NextResponse.json({ stats: { totalTasks, completedTasks, inProgressTasks, inReviewTasks, todoTasks, overdueTasks, totalProjects, activeProjects, totalMembers, totalClients, thisWeekCompleted } })
   } catch (error) {
     return handleApiError(error)
   }

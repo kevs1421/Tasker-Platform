@@ -56,19 +56,6 @@ export function getAuthToken(): string | null {
   return loadPersistedToken()
 }
 
-/**
- * Create an authenticated Headers object with the Authorization bearer token.
- * Optionally merge with additional headers.
- */
-export function authHeaders(extra?: Record<string, string>): HeadersInit {
-  const token = getAuthToken()
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  }
-  return headers
-}
-
 // ─── Hash-based tab routing ─────────────────────────────
 
 const HASH_ROUTES: Record<string, AppRoute> = {
@@ -183,11 +170,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (data.valid && data.user) {
           // Session is valid — update user from server (may have role/name changes)
           const serverUser = data.user as User
+          const rolePageMap: Record<string, string> = {
+            admin: 'admin-dashboard',
+            team: 'team-dashboard',
+            training: 'team-dashboard',
+            client: 'client-dashboard',
+          }
           const hash = typeof window !== 'undefined' ? window.location.hash : ''
           let route = getDefaultRoute(serverUser.role)
           if (hash && hash !== '#') {
             const parsed = parseHash(hash)
-            if (parsed && parsed.page.includes(serverUser.role)) {
+            if (parsed && parsed.page === rolePageMap[serverUser.role]) {
               route = parsed
             }
           }
@@ -202,11 +195,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, route: { page: 'login' }, _hydrated: true })
     } catch {
       // Network error — allow offline use with cached user, but mark hydrated
+      const rolePageMap: Record<string, string> = {
+        admin: 'admin-dashboard',
+        team: 'team-dashboard',
+        training: 'team-dashboard',
+        client: 'client-dashboard',
+      }
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       let route = getDefaultRoute(persisted.role)
       if (hash && hash !== '#') {
         const parsed = parseHash(hash)
-        if (parsed && parsed.page.includes(persisted.role)) {
+        if (parsed && parsed.page === rolePageMap[persisted.role]) {
           route = parsed
         }
       }

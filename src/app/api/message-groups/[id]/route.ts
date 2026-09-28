@@ -41,7 +41,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request)
+    const user = await requireAuth(request)
     const { id } = await params
     const body = await request.json()
     const { name, addMemberIds, removeMemberIds } = body as {
@@ -55,6 +55,20 @@ export async function PATCH(
     }
 
     if (addMemberIds && addMemberIds.length > 0) {
+      // Role-based check — same rules as creating groups
+      const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
+        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
+        if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
+        return false
+      }
+      const members = await db.user.findMany({ where: { id: { in: addMemberIds } }, select: { id: true, role: true } })
+      for (const member of members) {
+        if (!canMessageRole(user.role, member.role)) {
+          return NextResponse.json({ error: `Cannot add user with role '${member.role}' to group` }, { status: 403 })
+        }
+      }
+
       await db.groupMember.createMany({
         data: addMemberIds.map((userId) => ({ groupId: id, userId, role: 'member' })),
       })

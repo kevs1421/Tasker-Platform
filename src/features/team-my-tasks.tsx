@@ -192,7 +192,7 @@ export function TeamMyTasks() {
   const handleTaskClick = (task: TaskWithProject) => {
     useAuthStore.getState().setSelectedTaskId(task.id)
     useAuthStore.getState().setSelectedProjectId(task.projectId)
-    useAuthStore.getState().setRoute({ page: 'team-dashboard', tab: 'task-dashboard' })
+    useAuthStore.getState().setRoute({ page: 'team-dashboard', tab: 'task' })
   }
 
   // ─── Render ─────────────────────────────────────────────

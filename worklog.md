@@ -2139,3 +2139,61 @@ Stage Summary:
 - Role-based messaging visibility fully implemented (client + server side)
 - Permission matrix verified via API tests
 - Lint: clean, no TypeScript errors in modified files
+---
+Task ID: 1-6
+Agent: main
+Task: Deep QA all dashboards (Admin, Team, Training, Client) - fix errors, remove unused code
+
+Work Log:
+- Comprehensive audit of all 4 dashboards + API routes + shared code
+- **Admin Dashboard fixes:**
+  - Removed all redundant authHeaders() calls (authFetch injects auth automatically)
+  - Added .ok checks to 6+ unchecked API calls (openManageMembers, handleAddMembers, fetchClients, fetchProjects, fetchMetadata, task assignments)
+  - Removed dead currentUser state in AdminTimeTracking
+  - Fixed Object.keys→Object.entries bug in onboarding file filter
+  - Removed redundant filteredTasks (server already filters)
+  - Removed duplicate formatElapsedFromSession function
+  - Fixed timer tick hack (replaced dead conditional with proper reference)
+  - Renamed deleteConfirmUserId→deleteConfirmUser (stores User, not ID)
+  - Removed unused updatedBy from task PATCH body
+  - Fixed double res.json() anti-pattern in AdminProfile
+  - Added draft/published cases to getOnboardingBadge
+  - Removed unused totalMessages from DashboardStats type and admin API
+- **Team Dashboard fixes:**
+  - Added isTraining guards to task detail dialog: disabled status/priority/dueDate/description selects
+  - Hidden Save button for training users
+  - Hidden comment input for training users
+  - Hidden assignee toggle/popover for training users
+  - Added isTraining guard to handleToggleAssignee
+  - Fixed "Team Member" hardcoded label → shows "Training" for training users
+  - Added .ok checks to 8+ unchecked API calls
+  - Fixed double res.json() in TeamProfile
+- **Client Dashboard fixes:**
+  - Added .ok checks to all authFetch calls (ClientProjects, ClientTasks, ClientProfile)
+  - Fixed double res.json() in saveProfile and changePassword
+  - Fixed password validation minimum (6→8 characters)
+  - Fixed TypeScript error: assignees filter type narrowing
+  - Added toast.error for silently swallowed errors
+- **API Route fixes:**
+  - Deleted 4 unused routes: /api/auth/register, /api/dashboard/stats, /api/dashboard/activity, /api/tasks/subtasks
+  - Added training role check to PATCH /api/tasks/[id] (403 for training users)
+  - Fixed DELETE /api/tasks/[id] training bypass (no longer trusts client-supplied deletedBy)
+  - Removed dead updatedBy variable from tasks/[id] PATCH
+  - Added requireAuth to GET /api/onboarding/[id] (was unprotected)
+  - Added role-based member check to PATCH /api/message-groups/[id]
+- **Shared code fixes:**
+  - Fixed auth.ts hash routing for training users (rolePageMap instead of .includes)
+  - Removed dead authHeaders() function from auth.ts (no longer imported anywhere)
+  - Removed redundant authHeaders from screenshot-capture.tsx, screenshot-report.tsx, auto-screenshot.tsx
+  - Fixed team-my-tasks.tsx route type ('task-dashboard'→'task')
+  - Updated prisma/schema.prisma role comment to include 'training'
+
+Stage Summary:
+- 50+ bugs fixed across all 4 dashboards and API routes
+- 4 dead API routes removed
+- Training role properly restricted: cannot edit tasks, post comments, toggle assignees, or save task changes
+- All authHeaders() redundancy eliminated (authFetch handles auth internally)
+- All missing .ok checks added
+- Hash routing fixed for training users
+- Lint: clean, TypeScript: no source errors
+- All API tests pass (10/10)

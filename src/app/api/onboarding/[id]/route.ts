@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdmin, AuthError } from '@/lib/session'
+import { requireAuth } from '@/lib/api-auth'
 
 // GET /api/onboarding/:id - get form with submissions
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth(req)
     const { id } = await params
     const { searchParams } = new URL(req.url)
     const clientId = searchParams.get('clientId')
