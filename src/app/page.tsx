@@ -85,8 +85,17 @@ export default function Home() {
     hydrateFromStorage()
   }, [hydrateFromStorage])
 
-  // Before hydration completes on client, show nothing (avoids flash of login page)
-  if (!mounted || !hydrated) return null
+  // Before hydration completes on client, show a loading state (avoids blank page)
+  if (!mounted || !hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <img src="/logo.svg" alt="Yber Digitals" className="w-12 h-12 rounded-2xl object-contain animate-pulse" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!user || route.page === 'login') {
     return <LoginPage />
