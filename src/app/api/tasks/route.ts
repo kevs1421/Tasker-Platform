@@ -40,14 +40,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const body = await request.json()
-    const { title, description, status, priority, dueDate, projectId, createdById, assigneeIds, tags } = body
-    if (!title || !projectId || !createdById) return NextResponse.json({ error: 'Title, projectId, createdById required' }, { status: 400 })
+    const { title, description, status, priority, dueDate, projectId, assigneeIds, tags } = body
+    // Use the authenticated user's ID as creator — prevents impersonation
+    const createdById = authed.id
+    if (!title || !projectId) return NextResponse.json({ error: 'Title and projectId required' }, { status: 400 })
 
     // Check if creator is a training user — they cannot create tasks
-    const creator = await db.user.findUnique({ where: { id: createdById }, select: { role: true } })
-    if (creator?.role === 'training') {
+    if (authed.role === 'training') {
       return NextResponse.json({ error: 'Training users cannot create tasks' }, { status: 403 })
     }
 

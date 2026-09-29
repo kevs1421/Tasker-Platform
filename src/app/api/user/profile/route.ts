@@ -5,10 +5,15 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+
+    // Authorization: non-admin users can only view their own profile
+    if (authed.role !== 'admin' && authed.id !== userId) {
+      return NextResponse.json({ error: 'You can only view your own profile' }, { status: 403 })
+    }
 
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -23,9 +28,14 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { userId, name, phone, company, email, currentPassword, newPassword } = await request.json()
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+
+    // Authorization: non-admin users can only edit their own profile
+    if (authed.role !== 'admin' && authed.id !== userId) {
+      return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
+    }
 
     const data: Record<string, string | null> = {}
     if (name) data.name = name

@@ -267,7 +267,26 @@ if (typeof window !== 'undefined') {
     if (!hash || hash === '#') return
     const parsed = parseHash(hash)
     if (parsed && parsed.page !== 'login') {
-      useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+      // Enforce role-based route access
+      const user = useAuthStore.getState().user
+      if (user) {
+        const rolePageMap: Record<string, string> = {
+          admin: 'admin-dashboard',
+          team: 'team-dashboard',
+          training: 'team-dashboard',
+          client: 'client-dashboard',
+        }
+        const allowedPage = rolePageMap[user.role]
+        if (parsed.page === allowedPage) {
+          useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+        } else {
+          // Redirect to the default route for this role
+          const defaultRoute = getDefaultRoute(user.role)
+          window.location.hash = routeToHash(defaultRoute)
+        }
+      } else {
+        useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+      }
     }
   })
 }

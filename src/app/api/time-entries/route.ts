@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const body = await request.json()
     const { userId, projectId, taskId, description, date, action } = body
 
@@ -71,6 +71,11 @@ export async function POST(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
+    }
+
+    // Authorization: non-admin users can only create time entries for themselves
+    if (authed.role !== 'admin' && authed.id !== userId) {
+      return NextResponse.json({ error: 'You can only create time entries for yourself' }, { status: 403 })
     }
 
     if (action === 'time_in') {

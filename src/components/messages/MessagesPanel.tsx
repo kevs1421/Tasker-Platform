@@ -247,6 +247,7 @@ function NewMessageDialog({
   useEffect(() => {
     if (!open) return
     let cancelled = false
+    setLoading(true) // eslint-disable-line react-hooks/set-state-in-effect -- intentional: show loading on dialog open
     authFetch('/api/users')
       .then((r) => r.json())
       .then((d) => {
@@ -624,12 +625,22 @@ export function MessagesPanel() {
 
   // Delete an entire conversation
   const deleteConversation = async () => {
-    if (!user?.id || !selectedConvo || !deleteConfirm) return
+    if (!user?.id || !deleteConfirm) return
+    // Use the conversation that was targeted for deletion, not the currently selected one
+    const targetConvo = conversations.find(c => {
+      if (c.type === 'group' && deleteConfirm.type === 'conversation') return c.group.id === deleteConfirm.id
+      if (c.type === 'direct' && deleteConfirm.type === 'conversation') return c.user?.id === deleteConfirm.id
+      return false
+    })
     try {
       let url = `/api/messages?deleteConversation=true&userId=${user.id}`
-      if (selectedConvo.type === 'group') {
+      if (targetConvo?.type === 'group') {
+        url += `&groupId=${targetConvo.group.id}`
+      } else if (targetConvo?.type === 'direct' && targetConvo.user) {
+        url += `&otherId=${targetConvo.user.id}`
+      } else if (selectedConvo?.type === 'group') {
         url += `&groupId=${selectedConvo.group.id}`
-      } else if (selectedConvo.user) {
+      } else if (selectedConvo?.type === 'direct' && selectedConvo.user) {
         url += `&otherId=${selectedConvo.user.id}`
       }
       const res = await authFetch(url, { method: 'DELETE' })

@@ -28,9 +28,6 @@ import {
   DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
@@ -39,9 +36,6 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
-} from '@/components/ui/tooltip'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -951,7 +945,7 @@ export function TeamTasks() {
     } catch {
       toast.error('Failed to load projects')
     }
-  }, [user, selectedProject])
+  }, [user])
 
   const fetchTasks = useCallback(async () => {
     if (!selectedProject) return
@@ -996,6 +990,7 @@ export function TeamTasks() {
 
     try {
       const cmRes = await authFetch(`/api/comments?taskId=${task.id}`)
+      if (!cmRes.ok) throw new Error('Failed to load comments')
       const cmData = await cmRes.json()
       setComments(cmData.comments || [])
     } catch {
@@ -1069,11 +1064,12 @@ export function TeamTasks() {
     if (!detailTask || !newComment.trim() || !user) return
     setCommentLoading(true)
     try {
-      await authFetch('/api/comments', {
+      const cmPostRes = await authFetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newComment, taskId: detailTask.id, userId: user.id }),
       })
+      if (!cmPostRes.ok) throw new Error('Failed to add comment')
       setNewComment('')
       const res = await authFetch(`/api/comments?taskId=${detailTask.id}`)
       if (!res.ok) throw new Error('Failed to fetch comments')
@@ -1132,11 +1128,12 @@ export function TeamTasks() {
     setAssigneeLoading(userId)
     try {
       if (isAssigned) {
-        await authFetch('/api/tasks/assignments', {
+        const delRes = await authFetch('/api/tasks/assignments', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, taskId: task.id }),
         })
+        if (!delRes.ok) throw new Error('Failed to remove assignee')
         toast.success('Assignee removed')
       } else {
         const res = await authFetch('/api/tasks/assignments', {
@@ -1156,7 +1153,7 @@ export function TeamTasks() {
       if (detailTask && detailTask.id === task.id) {
         openDetail({ ...task, assignees: isAssigned
           ? task.assignees?.filter((a) => a.userId !== userId)
-          : [...(task.assignees || []), { id: '', taskId: task.id, userId, assignedAt: new Date().toISOString(), user: allTeamUsers.find((u) => u.id === userId) }]
+          : [...(task.assignees || []), { id: 'temp-' + Date.now(), taskId: task.id, userId, assignedAt: new Date().toISOString(), user: allTeamUsers.find((u) => u.id === userId) }]
         })
       }
     } catch (e: unknown) {
@@ -1379,7 +1376,7 @@ export function TeamTasks() {
                       <div className="space-y-2 pb-2">
                         {colTasks.length === 0 ? (
                           <div className="text-center py-8 text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
-                            Drop tasks here
+                            {isTraining ? 'No tasks' : 'Drop tasks here'}
                           </div>
                         ) : (
                           colTasks.map((task) => (

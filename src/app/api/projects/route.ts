@@ -38,9 +38,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin(request)
-    const { name, description, color, priority, dueDate, createdBy, memberIds } = await request.json()
-    if (!name || !createdBy) return NextResponse.json({ error: 'Name and createdBy required' }, { status: 400 })
+    const authed = await requireAdmin(request)
+    const { name, description, color, priority, dueDate, memberIds } = await request.json()
+    // Use the authenticated admin's ID as creator — prevents impersonation
+    const createdBy = authed.id
+    if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
     // Filter out creator from memberIds to avoid unique constraint violation
     const filteredMemberIds = (memberIds || []).filter((id: string) => id !== createdBy)

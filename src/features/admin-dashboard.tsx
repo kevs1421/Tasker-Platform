@@ -461,7 +461,15 @@ export function AdminOnboarding() {
   }
 
   function openEditDialog(form: OnboardingForm) {
-    const steps = form.stepsJson ? (JSON.parse(form.stepsJson) as { id: string }[]).map(s => s.id) : []
+    let steps: string[] = []
+    if (form.stepsJson) {
+      try {
+        steps = (JSON.parse(form.stepsJson) as { id: string }[]).map(s => s.id)
+      } catch {
+        toast.error('Failed to parse form steps data')
+        return
+      }
+    }
     setEditFormId(form.id)
     setEditForm({
       title: form.title,
@@ -769,11 +777,11 @@ export function AdminOnboarding() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => window.open('/api/onboarding/download?submissionId=' + sub.id, '_blank')}>
+                        <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => { const token = localStorage.getItem('taskflow-token'); window.open('/api/onboarding/download?submissionId=' + sub.id + (token ? '&token=' + token : ''), '_blank') }}>
                           <Download className="h-3.5 w-3.5" /> Download Report
                         </Button>
                         {Object.entries(parsedFiles).filter(([, f]) => f).length > 0 && (
-                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.open('/api/onboarding/download-documents?submissionId=' + sub.id, '_blank')}>
+                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs border-primary/30 text-primary hover:bg-primary/5" onClick={() => { const token = localStorage.getItem('taskflow-token'); window.open('/api/onboarding/download-documents?submissionId=' + sub.id + (token ? '&token=' + token : ''), '_blank') }}>
                             <FileArchive className="h-3.5 w-3.5" /> Download All Documents
                           </Button>
                         )}
@@ -2918,12 +2926,17 @@ export function AdminProfile() {
   const { user, updateUser } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [profile, setProfile] = useState({
     name: '', email: '', phone: '', company: ''
   })
   const [passwords, setPasswords] = useState({
     currentPassword: '', newPassword: '', confirmPassword: ''
   })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     const currentUserId = user?.id
@@ -3046,6 +3059,7 @@ export function AdminProfile() {
             {/* Change Password */}
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Change Password</h3>
+              {mounted && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="currentPass">Current Password</Label>
@@ -3060,6 +3074,7 @@ export function AdminProfile() {
                   <Input id="confirmPass" type="password" autoComplete="new-password" value={passwords.confirmPassword} onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} placeholder="Confirm new" />
                 </div>
               </div>
+              )}
               <p className="text-xs text-muted-foreground">Leave password fields empty to keep your current password.</p>
             </div>
 

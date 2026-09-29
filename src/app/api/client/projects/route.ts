@@ -11,12 +11,18 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const clientId = searchParams.get('clientId')
 
     if (!clientId) {
       return NextResponse.json({ error: 'clientId is required' }, { status: 400 })
+    }
+
+    // Authorization: client users can only view their own projects
+    // Admin/team/training can view any client's projects
+    if (authed.role === 'client' && authed.id !== clientId) {
+      return NextResponse.json({ error: 'You can only view your own projects' }, { status: 403 })
     }
 
     // Query through ClientProject — only projects assigned to THIS client

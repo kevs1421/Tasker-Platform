@@ -33,7 +33,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
-import { isBefore, parseISO } from 'date-fns'
+import { isBefore, parseISO, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
@@ -355,7 +355,7 @@ export function ClientProjects() {
                   const todoPct = Math.round((todo / total) * 100)
                   const inProgressPct = Math.round((inProgress / total) * 100)
                   const inReviewPct = Math.round((inReview / total) * 100)
-                  const completedPct = Math.round((completed / total) * 100)
+                  const completedPct = 100 - todoPct - inProgressPct - inReviewPct
 
                   return (
                     <div key={project.id} className="space-y-2.5">
@@ -439,7 +439,7 @@ export function ClientProjects() {
               const doneTasks = project.taskStats?.done || 0
               const totalT = project._count?.tasks || 0
               const pct = project.progress ?? 0
-              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), new Date())
+              const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), startOfDay(new Date()))
 
               // Compute progress bar gradient colors
               const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
@@ -601,7 +601,7 @@ export function ClientTasks() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to load projects')
     }
-  }, [user?.id, selectedProject])
+  }, [user?.id])
 
   const fetchTasks = useCallback(async () => {
     if (!selectedProject) return

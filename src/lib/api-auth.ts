@@ -3,7 +3,7 @@ import { AuthError } from '@/lib/session'
 
 /**
  * Extract session token from a Request.
- * Checks: Authorization Bearer header, then x-session-token header, then cookie.
+ * Checks: Authorization Bearer header, then x-session-token header, then cookie, then URL query param.
  */
 function extractToken(request: Request): string | null {
   // 1. Authorization: Bearer <token>
@@ -19,6 +19,15 @@ function extractToken(request: Request): string | null {
   if (cookie) {
     const match = cookie.match(/(?:^|;\s*)session-token=([^;]*)/)
     if (match?.[1]) return match[1]
+  }
+
+  // 4. URL query parameter (for file downloads opened via window.open)
+  try {
+    const url = new URL(request.url)
+    const queryToken = url.searchParams.get('token')
+    if (queryToken) return queryToken
+  } catch {
+    // Invalid URL — ignore
   }
 
   return null

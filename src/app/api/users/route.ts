@@ -35,6 +35,16 @@ export async function PATCH(request: NextRequest) {
     const { id, role, status, name, email, phone, company } = await request.json()
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
+    // Validate role and status values
+    const VALID_ROLES = ['admin', 'team', 'training', 'client']
+    const VALID_STATUSES = ['active', 'inactive', 'pending']
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      return NextResponse.json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` }, { status: 400 })
+    }
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return NextResponse.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+    }
+
     const updateData: Record<string, unknown> = {}
     if (name !== undefined) updateData.name = name
     if (role !== undefined) updateData.role = role

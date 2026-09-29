@@ -119,7 +119,6 @@ export interface CalendarNote {
   updatedAt: string
 }
 
-export type Role = 'admin' | 'team' | 'training' | 'client'
 
 // SPA route types
 export type AppRoute =
