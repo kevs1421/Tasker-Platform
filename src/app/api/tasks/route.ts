@@ -11,21 +11,28 @@ const taskInclude = {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
     const assigneeId = searchParams.get('assigneeId')
 
+    // Build where clause with role-based filtering
+    // Non-admin users can only see tasks in projects they are members of
+    const baseWhere: Record<string, unknown> = {}
+    if (authed.role !== 'admin') {
+      baseWhere.project = { members: { some: { userId: authed.id } } }
+    }
+
     let tasks
     if (projectId) {
-      tasks = await db.task.findMany({ where: { projectId }, include: taskInclude, orderBy: { createdAt: 'desc' } })
+      tasks = await db.task.findMany({ where: { ...baseWhere, projectId }, include: taskInclude, orderBy: { createdAt: 'desc' } })
     } else if (status) {
-      tasks = await db.task.findMany({ where: { status }, include: taskInclude, orderBy: { createdAt: 'desc' } })
+      tasks = await db.task.findMany({ where: { ...baseWhere, status }, include: taskInclude, orderBy: { createdAt: 'desc' } })
     } else if (assigneeId) {
-      tasks = await db.task.findMany({ where: { assignments: { some: { userId: assigneeId } } }, include: taskInclude, orderBy: { createdAt: 'desc' } })
+      tasks = await db.task.findMany({ where: { ...baseWhere, assignments: { some: { userId: assigneeId } } }, include: taskInclude, orderBy: { createdAt: 'desc' } })
     } else {
-      tasks = await db.task.findMany({ include: taskInclude, orderBy: { createdAt: 'desc' } })
+      tasks = await db.task.findMany({ where: baseWhere, include: taskInclude, orderBy: { createdAt: 'desc' } })
     }
 
     const result = tasks.map(t => ({

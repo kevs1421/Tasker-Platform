@@ -187,20 +187,19 @@ export function TeamProjects() {
   const [taskCalendarOpen, setTaskCalendarOpen] = useState(false)
 
   const fetchProjects = useCallback(async () => {
+    if (!user?.id) return // Wait for auth to be ready
     try {
+      // Server-side filtering: non-admin users only get projects they're members of
       const res = await authFetch('/api/projects')
       if (!res.ok) throw new Error('Failed to fetch projects')
       const data = await res.json()
-      const filtered = (data.projects || []).filter((p: Project) =>
-        p.members?.some((m) => m.userId === user?.id)
-      )
-      setProjects(filtered)
+      setProjects(data.projects || [])
     } catch {
       toast.error('Failed to load projects')
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user?.id])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -931,21 +930,21 @@ export function TeamTasks() {
   const [assigneeLoading, setAssigneeLoading] = useState<string | null>(null)
 
   const fetchProjects = useCallback(async () => {
+    if (!user?.id) return // Wait for auth to be ready
     try {
+      // Server-side filtering: non-admin users only get projects they're members of
       const res = await authFetch('/api/projects')
       if (!res.ok) throw new Error('Failed to fetch projects')
       const data = await res.json()
-      const filtered = (data.projects || []).filter((p: Project) =>
-        p.members?.some((m) => m.userId === user?.id)
-      )
-      setProjects(filtered)
-      if (filtered.length > 0 && !selectedProject) {
-        setSelectedProject(filtered[0].id)
+      const filteredProjects = data.projects || []
+      setProjects(filteredProjects)
+      if (filteredProjects.length > 0 && !selectedProject) {
+        setSelectedProject(filteredProjects[0].id)
       }
     } catch {
       toast.error('Failed to load projects')
     }
-  }, [user])
+  }, [user?.id])
 
   const fetchTasks = useCallback(async () => {
     if (!selectedProject) return

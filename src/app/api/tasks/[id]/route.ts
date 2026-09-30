@@ -12,10 +12,19 @@ const taskInclude = {
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const { id } = await params
     const task = await db.task.findUnique({ where: { id }, include: taskInclude })
     if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Non-admin users can only view tasks in projects they are members of
+    if (authed.role !== 'admin') {
+      const membership = await db.projectMember.findUnique({
+        where: { projectId_userId: { projectId: task.projectId, userId: authed.id } }
+      })
+      if (!membership) return NextResponse.json({ error: 'Not a member of this project' }, { status: 403 })
+    }
+
     return NextResponse.json({ task: { ...task, assignees: task.assignments } })
   } catch (error) {
     return handleApiError(error)

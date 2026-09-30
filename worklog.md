@@ -39,3 +39,49 @@ Stage Summary:
 - Code passes lint and TypeScript compilation
 - Server compiles and serves the app correctly
 - Login API verified working for all 4 roles (admin, team, training, client)
+
+---
+Task ID: 1
+Agent: main
+Task: Fix team workspace project/task visibility - team users can't see projects and tasks assigned by admin
+
+Work Log:
+- Investigated the root cause: team dashboard was using fragile client-side filtering (p.members?.some(m => m.userId === user?.id)) to filter projects
+- Found race condition: if user object wasn't hydrated yet, the filter would match nothing, showing 0 projects
+- Found security issue: API returned ALL projects/tasks to ALL users, relying on client-side filtering
+- Fixed projects GET API (route.ts) to do server-side filtering: non-admin users only get projects they're members of via Prisma where clause
+- Fixed tasks GET API (route.ts) to do server-side filtering: non-admin users only get tasks in projects they're members of
+- Fixed individual project GET API ([id]/route.ts) to check membership for non-admin users
+- Fixed individual task GET API ([id]/route.ts) to check project membership for non-admin users
+- Fixed TeamProjects component: removed fragile client-side filter, added user?.id guard for race condition
+- Fixed TeamTasks component: same changes - removed client-side filter, added user?.id guard
+
+Stage Summary:
+- Server-side filtering now ensures non-admin users (team, training, client) can only see projects they're members of
+- Server-side filtering ensures non-admin users can only see tasks within their member projects
+- Race condition fixed: fetchProjects waits for user?.id to be available before making API call
+- Admin users still see all projects and tasks (no filter applied)
+- Added filterByMember query param for optional member filtering even for admin users
+- All lint checks pass clean
+
+---
+Task ID: 4
+Agent: main
+Task: Browser-test the team workspace fix
+
+Work Log:
+- Started dev server and used agent-browser to test
+- Logged in as team user (kev@yberdigitals.com)
+- Verified team user can see both projects: "YDS" and "Yber Digitals" 
+- Verified team user can see tasks within projects: "fdsf" task visible in YDS project
+- Verified task board shows correct columns with tasks
+- Logged in as admin (admin@yberdigitals.com) 
+- Verified admin can still see all projects
+- Zero console errors throughout entire session
+- All API calls returned 200 status codes
+
+Stage Summary:
+- Fix confirmed working: team users can now see projects and tasks assigned by admin
+- Admin users still see all projects (no regression)
+- Server-side filtering is working correctly
+- No errors or regressions detected

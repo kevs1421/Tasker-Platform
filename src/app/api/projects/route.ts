@@ -4,8 +4,18 @@ import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
+    const { searchParams } = new URL(request.url)
+    const filterByMember = searchParams.get('filterByMember') === 'true'
+
+    // Build where clause: non-admin users only see projects they are members of
+    const where: Record<string, unknown> = {}
+    if (authed.role !== 'admin' || filterByMember) {
+      where.members = { some: { userId: authed.id } }
+    }
+
     const projects = await db.project.findMany({
+      where,
       include: {
         creator: { select: { id: true, name: true, email: true, role: true } },
         members: { include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } } },
