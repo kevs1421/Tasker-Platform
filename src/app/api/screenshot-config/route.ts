@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, getAuthUser, AuthError } from '@/lib/session'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
+import { getAuthUser } from '@/lib/session'
 
 // GET /api/screenshot-config
 // Returns the admin-configured global settings, or per-user defaults
@@ -30,11 +31,7 @@ export async function GET(request: NextRequest) {
       isAdmin: true,
     })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    const msg = error instanceof Error ? error.message : 'Failed to fetch config'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -64,10 +61,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ config })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    const msg = error instanceof Error ? error.message : 'Failed to update config'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return handleApiError(error)
   }
 }

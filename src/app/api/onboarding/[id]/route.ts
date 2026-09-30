@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, AuthError } from '@/lib/session'
-import { requireAuth } from '@/lib/api-auth'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 // GET /api/onboarding/:id - get form with submissions
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -149,10 +148,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return NextResponse.json({ form })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Failed to update onboarding' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -172,9 +168,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.activityLog.create({ data: { action: 'onboarding_deleted', details: `Deleted onboarding form "${form.title}"` } })
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Failed to delete onboarding form' }, { status: 500 })
+    return handleApiError(error)
   }
 }

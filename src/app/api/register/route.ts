@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
-import { requireAdmin, AuthError } from '@/lib/session'
+import { requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,9 +36,6 @@ export async function POST(request: NextRequest) {
     const { password: _, ...safeUser } = user
     return NextResponse.json({ user: safeUser }, { status: 201 })
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
