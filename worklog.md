@@ -85,3 +85,61 @@ Stage Summary:
 - Admin users still see all projects (no regression)
 - Server-side filtering is working correctly
 - No errors or regressions detected
+
+---
+Task ID: 1
+Agent: main
+Task: Fix Admin Onboarding Modal - make modal scrollable
+
+Work Log:
+- Investigated the onboarding modal structure in admin-dashboard.tsx
+- Found 3 dialog modals: Submissions Review, Create Form, Edit Form
+- The Submissions Review dialog used ScrollArea but had conflicting padding (DialogContent default p-6 vs ScrollArea -mx-6 px-6)
+- Fixed all 3 dialogs: changed DialogContent to p-0 with explicit padding on header/footer/scrollable body
+- Changed DialogContent to gap-0 for proper flex layout
+- Added shrink-0 to DialogHeader and DialogFooter
+- Changed Create and Edit dialogs to use ScrollArea instead of overflow-y-auto div
+- Added proper padding (px-6 pt-6 pb-2 for header, px-6 pb-6 pt-2 for footer, px-6 for ScrollArea)
+
+Stage Summary:
+- All 3 onboarding dialogs now properly scroll when content exceeds viewport
+- ScrollArea component used consistently across all dialogs
+- Padding managed explicitly to avoid conflicts with default DialogContent styles
+
+---
+Task ID: 2
+Agent: main
+Task: Fix Client Portal - improve project progress display
+
+Work Log:
+- Investigated the client portal project progress display
+- Found that progress code already existed but used a simple single-color progress bar
+- Enhanced project cards to show stacked progress bar with 4 color-coded segments (To Do, In Progress, In Review, Done)
+- Added task status breakdown legend below each progress bar
+- Improved empty state display: "No tasks yet" and "—" instead of "0/0 tasks completed" and "0%"
+- Kept the Project Progress Overview card (stacked bars + legend) at the top
+
+Stage Summary:
+- Client project cards now show multi-color stacked progress bars
+- Each bar shows status breakdown: To Do (slate), In Progress (amber), In Review (blue), Done (emerald)
+- Status legend with counts shown below each bar
+- Better UX for projects with 0 tasks
+
+---
+Task ID: 3
+Agent: main
+Task: Remove Task sidebar from Client Portal
+
+Work Log:
+- Investigated client sidebar navigation in app-shell.tsx
+- Found that Task nav item was ALREADY NOT present for client role (only: Onboarding, Projects, Messages, Profile)
+- Found dead ClientTasks component (419 lines) that was exported but never imported or routed
+- Removed the entire ClientTasks component and its section header
+- Removed unused imports: Task type, User type, LayoutGrid, List, MessageCircle, ScrollArea, Select/SelectContent/SelectItem/SelectTrigger/SelectValue, Table/TableBody/TableCell/TableHead/TableHeader/TableRow, Separator
+- Verified lint passes clean after removal
+
+Stage Summary:
+- Task sidebar was already not shown for clients - no change needed there
+- Removed 419 lines of dead ClientTasks code
+- Cleaned up 15+ unused imports
+- Client portal no longer has any task-related code

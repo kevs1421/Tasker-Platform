@@ -698,8 +698,8 @@ export function AdminOnboarding() {
 
       {/* Submissions Review Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-amber-500" />
               {selectedForm?.title ?? 'Form'}
@@ -717,7 +717,7 @@ export function AdminOnboarding() {
               </div>
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
+          <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
             <div className="space-y-5 py-2">
               {selectedForm?.submissions?.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -895,15 +895,16 @@ export function AdminOnboarding() {
 
       {/* Create Onboarding Form Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-emerald-600" /> Create Onboarding Form
             </DialogTitle>
             <DialogDescription>Set up a new client onboarding form linked to a project</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+          <ScrollArea className="flex-1 min-h-0 px-6">
+          <div className="space-y-5 py-2">
             {/* Title */}
             <div className="space-y-1.5">
               <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
@@ -1024,8 +1025,9 @@ export function AdminOnboarding() {
               </div>
             </div>
           </div>
+          </ScrollArea>
 
-          <DialogFooter className="pt-2">
+          <DialogFooter className="shrink-0 px-6 pb-6 pt-2">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               onClick={handleCreateOnboarding}
@@ -1042,15 +1044,16 @@ export function AdminOnboarding() {
 
       {/* Edit Onboarding Form Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5 text-primary" /> Edit Onboarding Form
             </DialogTitle>
             <DialogDescription>Update the onboarding form details</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-2 overflow-y-auto flex-1 -mx-6 px-6">
+          <ScrollArea className="flex-1 min-h-0 px-6">
+          <div className="space-y-5 py-2">
             {/* Title */}
             <div className="space-y-1.5">
               <Label className="text-sm">Form Title <span className="text-red-500">*</span></Label>
@@ -1172,8 +1175,9 @@ export function AdminOnboarding() {
               </div>
             </div>
           </div>
+          </ScrollArea>
 
-          <DialogFooter className="pt-2">
+          <DialogFooter className="shrink-0 px-6 pb-6 pt-2">
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button
               onClick={handleEditOnboarding}

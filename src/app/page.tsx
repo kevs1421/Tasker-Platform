@@ -6,7 +6,7 @@ import { DashboardShell } from '@/features/app-shell'
 import LoginPage from '@/features/login-page'
 import { AdminOverview, AdminUsers, AdminOnboarding, AdminProjects, AdminTasks, AdminMessages, AdminProfile, AdminTimeTracking } from '@/features/admin-dashboard'
 import { TeamProjects, TeamTasks, TeamMessages, TeamProfile, TeamTimeTracking } from '@/features/team-dashboard'
-import { ClientOnboarding, ClientProjects, ClientTasks, ClientMessages, ClientProfile } from '@/features/client-dashboard'
+import { ClientOnboarding, ClientProjects, ClientMessages, ClientProfile } from '@/features/client-dashboard'
 import { TeamScreenshots } from '@/features/screenshot-capture'
 import { AdminScreenshotReport } from '@/features/screenshot-report'
 import { CalendarNotesDashboard } from '@/features/calendar-note-widget'
@@ -65,7 +65,6 @@ function ClientDashboard() {
       <motion.div key={route.tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
         {route.tab === 'onboarding' && <ClientOnboarding />}
         {route.tab === 'project' && <ClientProjects />}
-        {route.tab === 'task' && <ClientTasks />}
         {route.tab === 'messages' && <ClientMessages />}
         {route.tab === 'profile' && <ClientProfile />}
       </motion.div>

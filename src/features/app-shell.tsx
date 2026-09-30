@@ -818,7 +818,6 @@ function getNavItems(role: string): NavItem[] {
   return [ // client
     { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck, route: { page: 'client-dashboard', tab: 'onboarding' } },
     { id: 'projects', label: 'Projects', icon: FolderKanban, route: { page: 'client-dashboard', tab: 'project' } },
-    { id: 'task', label: 'Tasks', icon: Kanban, route: { page: 'client-dashboard', tab: 'task' } },
     { id: 'messages', label: 'Messages', icon: MessageSquare, route: { page: 'client-dashboard', tab: 'messages' } },
     { id: 'profile', label: 'Profile', icon: UserCircle, route: { page: 'client-dashboard', tab: 'profile' } },
   ]

@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
+
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -460,8 +460,7 @@ export default function ClientOnboardingWizard() {
 
   // ─── Render Read-Only Review ───────────────────────────────
   const renderReadOnlyView = () => (
-    <ScrollArea className="max-h-[calc(100vh-20rem)]">
-      <div className="space-y-8 pb-4">
+    <div className="space-y-8">
         {/* Business Info */}
         <div className="space-y-3">
           <h3 className="text-base font-semibold flex items-center gap-2">
@@ -583,8 +582,7 @@ export default function ClientOnboardingWizard() {
             })}
           </div>
         </div>
-      </div>
-    </ScrollArea>
+    </div>
   )
 
   // ─── Step 1: Business Information ─────────────────────────

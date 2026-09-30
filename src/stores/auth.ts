@@ -83,7 +83,6 @@ const HASH_ROUTES: Record<string, AppRoute> = {
   'client': { page: 'client-dashboard', tab: 'project' },
   'client/onboarding': { page: 'client-dashboard', tab: 'onboarding' },
   'client/projects': { page: 'client-dashboard', tab: 'project' },
-  'client/tasks': { page: 'client-dashboard', tab: 'task' },
   'client/messages': { page: 'client-dashboard', tab: 'messages' },
   'client/profile': { page: 'client-dashboard', tab: 'profile' },
 }
@@ -278,7 +277,13 @@ if (typeof window !== 'undefined') {
         }
         const allowedPage = rolePageMap[user.role]
         if (parsed.page === allowedPage) {
-          useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+          // Additional tab-level enforcement for client users (no 'task' tab)
+          if (user.role === 'client' && parsed.tab === 'task') {
+            const defaultRoute = getDefaultRoute(user.role)
+            window.location.hash = routeToHash(defaultRoute)
+          } else {
+            useAuthStore.setState({ route: parsed, selectedProjectId: null, selectedTaskId: null })
+          }
         } else {
           // Redirect to the default route for this role
           const defaultRoute = getDefaultRoute(user.role)

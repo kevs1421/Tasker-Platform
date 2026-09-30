@@ -1,14 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Task, User } from '@/types'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   FolderKanban, UserCircle,
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
-  LayoutGrid, List, MessageCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
@@ -19,10 +17,6 @@ import {
 } from '@/features/route-guard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -350,12 +344,11 @@ export function ClientProjects() {
                   const inReview = project.taskStats?.in_review || 0
                   const completed = project.taskStats?.done || 0
                   const total = todo + inProgress + inReview + completed
-                  if (total === 0) return null
 
-                  const todoPct = Math.round((todo / total) * 100)
-                  const inProgressPct = Math.round((inProgress / total) * 100)
-                  const inReviewPct = Math.round((inReview / total) * 100)
-                  const completedPct = 100 - todoPct - inProgressPct - inReviewPct
+                  const todoPct = total > 0 ? Math.round((todo / total) * 100) : 0
+                  const inProgressPct = total > 0 ? Math.round((inProgress / total) * 100) : 0
+                  const inReviewPct = total > 0 ? Math.round((inReview / total) * 100) : 0
+                  const completedPct = total > 0 ? (100 - todoPct - inProgressPct - inReviewPct) : 0
 
                   return (
                     <div key={project.id} className="space-y-2.5">
@@ -364,39 +357,45 @@ export function ClientProjects() {
                           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
                           <span className="text-sm font-medium">{project.name}</span>
                         </div>
-                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{completedPct}%</span>
+                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                          {total > 0 ? `${completedPct}%` : 'No tasks'}
+                        </span>
                       </div>
                       {/* Stacked progress bar */}
-                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-                        {todo > 0 && (
-                          <div
-                            className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
-                            style={{ width: `${todoPct}%` }}
-                            title={`Not Started: ${todo}`}
-                          />
-                        )}
-                        {inProgress > 0 && (
-                          <div
-                            className="bg-amber-500 transition-all duration-500"
-                            style={{ width: `${inProgressPct}%` }}
-                            title={`In Progress: ${inProgress}`}
-                          />
-                        )}
-                        {inReview > 0 && (
-                          <div
-                            className="bg-blue-500 transition-all duration-500"
-                            style={{ width: `${inReviewPct}%` }}
-                            title={`In Review: ${inReview}`}
-                          />
-                        )}
-                        {completed > 0 && (
-                          <div
-                            className="bg-emerald-500 transition-all duration-500"
-                            style={{ width: `${completedPct}%` }}
-                            title={`Completed: ${completed}`}
-                          />
-                        )}
-                      </div>
+                      {total > 0 ? (
+                        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+                          {todo > 0 && (
+                            <div
+                              className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+                              style={{ width: `${todoPct}%` }}
+                              title={`Not Started: ${todo}`}
+                            />
+                          )}
+                          {inProgress > 0 && (
+                            <div
+                              className="bg-amber-500 transition-all duration-500"
+                              style={{ width: `${inProgressPct}%` }}
+                              title={`In Progress: ${inProgress}`}
+                            />
+                          )}
+                          {inReview > 0 && (
+                            <div
+                              className="bg-blue-500 transition-all duration-500"
+                              style={{ width: `${inReviewPct}%` }}
+                              title={`In Review: ${inReview}`}
+                            />
+                          )}
+                          {completed > 0 && (
+                            <div
+                              className="bg-emerald-500 transition-all duration-500"
+                              style={{ width: `${completedPct}%` }}
+                              title={`Completed: ${completed}`}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" />
+                      )}
                       {/* Legend */}
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1.5">
@@ -490,21 +489,42 @@ export function ClientProjects() {
                         </div>
                       </div>
 
-                      {/* Progress bar with percentage */}
-                      <div className="mt-3 space-y-1">
+                      {/* Progress bar with percentage & task breakdown */}
+                      <div className="mt-3 space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">{doneTasks}/{totalT} tasks completed</span>
-                          <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+                          <span className="text-muted-foreground">
+                            {totalT > 0 ? `${doneTasks}/${totalT} tasks completed` : 'No tasks yet'}
+                          </span>
+                          <span className="font-semibold" style={{ color: totalT > 0 ? barColor : '#94a3b8' }}>
+                            {totalT > 0 ? `${pct}%` : '—'}
+                          </span>
                         </div>
-                        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-primary/20">
-                          <div
-                            className="absolute top-0 left-0 h-2.5 rounded-full transition-all duration-500"
-                            style={{
-                              width: `${pct}%`,
-                              background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
-                            }}
-                          />
-                        </div>
+                        {totalT > 0 ? (
+                          <>
+                            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                              {(project.taskStats?.todo || 0) > 0 && (
+                                <div className="bg-slate-400 dark:bg-slate-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.todo || 0) / totalT) * 100 : 0}%` }} />
+                              )}
+                              {(project.taskStats?.in_progress || 0) > 0 && (
+                                <div className="bg-amber-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.in_progress || 0) / totalT) * 100 : 0}%` }} />
+                              )}
+                              {(project.taskStats?.in_review || 0) > 0 && (
+                                <div className="bg-blue-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.in_review || 0) / totalT) * 100 : 0}%` }} />
+                              )}
+                              {doneTasks > 0 && (
+                                <div className="bg-emerald-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                              {(project.taskStats?.todo || 0) > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-slate-400 dark:bg-slate-500" />To Do ({project.taskStats?.todo})</span>}
+                              {(project.taskStats?.in_progress || 0) > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" />In Progress ({project.taskStats?.in_progress})</span>}
+                              {(project.taskStats?.in_review || 0) > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500" />In Review ({project.taskStats?.in_review})</span>}
+                              {doneTasks > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" />Done ({doneTasks})</span>}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted" />
+                        )}
                       </div>
 
                       {/* Per-project uploaded files */}
@@ -564,426 +584,7 @@ export function ClientProjects() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CLIENT TASKS — Read-only Kanban board
-// ═══════════════════════════════════════════════════════════════════
 
-const CLIENT_STATUS_COLUMNS = [
-  { key: 'todo' as const, label: 'To Do', color: 'bg-slate-400', headerBg: 'bg-slate-100 dark:bg-slate-800/60' },
-  { key: 'in_progress' as const, label: 'In Progress', color: 'bg-amber-500', headerBg: 'bg-amber-100 dark:bg-amber-900/40' },
-  { key: 'in_review' as const, label: 'In Review', color: 'bg-purple-500', headerBg: 'bg-purple-100 dark:bg-purple-900/40' },
-  { key: 'done' as const, label: 'Done', color: 'bg-emerald-500', headerBg: 'bg-emerald-100 dark:bg-emerald-900/40' },
-]
-
-export function ClientTasks() {
-  const { user } = useAuthStore()
-  const [projects, setProjects] = useState<ClientProject[]>([])
-  const [selectedProject, setSelectedProject] = useState<string>('')
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
-  const [detailTask, setDetailTask] = useState<Task | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
-  const [comments, setComments] = useState<{ id: string; content: string; createdAt: string; user?: { id: string; name: string; avatar?: string | null } }[]>([])
-  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
-
-  const fetchProjects = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await authFetch(`/api/client/projects?clientId=${user.id}`)
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to load projects')
-      }
-      const data = await res.json()
-      setProjects(data.projects || [])
-      if ((data.projects || []).length > 0 && !selectedProject) {
-        setSelectedProject(data.projects[0].id)
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load projects')
-    }
-  }, [user?.id])
-
-  const fetchTasks = useCallback(async () => {
-    if (!selectedProject) return
-    setLoading(true)
-    try {
-      const res = await authFetch(`/api/tasks?projectId=${selectedProject}`)
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to load tasks')
-      }
-      const data = await res.json()
-      setTasks(data.tasks || [])
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load tasks')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedProject])
-
-  useEffect(() => { fetchProjects() }, [fetchProjects])
-  useEffect(() => { fetchTasks() }, [fetchTasks])
-
-  const openDetail = async (task: Task) => {
-    setDetailTask(task)
-    setDetailOpen(true)
-    try {
-      const res = await authFetch(`/api/tasks/${task.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setDetailTask(data.task)
-        setComments(data.task?.comments ?? [])
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load task details')
-    }
-  }
-
-  const currentProject = projects.find((p) => p.id === selectedProject)
-
-  if (loading && projects.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <div className="grid grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-3">
-              <Skeleton className="h-8 w-24" />
-              {Array.from({ length: 3 }).map((_, j) => <Skeleton key={j} className="h-28 w-full rounded-lg" />)}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (!loading && projects.length === 0) {
-    return (
-      <EmptyState
-        icon={FolderKanban}
-        title="No projects yet"
-        description="You haven't been assigned to any projects yet. Tasks will appear here once you're added to a project."
-      />
-    )
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Select value={selectedProject} onValueChange={setSelectedProject}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Select project" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-                    {p.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {currentProject && (
-            <Badge variant="outline" className="text-xs">
-              {tasks.length} task{tasks.length !== 1 ? 's' : ''}
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-muted rounded-lg p-0.5">
-            <Button
-              variant={viewMode === 'board' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => setViewMode('board')}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" /> Board
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-3.5 w-3.5" /> List
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Board View (read-only — no drag-and-drop) */}
-      {viewMode === 'board' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {CLIENT_STATUS_COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => t.status === col.key)
-            return (
-              <div key={col.key} className="flex flex-col bg-muted/30 rounded-xl p-2 gap-2 min-h-[200px]">
-                <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', col.headerBg)}>
-                  <div className={cn('h-2.5 w-2.5 rounded-full', col.color)} />
-                  <span className="text-sm font-semibold">{col.label}</span>
-                  <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center">
-                    {colTasks.length}
-                  </Badge>
-                </div>
-                <ScrollArea className="max-h-[calc(100vh-280px)]">
-                  <div className="space-y-2 pb-2">
-                    {colTasks.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
-                        No tasks
-                      </div>
-                    ) : (
-                      colTasks.map((task) => (
-                        <Card
-                          key={task.id}
-                          className="cursor-pointer hover:shadow-md transition-shadow p-3 gap-2"
-                          onClick={() => openDetail(task)}
-                        >
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium leading-tight">{task.title}</p>
-                            {task.tags && (
-                              <div className="flex flex-wrap gap-1">
-                                {task.tags.split(',').slice(0, 2).map((t) => (
-                                  <Badge key={t} variant="outline" className="text-[10px] px-1 py-0 h-4">{t.trim()}</Badge>
-                                ))}
-                              </div>
-                            )}
-                            <div className="flex items-center justify-between gap-2">
-                              <PriorityBadge priority={task.priority} />
-                              {task.dueDate && (
-                                <span className="text-[10px] text-muted-foreground">{formatDate(task.dueDate)}</span>
-                              )}
-                            </div>
-                            {(task.assignees && task.assignees.length > 0) && (
-                              <div className="flex -space-x-1.5">
-                                {task.assignees.slice(0, 3).map((a) => (
-                                  a.user ? (
-                                    <Avatar key={a.userId} className="h-5 w-5 border-2 border-background">
-                                      <AvatarImage src={a.user.avatar || undefined} />
-                                      <AvatarFallback className="text-[8px] bg-slate-200 dark:bg-slate-700">
-                                        {getInitials(a.user.name)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  ) : null
-                                ))}
-                                {task.assignees.length > 3 && (
-                                  <span className="text-[10px] text-muted-foreground ml-2">+{task.assignees.length - 3}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        /* List View (read-only) */
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[40%]">Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Assignees</TableHead>
-                <TableHead>Due Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
-                    No tasks found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                tasks.map((task) => {
-                  const sConf = getStatusConfig(task.status)
-                  const assignees = (task.assignees || []).map((a) => a.user).filter((u): u is User => !!u)
-                  return (
-                    <TableRow
-                      key={task.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => openDetail(task)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className={cn('h-2 w-2 rounded-full shrink-0', sConf.dotColor)} />
-                          <div>
-                            <p className="text-sm font-medium">{task.title}</p>
-                            {task.tags && (
-                              <div className="flex gap-1 mt-1">
-                                {task.tags.split(',').slice(0, 2).map((t) => (
-                                  <Badge key={t} variant="outline" className="text-[10px] px-1 py-0 h-4">{t.trim()}</Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={cn('text-[10px]', sConf.color)}>{sConf.label}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <PriorityBadge priority={task.priority} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex -space-x-1.5">
-                          {assignees.slice(0, 3).map((u) => (
-                            <Avatar key={u.id} className="h-6 w-6 border-2 border-background">
-                              <AvatarImage src={u.avatar || undefined} />
-                              <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                                {getInitials(u.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                          ))}
-                          {assignees.length > 3 && (
-                            <span className="text-xs text-muted-foreground ml-2">+{assignees.length - 3}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {task.dueDate ? (
-                          <span className="text-xs text-muted-foreground">{formatDate(task.dueDate)}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-
-      {/* Task Detail Dialog (read-only for clients) */}
-      <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setComments([]) } }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          {detailTask && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className={cn('h-3 w-3 rounded-full', getStatusConfig(detailTask.status).dotColor)} />
-                  <DialogTitle className="text-lg">{detailTask.title}</DialogTitle>
-                </div>
-                <DialogDescription className="sr-only">Task details</DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6">
-                {/* Status / Priority / Due Date — read-only display */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Status</Label>
-                    <Badge className={cn('text-xs', getStatusConfig(detailTask.status).color)}>
-                      {getStatusConfig(detailTask.status).label}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Priority</Label>
-                    <PriorityBadge priority={detailTask.priority} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Due Date</Label>
-                    <p className="text-sm">
-                      {detailTask.dueDate ? formatDate(detailTask.dueDate) : '—'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Description */}
-                {detailTask.description && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Description</Label>
-                    <p className="text-sm whitespace-pre-wrap">{detailTask.description}</p>
-                  </div>
-                )}
-
-                {/* Tags */}
-                {detailTask.tags && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Tags</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {detailTask.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Assignees */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Assignees</Label>
-                  {detailTask.assignees && detailTask.assignees.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {detailTask.assignees.map((a) => (
-                        <div key={a.id || a.userId} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1">
-                          <Avatar className="h-5 w-5">
-                            <AvatarFallback className="text-[9px] bg-slate-200 dark:bg-slate-700">
-                              {getInitials(a.user?.name || '?')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs font-medium">{a.user?.name || 'Unknown'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No one assigned yet</p>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Comments (read-only) */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-semibold flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" /> Comments
-                    {comments.length > 0 && (
-                      <Badge variant="secondary" className="text-xs h-5">{comments.length}</Badge>
-                    )}
-                  </Label>
-                  {comments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No comments yet</p>
-                  ) : (
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                      {comments.map((c) => (
-                        <div key={c.id} className="flex gap-2.5">
-                          <Avatar className="h-7 w-7 shrink-0">
-                            <AvatarFallback className="text-[10px] bg-slate-200 dark:bg-slate-700">
-                              {getInitials(c.user?.name || '?')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="text-xs font-medium">{c.user?.name || 'Unknown'}</span>
-                              <span className="text-[10px] text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
-                            </div>
-                            <p className="text-sm whitespace-pre-wrap">{c.content}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // CLIENT MESSAGES

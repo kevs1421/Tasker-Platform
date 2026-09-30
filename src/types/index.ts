@@ -125,4 +125,4 @@ export type AppRoute =
   | { page: 'login'; tab?: never }
   | { page: 'admin-dashboard'; tab: 'overview' | 'users' | 'onboarding' | 'project' | 'task-dashboard' | 'task-view' | 'time-tracking' | 'messages' | 'screenshots' | 'calendar' | 'profile' }
   | { page: 'team-dashboard'; tab: 'project' | 'task' | 'time-tracking' | 'messages' | 'screenshots' | 'calendar' | 'profile' }
-  | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'task' | 'messages' | 'profile' }
+  | { page: 'client-dashboard'; tab: 'onboarding' | 'project' | 'messages' | 'profile' }
