@@ -15,7 +15,6 @@ import { getInitials } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 import {
   useVirtualBackground,
-  PRESET_BACKGROUNDS,
   type VirtualBackgroundOption,
 } from '@/hooks/use-virtual-background'
 import type { User } from '@/types'

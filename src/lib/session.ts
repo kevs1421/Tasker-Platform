@@ -17,7 +17,7 @@ export class AuthError extends Error {
 /**
  * Generate a cryptographically random session token.
  */
-export function generateSessionToken(): string {
+function generateSessionToken(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -42,7 +42,7 @@ export async function createSession(userId: string): Promise<string> {
  * Validate a session token and return the user (with role).
  * Returns null if the token is invalid, expired, or not found.
  */
-export async function validateSession(token: string) {
+async function validateSession(token: string) {
   const session = await db.session.findUnique({
     where: { token },
     include: { user: { select: { id: true, email: true, name: true, role: true, status: true } } },

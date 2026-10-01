@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths, startOfWeek, endOfWeek, isSameDay, isSameMonth, parseISO } from 'date-fns'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, StickyNote, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, StickyNote } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'

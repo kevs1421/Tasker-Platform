@@ -29,7 +29,7 @@ export interface Task {
   project?: Project;
 }
 
-export interface TaskAssignment { id: string; taskId: string; userId: string; assignedAt: string; user?: User; }
+interface TaskAssignment { id: string; taskId: string; userId: string; assignedAt: string; user?: User; }
 
 export interface Comment { id: string; content: string; createdAt: string; updatedAt: string; taskId: string; userId: string; user?: User; }
 
@@ -70,15 +70,6 @@ export interface ActivityLog {
   createdAt: string; user?: User;
 }
 
-export interface TimeEntry {
-  id: string; userId: string; projectId?: string | null; taskId?: string | null;
-  description?: string | null; date: string;
-  timeIn?: string | null; timeOut?: string | null;
-  duration: number; status: 'idle' | 'timed_in' | 'completed';
-  createdAt: string; updatedAt: string;
-  user?: User; project?: Project; task?: Task;
-}
-
 export interface DashboardStats {
   totalTasks: number; completedTasks: number; inProgressTasks: number;
   inReviewTasks: number; todoTasks: number; overdueTasks: number;
@@ -101,12 +92,6 @@ export interface Screenshot {
   user?: { id: string; name: string; email: string; role: string; avatar?: string | null }
   project?: { id: string; name: string; color?: string } | null
   task?: { id: string; title: string; status?: string } | null
-}
-
-export interface ScreenshotConfig {
-  userId: string
-  autoEnabled: boolean
-  intervalMinutes: number
 }
 
 export interface CalendarNote {

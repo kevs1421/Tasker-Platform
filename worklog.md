@@ -178,3 +178,40 @@ Stage Summary:
 - Cleaned session.ts to remove duplicate requireAuth/requireAdmin (kept session CRUD operations)
 - Fixed missing calendar hash routes for admin and team dashboards
 - All code passes lint and TypeScript compilation
+
+---
+Task ID: 6
+Agent: main
+Task: Clean up frontend and backend code - remove all unused files, components, dependencies, and dead code
+
+Work Log:
+- Performed comprehensive audit of all 22 shadcn/ui components → all are actively used
+- Performed comprehensive audit of all hooks, libs, stores, features → all are actively used
+- Performed comprehensive audit of all npm dependencies → all are actively used
+- Performed comprehensive audit of all 36 API routes → found 1 unused: /api/client/projects/[id]/route.ts
+- Removed /api/client/projects/[id]/route.ts (no frontend caller)
+- Found and removed 22 unused imports across 8 files:
+  - client-dashboard.tsx: removed Badge, Avatar, AvatarFallback, AvatarImage, Textarea, getStatusConfig, formatRelativeTime, getInitials
+  - screenshot-capture.tsx: removed CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+  - screenshot-report.tsx: removed CardHeader, CardTitle, X
+  - calendar-note-widget.tsx: removed X
+  - MessagesPanel.tsx: removed DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+  - VideoCall.tsx: removed PRESET_BACKGROUNDS
+  - ClientOnboardingWizard.tsx: removed Avatar, AvatarFallback, formatDate, getInitials
+  - profile-avatar-upload.tsx: removed Button, X
+- Cleaned up types/index.ts:
+  - Removed ScreenshotConfig interface (never imported anywhere)
+  - Removed TimeEntry interface (team-dashboard has its own local version)
+  - Un-exported TaskAssignment (only used internally by Task interface)
+- Cleaned up session.ts:
+  - Un-exported generateSessionToken (only used internally)
+  - Un-exported validateSession (only used internally)
+- Cleared .next cache to remove stale route type references
+- Verified: bun run lint passes clean, npx tsc --noEmit passes clean
+
+Stage Summary:
+- Removed 1 unused API route file
+- Removed 22 unused imports across 8 files
+- Removed 2 unused type interfaces (ScreenshotConfig, TimeEntry)
+- Un-exported 3 internal-only functions/types
+- All code passes lint and TypeScript compilation

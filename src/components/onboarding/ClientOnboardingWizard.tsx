@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth'
 import type { OnboardingForm, Onboarding } from '@/types'
-import { getInitials, formatRelativeTime, formatDate } from '@/features/route-guard'
+import { formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
 import { authFetch } from '@/lib/client-fetch'
 
@@ -17,7 +17,6 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 
 import {

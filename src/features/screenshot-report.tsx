@@ -7,14 +7,13 @@ import {
   Camera, Trash2, Search, Eye, Download,
   Loader2, Image as ImageIcon, BarChart3, Users, Calendar,
   ArrowUpDown, Zap, Settings2, Save, Clock, Shield,
-  X,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'

@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Camera, Loader2, X, Trash2 } from 'lucide-react'
+import { Camera, Loader2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { getInitials } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
