@@ -16,6 +16,7 @@ import { LogOut, User, LayoutDashboard, Menu, X, Shield, FolderKanban, MessageSq
 import { getInitials, getRoleBadgeClasses } from '@/features/route-guard'
 import type { AppRoute } from '@/types'
 import { cn } from '@/lib/utils'
+import { formatElapsed, formatCountdown } from '@/lib/format'
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -25,41 +26,12 @@ import type { ActiveTimeSession } from '@/stores/time-tracking'
 
 // ─── Time In/Out Widget ──────────────────────────────────
 
-interface ActiveTimeEntry {
-  id: string
-  timeIn: string
-  projectId?: string | null
-  project?: { id: string; name: string } | null
-  task?: { id: string; title: string } | null
-  description?: string | null
-}
+type ActiveTimeEntry = ActiveTimeSession
 
-interface Project {
-  id: string
-  name: string
-}
+type Project = Pick<import('@/types').Project, 'id' | 'name'>
+type Task = Pick<{ id: string; title: string }, 'id' | 'title'>
 
-interface Task {
-  id: string
-  title: string
-}
-
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000)
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const s = totalSeconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return '0:00'
-  const totalSeconds = Math.floor(ms / 1000)
-  const m = Math.floor(totalSeconds / 60)
-  const s = totalSeconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+// formatElapsed and formatCountdown are now imported from @/lib/format
 
 function TimeInOutWidget({ userId }: { userId: string }) {
   // Shared stores

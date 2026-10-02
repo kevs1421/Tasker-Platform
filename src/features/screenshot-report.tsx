@@ -13,6 +13,8 @@ import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime, getInitials, getRoleBadgeClasses, formatDate } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { formatFileSize } from '@/lib/format'
+import { fadeIn, staggerContainer } from '@/lib/animations'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,23 +42,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 
-// ─── Animations ──────────────────────────────────────────
-const fadeIn = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.25 },
-}
-const staggerContainer = {
-  initial: {},
-  animate: { transition: { staggerChildren: 0.05 } },
-}
+// ─── Animations imported from @/lib/animations ──────────
 
 // ─── Helpers ─────────────────────────────────────────────
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
+// formatFileSize imported from @/lib/format
 
 type SortField = 'createdAt' | 'fileSize' | 'userName'
 type SortDir = 'asc' | 'desc'

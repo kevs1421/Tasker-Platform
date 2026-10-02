@@ -9,7 +9,7 @@ import { authFetch } from '@/lib/client-fetch'
  * Create a screenshot session manager
  * Handles periodic screenshot capture during active time-in sessions
  */
-export class ScreenshotSessionManager {
+class ScreenshotSessionManager {
   private intervalId: ReturnType<typeof setInterval> | null = null
   private captureCount = 0
   private isRunning = false

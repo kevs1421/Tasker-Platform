@@ -231,7 +231,7 @@ export function CalendarNotesDashboard() {
                   <button
                     key={day.toISOString()}
                     className={cn(
-                      'relative min-h-[72px] sm:min-h-[80px] p-1.5 border-r border-b text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-in-0',
+                      'relative min-h-[72px] sm:min-h-[80px] p-1.5 border-r border-b text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary/20',
                       !inMonth && 'bg-muted/30',
                       isSelected && 'bg-primary/5 ring-2 ring-primary/30 ring-inset',
                     )}

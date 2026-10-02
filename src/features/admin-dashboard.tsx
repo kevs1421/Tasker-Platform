@@ -7,6 +7,7 @@ import { useTimeTrackingStore } from '@/stores/time-tracking'
 import type { DashboardStats, ActivityLog, Project, Task, OnboardingForm, Onboarding, User, ProjectMember, Comment as CommentType } from '@/types'
 import { getRoleBadgeClasses, getInitials, getPriorityConfig, getStatusConfig, formatDate, formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { formatDuration, formatElapsed } from '@/lib/format'
 import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 // shadcn/ui
@@ -3162,20 +3163,9 @@ interface LocalTimeEntry {
 
 type DatePreset = 'today' | 'week' | 'month' | 'all' | 'custom'
 
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = Math.round(minutes % 60)
-  return `${h}h ${m}m`
-}
-
+// formatDuration and formatLiveTimer (formatElapsed) imported from @/lib/format
 function formatLiveTimer(startTime: string): string {
-  const start = new Date(startTime).getTime()
-  const now = Date.now()
-  const diff = Math.max(0, Math.floor((now - start) / 1000))
-  const h = Math.floor(diff / 3600)
-  const m = Math.floor((diff % 3600) / 60)
-  const s = diff % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return formatElapsed(startTime)
 }
 
 function getDateRange(preset: DatePreset, customFrom?: Date, customTo?: Date): { from?: string; to?: string } {

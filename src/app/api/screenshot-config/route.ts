@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
+import { requireAdmin, handleApiError } from '@/lib/api-auth'
 import { getAuthUser } from '@/lib/session'
 
 // GET /api/screenshot-config

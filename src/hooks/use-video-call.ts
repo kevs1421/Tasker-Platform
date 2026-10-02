@@ -9,7 +9,7 @@ const SIGNAL_URL = '/?XTransformPort=3005'
 
 // ─── Types ────────────────────────────────────────────────────────────
 
-export interface PeerState {
+interface PeerState {
   userId: string
   userName: string
   userAvatar?: string

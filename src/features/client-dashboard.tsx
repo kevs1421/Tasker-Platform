@@ -26,6 +26,8 @@ import {
 } from '@/components/ui/dialog'
 import { isBefore, parseISO, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { formatFileSize } from '@/lib/format'
+import { fadeSlide } from '@/lib/animations'
 import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 
@@ -40,13 +42,7 @@ interface ClientProject extends Project {
   progress?: number
 }
 
-// ─── Animation Variants ──────────────────────────────────────────
-const fadeSlide = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -12 },
-  transition: { duration: 0.25 }
-}
+// ─── Animation variants imported from @/lib/animations ──────────────
 
 // ─── Shared sub-components ───────────────────────────────────────
 
@@ -214,11 +210,7 @@ export function ClientProjects() {
     return <File className="w-4 h-4 text-muted-foreground" />
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  // formatFileSize is now imported from @/lib/format
 
   if (loading) return <PageSkeleton />
 

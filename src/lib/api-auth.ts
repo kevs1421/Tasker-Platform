@@ -37,7 +37,7 @@ function extractToken(request: Request): string | null {
  * Validate the session token from a Request and return the authenticated user.
  * Throws AuthError if not authenticated or session is invalid/expired.
  */
-export async function getApiAuthUser(request: Request): Promise<{ id: string; role: string }> {
+async function getApiAuthUser(request: Request): Promise<{ id: string; role: string }> {
   const token = extractToken(request)
   if (!token) throw new AuthError('Unauthorized', 401)
 

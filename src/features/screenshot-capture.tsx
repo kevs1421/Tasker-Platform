@@ -12,6 +12,8 @@ import { authFetch } from '@/lib/client-fetch'
 import type { Screenshot } from '@/types'
 import { formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { formatFileSize } from '@/lib/format'
+import { fadeIn, staggerContainer } from '@/lib/animations'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,23 +34,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-// ─── Animations ──────────────────────────────────────────
-const fadeIn = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.25 },
-}
-const staggerContainer = {
-  initial: {},
-  animate: { transition: { staggerChildren: 0.05 } },
-}
+// ─── Animations imported from @/lib/animations ──────────
 
-// ─── Helpers ─────────────────────────────────────────────
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
+// ─── Helpers imported from @/lib/format ──────────────────
 
 // ─── Team Screenshot Capture (team + training see only their own) ─────────
 export function TeamScreenshots() {

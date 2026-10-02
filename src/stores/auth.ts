@@ -2,6 +2,15 @@ import { create } from 'zustand'
 import type { User, AppRoute } from '@/types'
 
 // ─── localStorage persistence key ───────────────────────
+
+/** Maps user roles to their dashboard page. */
+const ROLE_PAGE_MAP: Record<string, string> = {
+  admin: 'admin-dashboard',
+  team: 'team-dashboard',
+  training: 'team-dashboard',
+  client: 'client-dashboard',
+}
+
 const STORAGE_KEY = 'taskflow-auth'
 const TOKEN_KEY = 'taskflow-token'
 
@@ -172,17 +181,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (data.valid && data.user) {
           // Session is valid — update user from server (may have role/name changes)
           const serverUser = data.user as User
-          const rolePageMap: Record<string, string> = {
-            admin: 'admin-dashboard',
-            team: 'team-dashboard',
-            training: 'team-dashboard',
-            client: 'client-dashboard',
-          }
           const hash = typeof window !== 'undefined' ? window.location.hash : ''
           let route = getDefaultRoute(serverUser.role)
           if (hash && hash !== '#') {
             const parsed = parseHash(hash)
-            if (parsed && parsed.page === rolePageMap[serverUser.role]) {
+            if (parsed && parsed.page === ROLE_PAGE_MAP[serverUser.role]) {
               route = parsed
             }
           }
@@ -197,17 +200,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, route: { page: 'login' }, _hydrated: true })
     } catch {
       // Network error — allow offline use with cached user, but mark hydrated
-      const rolePageMap: Record<string, string> = {
-        admin: 'admin-dashboard',
-        team: 'team-dashboard',
-        training: 'team-dashboard',
-        client: 'client-dashboard',
-      }
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       let route = getDefaultRoute(persisted.role)
       if (hash && hash !== '#') {
         const parsed = parseHash(hash)
-        if (parsed && parsed.page === rolePageMap[persisted.role]) {
+        if (parsed && parsed.page === ROLE_PAGE_MAP[persisted.role]) {
           route = parsed
         }
       }
@@ -272,13 +269,7 @@ if (typeof window !== 'undefined') {
       // Enforce role-based route access
       const user = useAuthStore.getState().user
       if (user) {
-        const rolePageMap: Record<string, string> = {
-          admin: 'admin-dashboard',
-          team: 'team-dashboard',
-          training: 'team-dashboard',
-          client: 'client-dashboard',
-        }
-        const allowedPage = rolePageMap[user.role]
+        const allowedPage = ROLE_PAGE_MAP[user.role]
         if (parsed.page === allowedPage) {
           // Additional tab-level enforcement for client users (no 'task' tab)
           if (user.role === 'client' && parsed.tab === 'task') {

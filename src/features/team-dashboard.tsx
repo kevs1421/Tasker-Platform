@@ -80,6 +80,7 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { formatDuration, formatElapsed } from '@/lib/format'
 import { ProfileAvatarUpload } from '@/components/profile-avatar-upload'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -2112,22 +2113,7 @@ export function TeamProfile() {
 
 // ─── Time Tracking Component ──────────────────────────────────
 
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}m`
-  if (m === 0) return `${h}h`
-  return `${h}h ${m}m`
-}
-
-function formatElapsed(startDate: string): string {
-  const ms = Date.now() - new Date(startDate).getTime()
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
+// formatDuration and formatElapsed imported from @/lib/format
 
 type TimeEntry = {
   id: string

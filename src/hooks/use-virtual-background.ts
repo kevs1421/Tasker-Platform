@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 // ─── Types ────────────────────────────────────────────────────────────
 
-export type BackgroundType = 'none' | 'blur' | 'image'
+type BackgroundType = 'none' | 'blur' | 'image'
 
 export interface VirtualBackgroundOption {
   id: string
@@ -17,7 +17,7 @@ export interface VirtualBackgroundOption {
   thumbnail?: string
 }
 
-export interface VirtualBackgroundState {
+interface VirtualBackgroundState {
   /** Currently selected background */
   selected: VirtualBackgroundOption
   /** Whether the virtual background processor is active */
@@ -28,7 +28,7 @@ export interface VirtualBackgroundState {
 
 // ─── Preset Backgrounds ───────────────────────────────────────────────
 
-export const PRESET_BACKGROUNDS: VirtualBackgroundOption[] = [
+const PRESET_BACKGROUNDS: VirtualBackgroundOption[] = [
   { id: 'none', label: 'None', type: 'none' },
   { id: 'blur', label: 'Blur', type: 'blur' },
   { id: 'office', label: 'Office', type: 'image', src: '/virtual-backgrounds/office.png', thumbnail: '/virtual-backgrounds/office.png' },

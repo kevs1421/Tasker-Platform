@@ -72,6 +72,9 @@ export async function deleteSession(token: string): Promise<void> {
 /**
  * Extract the Authorization bearer token from a request.
  * Returns null if no valid token is found.
+ * Note: api-auth.ts has a more comprehensive version that also checks
+ * custom headers, cookies, and URL query params. This simpler version
+ * is intentionally used only by getAuthUser() and the logout route.
  */
 export function extractToken(request: Request): string | null {
   const auth = request.headers.get('authorization')

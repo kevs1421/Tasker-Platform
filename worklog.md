@@ -239,3 +239,44 @@ Stage Summary:
 - The "Yber Digitals" project had no tasks at all
 - Both issues are now fixed in the database
 - API endpoint returns correct progress data for both projects
+
+---
+Task ID: 2
+Agent: main
+Task: Clean up frontend and backend code - remove unused files, components, dependencies, and dead code
+
+Work Log:
+- Ran comprehensive codebase audit: checked all files in src/components/, src/features/, src/lib/, src/hooks/, src/stores/, src/types/, src/app/api/, mini-services/
+- Found NO unused files - all files are actively imported/used somewhere
+- Found NO unused dependencies - all packages in package.json are actively used
+- Found NO unused API routes - all endpoints are called from frontend
+- Found 6 unused exports across 4 files (removed export keywords)
+- Found 3x duplicated formatFileSize, 2x duplicated formatDuration, 3x duplicated formatElapsed/formatLiveTimer
+- Found 3x duplicated rolePageMap in auth.ts
+- Found 3x duplicated animation variants across files
+- Found 1 invalid Tailwind class (ring-in-0)
+- Found 1 unused import (requireAuth in screenshot-config/route.ts)
+- Found shadowed Project/Task interface types in app-shell.tsx
+
+Stage Summary:
+- Created src/lib/format.ts: shared formatFileSize, formatDuration, formatElapsed, formatCountdown
+- Created src/lib/animations.ts: shared fadeIn, staggerContainer, fadeSlide variants
+- Extracted ROLE_PAGE_MAP to module-level const in auth.ts (was duplicated 3 times)
+- Removed unused export from getApiAuthUser in api-auth.ts
+- Removed unused export from ScreenshotSessionManager class in screenshot-capture.ts
+- Removed unused export from PeerState interface in use-video-call.ts
+- Removed unused exports from use-virtual-background.ts (BackgroundType, VirtualBackgroundState, PRESET_BACKGROUNDS)
+- Removed unused requireAuth import from screenshot-config/route.ts
+- Fixed invalid Tailwind class ring-in-0 → removed in calendar-note-widget.tsx
+- Replaced shadowed Project/Task interfaces in app-shell.tsx with Pick<> types
+- Replaced ActiveTimeEntry with type alias to ActiveTimeSession from store
+- Updated client-dashboard.tsx to use shared formatFileSize and fadeSlide
+- Updated screenshot-report.tsx to use shared formatFileSize, fadeIn, staggerContainer
+- Updated screenshot-capture.tsx to use shared formatFileSize, fadeIn, staggerContainer
+- Updated admin-dashboard.tsx to use shared formatDuration, formatElapsed
+- Updated team-dashboard.tsx to use shared formatDuration, formatElapsed
+- Updated app-shell.tsx to use shared formatElapsed, formatCountdown
+- Added documentation comment about extractToken overlap between session.ts and api-auth.ts
+- Left admin-dashboard's local fadeIn/staggerContainer as-is (intentionally different values)
+- Left onboarding wizard's local fadeSlide as-is (horizontal slide, different from vertical)
+- Both ESLint and TypeScript compilation pass cleanly
