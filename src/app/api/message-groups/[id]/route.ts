@@ -57,7 +57,7 @@ export async function PATCH(
     if (addMemberIds && addMemberIds.length > 0) {
       // Role-based check — same rules as creating groups
       const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
-        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'admin' || senderRole === 'team') return true
         if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
         if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
         return false

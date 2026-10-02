@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
       // Helper: check if senderRole can message receiverRole
       const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
-        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'admin' || senderRole === 'team') return true
         if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
         if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
         return false
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Role-based messaging permission (server-side enforcement) ───────
-    // admin & team → can message admin, team, client (NOT training)
+    // admin & team → can message admin, team, client, training
     // training    → can message admin, team only
     // client      → can message admin, team only
     if (receiverId) {
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
         const receiverRole = receiver.role
         let allowed = false
         if (senderRole === 'admin' || senderRole === 'team') {
-          allowed = receiverRole !== 'training'
+          allowed = true
         } else if (senderRole === 'training') {
           allowed = receiverRole === 'admin' || receiverRole === 'team'
         } else if (senderRole === 'client') {

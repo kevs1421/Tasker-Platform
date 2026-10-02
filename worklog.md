@@ -280,3 +280,37 @@ Stage Summary:
 - Left admin-dashboard's local fadeIn/staggerContainer as-is (intentionally different values)
 - Left onboarding wizard's local fadeSlide as-is (horizontal slide, different from vertical)
 - Both ESLint and TypeScript compilation pass cleanly
+
+---
+Task ID: 3
+Agent: main
+Task: Fix messaging permissions - admin/team should be able to message training users
+
+Work Log:
+- Investigated the messaging system: found canMessageRole() defined in 5 locations (1 client-side, 4 server-side)
+- Identified the bug: admin/team were blocked from messaging training users (theirRole !== 'training')
+- Fixed canMessageRole in MessagesPanel.tsx (client-side): changed return theirRole !== 'training' to return true
+- Fixed canMessageRole in /api/messages/route.ts (GET conversations): same change
+- Fixed inline role check in /api/messages/route.ts (POST send message): changed allowed = receiverRole !== 'training' to allowed = true
+- Fixed canMessageRole in /api/message-groups/route.ts (POST create group): same change
+- Fixed canMessageRole in /api/message-groups/[id]/route.ts (PATCH add members): same change
+- Updated all comments to reflect new rules
+- Verified with API tests:
+
+  Admin → Team: OK ✅
+  Admin → Client: OK ✅
+  Admin → Training: OK ✅ (was BLOCKED before)
+  Training → Admin: OK ✅
+  Training → Team: OK ✅
+  Training → Client: BLOCKED ✅
+  Client → Admin: OK ✅
+  Client → Team: OK ✅
+  Client → Training: BLOCKED ✅
+
+- ESLint and TypeScript both pass clean
+
+Stage Summary:
+- Fixed messaging permission bug across 5 code locations
+- admin & team can now message all roles (admin, team, client, training)
+- training can message admin & team only (unchanged, correct)
+- client can message admin & team only (unchanged, correct)

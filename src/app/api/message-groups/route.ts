@@ -49,12 +49,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Role-based group membership check ──────────────────────
-    // Same rules as messaging: admin/team can add admin/team/client,
+    // Same rules as messaging: admin/team can add everyone,
     // training can add admin/team, client can add admin/team
     const creator = await db.user.findUnique({ where: { id: createdBy }, select: { role: true } })
     if (creator) {
       const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
-        if (senderRole === 'admin' || senderRole === 'team') return receiverRole !== 'training'
+        if (senderRole === 'admin' || senderRole === 'team') return true
         if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
         if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
         return false
