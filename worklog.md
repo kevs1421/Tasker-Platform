@@ -314,3 +314,28 @@ Stage Summary:
 - admin & team can now message all roles (admin, team, client, training)
 - training can message admin & team only (unchanged, correct)
 - client can message admin & team only (unchanged, correct)
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix file upload on client onboarding - can't upload documents or files
+
+Work Log:
+- Investigated the client onboarding file upload system
+- Identified ROOT CAUSE: The `/api/upload` API route was completely missing from the codebase
+- Both `ClientOnboardingWizard.tsx` (line 98) and `client-dashboard.tsx` (lines 166, 268) POST files to `/api/upload` but the route file `src/app/api/upload/route.ts` did not exist
+- Previous worklog mentioned this was "fixed" but the route was never actually persisted
+- Created `/api/upload` route following the existing pattern from `/api/avatar` and `/api/screenshots`
+- The new route handles: FormData with 'file' field, 10MB size limit, type validation (images, PDF, Word, Excel, ZIP, TXT, CSV), extension-based fallback for browsers that report application/octet-stream, unique filename generation with crypto.randomUUID(), saves to `public/uploads/onboarding/`
+- Returns `{ url, originalName, filename, size, type }` matching the `UploadedFile` interface expected by both frontend components
+- Verified with browser testing: logged in as client user, opened upload dialog, successfully uploaded files
+- Verified with API testing: TXT, PDF, PNG, DOCX files all upload successfully with 201 status
+- All files correctly saved to `public/uploads/onboarding/` directory
+- Lint passes clean, no dev server errors
+
+Stage Summary:
+- Created `/home/z/my-project/src/app/api/upload/route.ts` - the missing upload API endpoint
+- Created `/home/z/my-project/public/uploads/onboarding/` directory for file storage
+- File uploads now work for both client onboarding wizard and client dashboard
+- Supports: images (jpg, png, gif, webp, svg), documents (pdf, doc, docx, xls, xlsx), archives (zip), text (txt, csv)
+- Max file size: 10MB per file
