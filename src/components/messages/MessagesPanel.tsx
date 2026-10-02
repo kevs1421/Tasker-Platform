@@ -30,13 +30,13 @@ import { VideoCallPanel, VideoCallButtons, GroupCallButtons, IncomingCallOverlay
 import { authFetch } from '@/lib/client-fetch'
 
 // ─── Role-based messaging visibility ───────────────────────────────────────────
-// admin & team → can message admin, team, client (NOT training)
+// admin & team → can message admin, team, client, training
 // training   → can message admin, team only
 // client     → can message admin, team only
 function canMessageRole(myRole: string, theirRole: string): boolean {
   if (myRole === 'admin' || myRole === 'team') {
-    // admin/team can message admin, team, client (not training)
-    return theirRole !== 'training'
+    // admin/team can message everyone
+    return true
   }
   if (myRole === 'training') {
     // training can message admin, team only
