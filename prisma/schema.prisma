@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  phone         String?
+  company       String?
+  avatar        String?
+  role          String    @default("team") // admin, team, training, client
+  status        String    @default("active") // active, inactive, pending
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  assignedTasks  TaskAssignment[]
+  createdTasks   Task[]
+  comments       Comment[]
+  clientProjects ClientProject[]
+  createdProjects Project[]
+  memberships    ProjectMember[]
+  onboardingSubmissions Onboarding[]
+  sentMessages       Message[]       @relation("SentMessages")
+  receivedMessages   Message[]       @relation("ReceivedMessages")
+  createdGroups      MessageGroup[]  @relation("CreatedGroups")
+  groupMemberships   GroupMember[]   @relation("GroupMemberships")
+  reviewedOnboardings Onboarding[]   @relation("OnboardingReviewer")
+  clientOnboardingForms OnboardingForm[]  @relation("ClientOnboardingForms")
+  timeEntries      TimeEntry[]
+  screenshots      Screenshot[]
+  screenshotConfig ScreenshotConfig?
+  sessions        Session[]
+  calendarNotes   CalendarNote[]
+}
+
+model Screenshot {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String?
+  taskId      String?
+  title       String?
+  description String?
+  filePath    String
+  fileSize    Int      @default(0)
+  mimeType    String   @default("image/png")
+  isAuto      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ScreenshotConfig {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  autoEnabled    Boolean  @default(false)
+  intervalMinutes Int     @default(5)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#f59e0b")
+  status      String    @default("active") // active, archived, completed
+  priority    String    @default("medium") // low, medium, high
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   String
+
+  creator         User           @relation(fields: [createdBy], references: [id])
+  tasks           Task[]
+  members         ProjectMember[]
+  clientProjects  ClientProject[]
+  onboardingForms OnboardingForm[]
+  timeEntries     TimeEntry[]
+  screenshots     Screenshot[]
+}
+
+model ProjectMember {
+  id        String  @id @default(cuid())
+  projectId String
+  userId    String
+  role      String  @default("member") // owner, member
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model ClientProject {
+  id        String   @id @default(cuid())
+  clientId  String
+  projectId String
+  addedAt   DateTime @default(now())
+
+  client  User    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, projectId])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("todo") // todo, in_progress, in_review, done
+  priority    String    @default("medium") // low, medium, high, urgent
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  projectId   String
+  createdById String
+  tags        String    @default("")
+
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator     User             @relation(fields: [createdById], references: [id])
+  assignments TaskAssignment[]
+  comments    Comment[]
+  subtasks    Subtask[]
+  timeEntries TimeEntry[]
+  screenshots Screenshot[]
+}
+
+model TaskAssignment {
+  id         String   @id @default(cuid())
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model Subtask {
+  id        String   @id @default(cuid())
+  title     String
+  completed Boolean  @default(false)
+  taskId    String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  taskId    String
+  userId    String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+}
+
+model OnboardingForm {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("draft") // draft, published, archived
+  stepsJson   String   // JSON array of step definitions
+  projectId   String
+  clientId    String?  // The client user who owns this onboarding
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  client      User?        @relation("ClientOnboardingForms", fields: [clientId], references: [id], onDelete: Cascade)
+  submissions Onboarding[]
+}
+
+model Onboarding {
+  id          String   @id @default(cuid())
+  formId      String
+  clientId    String
+  status      String   @default("in_progress") // in_progress, submitted, approved, rejected
+  responsesJson String // JSON object of form responses
+  reviewNotes String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  submittedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  form    OnboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client  User           @relation(fields: [clientId], references: [id])
+  reviewer User?          @relation("OnboardingReviewer", fields: [reviewedBy], references: [id])
+
+  @@unique([formId, clientId])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String?
+  groupId    String?
+  projectId  String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender   User          @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User?         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  group    MessageGroup? @relation(fields: [groupId], references: [id])
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, senderId])
+  @@index([groupId])
+}
+
+model MessageGroup {
+  id        String   @id @default(cuid())
+  name      String
+  avatar    String?
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator   User           @relation("CreatedGroups", fields: [createdBy], references: [id])
+  members   GroupMember[]
+  messages  Message[]
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String   @default("member") // admin, member
+  joinedAt  DateTime @default(now())
+
+  group MessageGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User         @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  userId    String?
+  projectId String?
+  taskId    String?
+  createdAt DateTime @default(now())
+}
+
+model CalendarNote {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD
+  content   String
+  color     String   @default("#f59e0b") // note color tag
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model TimeEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  projectId   String?
+  taskId      String?
+  description String?
+  date        String    // YYYY-MM-DD
+  timeIn      DateTime?
+  timeOut     DateTime?
+  duration    Int       @default(0) // minutes
+  status      String    @default("idle") // idle, timed_in, completed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([date])
+}
