@@ -339,3 +339,29 @@ Stage Summary:
 - File uploads now work for both client onboarding wizard and client dashboard
 - Supports: images (jpg, png, gif, webp, svg), documents (pdf, doc, docx, xls, xlsx), archives (zip), text (txt, csv)
 - Max file size: 10MB per file
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix client portal project progress not showing
+
+Work Log:
+- Investigated the client portal project progress display system
+- Identified root cause: When client users are added as project members, the `ClientProject` join table link was NOT being auto-created. The client portal queries through `ClientProject` (not `ProjectMember`), so clients couldn't see projects they were members of.
+- Also found data integrity issue: `kevinP` had `ClientProject` links but no `ProjectMember` entries (created by previous manual fix)
+- Fixed project creation API (`/api/projects` POST) to auto-create `ClientProject` links for client-role members
+- Fixed project members API (`/api/projects/[id]/members` POST) to auto-create `ClientProject` links when adding client members
+- Fixed project members API (`/api/projects/[id]/members` DELETE) to auto-remove `ClientProject` links when removing client members
+- Fixed `kevinP` data integrity by adding missing `ProjectMember` entries
+- Fixed progress bar inconsistency: overview section used `completedPct` (remainder calculation = 24%) while project cards used API `progress` value (25%) for same project
+- Now both sections use `project.progress` from API for display text, and remainder calculation for bar segment widths (ensures bars always sum to 100%)
+- Added `Math.max(0, ...)` to prevent negative percentage values from rounding
+- Verified with browser testing: both client users see correct, consistent progress for all projects
+- VLM analysis confirmed: YDS shows 100%, Yber Digitals shows 25%, both consistent between overview and cards
+
+Stage Summary:
+- Modified `/home/z/my-project/src/app/api/projects/route.ts` - auto-create ClientProject links on project creation
+- Modified `/home/z/my-project/src/app/api/projects/[id]/members/route.ts` - auto-create/delete ClientProject links on member add/remove
+- Modified `/home/z/my-project/src/features/client-dashboard.tsx` - fixed progress percentage consistency between overview and project cards
+- Fixed `kevinP` data integrity (added missing ProjectMember entries)
+- Client portal now correctly shows project progress for all client users

@@ -40,6 +40,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
+    // Auto-create ClientProject links for any client-role members added
+    // so they can see the project in their client portal
+    const clientUsers = await db.user.findMany({
+      where: { id: { in: userIds }, role: 'client' },
+      select: { id: true },
+    })
+    if (clientUsers.length > 0) {
+      await db.clientProject.createMany({
+        data: clientUsers.map(u => ({ clientId: u.id, projectId: id })),
+        skipDuplicates: true,
+      })
+    }
+
     const members = await db.projectMember.findMany({
       where: { projectId: id },
       include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true, status: true } } },
@@ -62,6 +75,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!userId) return NextResponse.json({ error: 'userId query param required' }, { status: 400 })
 
     await db.projectMember.deleteMany({ where: { projectId: id, userId } })
+
+    // Also remove ClientProject link if the user is a client
+    // so the project disappears from their client portal
+    const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
+    if (user?.role === 'client') {
+      await db.clientProject.deleteMany({ where: { projectId: id, clientId: userId } })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return handleApiError(error)

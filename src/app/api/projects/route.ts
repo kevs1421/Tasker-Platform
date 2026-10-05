@@ -69,6 +69,22 @@ export async function POST(request: NextRequest) {
         _count: { select: { tasks: true, members: true } }
       }
     })
+
+    // Auto-create ClientProject links for any client-role members
+    // so they can see the project in their client portal
+    if (filteredMemberIds.length > 0) {
+      const clientUsers = await db.user.findMany({
+        where: { id: { in: filteredMemberIds }, role: 'client' },
+        select: { id: true },
+      })
+      if (clientUsers.length > 0) {
+        await db.clientProject.createMany({
+          data: clientUsers.map(u => ({ clientId: u.id, projectId: project.id })),
+          skipDuplicates: true,
+        })
+      }
+    }
+
     await db.activityLog.create({ data: { action: 'project_created', details: `Created project "${name}"`, userId: createdBy, projectId: project.id } })
     return NextResponse.json({ project }, { status: 201 })
   } catch (error) {

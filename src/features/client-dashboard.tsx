@@ -337,7 +337,10 @@ export function ClientProjects() {
                   const todoPct = total > 0 ? Math.round((todo / total) * 100) : 0
                   const inProgressPct = total > 0 ? Math.round((inProgress / total) * 100) : 0
                   const inReviewPct = total > 0 ? Math.round((inReview / total) * 100) : 0
-                  const completedPct = total > 0 ? (100 - todoPct - inProgressPct - inReviewPct) : 0
+                  // Use the API-provided progress for the text display (consistent with project cards)
+                  // Use the remainder calculation for the bar segment width (ensures segments sum to 100%)
+                  const completedBarPct = total > 0 ? Math.max(0, 100 - todoPct - inProgressPct - inReviewPct) : 0
+                  const completedDisplayPct = project.progress ?? 0
 
                   return (
                     <div key={project.id} className="space-y-2.5">
@@ -347,7 +350,7 @@ export function ClientProjects() {
                           <span className="text-sm font-medium">{project.name}</span>
                         </div>
                         <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          {total > 0 ? `${completedPct}%` : 'No tasks'}
+                          {total > 0 ? `${completedDisplayPct}%` : 'No tasks'}
                         </span>
                       </div>
                       {/* Stacked progress bar */}
@@ -377,7 +380,7 @@ export function ClientProjects() {
                           {completed > 0 && (
                             <div
                               className="bg-emerald-500 transition-all duration-500"
-                              style={{ width: `${completedPct}%` }}
+                              style={{ width: `${completedBarPct}%` }}
                               title={`Completed: ${completed}`}
                             />
                           )}
@@ -424,10 +427,19 @@ export function ClientProjects() {
           {/* ─── Project Cards ──────────────────────────────────── */}
           <div className="space-y-4">
             {projects.map((project, i) => {
+              const todoT = project.taskStats?.todo || 0
+              const inProgressT = project.taskStats?.in_progress || 0
+              const inReviewT = project.taskStats?.in_review || 0
               const doneTasks = project.taskStats?.done || 0
               const totalT = project._count?.tasks || 0
               const pct = project.progress ?? 0
               const isOverdue = project.dueDate && isBefore(parseISO(project.dueDate), startOfDay(new Date()))
+
+              // Compute progress bar segment widths (consistent with overview)
+              const todoPctT = totalT > 0 ? Math.round((todoT / totalT) * 100) : 0
+              const inProgressPctT = totalT > 0 ? Math.round((inProgressT / totalT) * 100) : 0
+              const inReviewPctT = totalT > 0 ? Math.round((inReviewT / totalT) * 100) : 0
+              const donePctT = totalT > 0 ? Math.max(0, 100 - todoPctT - inProgressPctT - inReviewPctT) : 0
 
               // Compute progress bar gradient colors
               const barColor = pct >= 75 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444'
@@ -491,17 +503,17 @@ export function ClientProjects() {
                         {totalT > 0 ? (
                           <>
                             <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                              {(project.taskStats?.todo || 0) > 0 && (
-                                <div className="bg-slate-400 dark:bg-slate-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.todo || 0) / totalT) * 100 : 0}%` }} />
+                              {todoT > 0 && (
+                                <div className="bg-slate-400 dark:bg-slate-500 transition-all duration-500" style={{ width: `${todoPctT}%` }} />
                               )}
-                              {(project.taskStats?.in_progress || 0) > 0 && (
-                                <div className="bg-amber-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.in_progress || 0) / totalT) * 100 : 0}%` }} />
+                              {inProgressT > 0 && (
+                                <div className="bg-amber-500 transition-all duration-500" style={{ width: `${inProgressPctT}%` }} />
                               )}
-                              {(project.taskStats?.in_review || 0) > 0 && (
-                                <div className="bg-blue-500 transition-all duration-500" style={{ width: `${totalT > 0 ? ((project.taskStats?.in_review || 0) / totalT) * 100 : 0}%` }} />
+                              {inReviewT > 0 && (
+                                <div className="bg-blue-500 transition-all duration-500" style={{ width: `${inReviewPctT}%` }} />
                               )}
                               {doneTasks > 0 && (
-                                <div className="bg-emerald-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                                <div className="bg-emerald-500 transition-all duration-500" style={{ width: `${donePctT}%` }} />
                               )}
                             </div>
                             <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
