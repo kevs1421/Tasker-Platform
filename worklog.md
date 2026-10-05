@@ -365,3 +365,27 @@ Stage Summary:
 - Modified `/home/z/my-project/src/features/client-dashboard.tsx` - fixed progress percentage consistency between overview and project cards
 - Fixed `kevinP` data integrity (added missing ProjectMember entries)
 - Client portal now correctly shows project progress for all client users
+---
+Task ID: 1
+Agent: main
+Task: Fix client portal project progress display - clients can't see progress of their active projects
+
+Work Log:
+- Investigated the full client portal data flow: ClientProject → API → Frontend rendering
+- Discovered root cause #1: API only queried via ClientProject junction table, missing ProjectMember fallback
+- Discovered root cause #2: `skipDuplicates` is not supported in Prisma 6.x `createMany()`, causing all auto-creation of ClientProject links to fail silently
+- Fixed `/api/client/projects/route.ts`: Now queries BOTH ClientProject AND ProjectMember tables, merges results, and auto-backfills missing ClientProject links using upsert
+- Fixed `/api/projects/route.ts`: Replaced `createMany` with `skipDuplicates` → `Promise.all(upsert(...))` for auto-creating ClientProject links on project creation
+- Fixed `/api/projects/[id]/members/route.ts`: Same fix for auto-creating ClientProject links when adding members
+- Verified with browser testing: Both existing clients (kevinP, PKevin) and a test client with only ProjectMember links (no ClientProject) can now see their active projects with full progress tracking
+- Progress display confirmed: Project Progress overview card, segmented progress bars, task stats (To Do, In Progress, In Review, Done), percentage display all working correctly
+
+Stage Summary:
+- Root cause: Two bugs working together
+  1. Client projects API only looked at ClientProject table, ignoring ProjectMember memberships
+  2. All auto-creation of ClientProject links was broken due to Prisma 6.x not supporting `skipDuplicates`
+- Fix: Dual-source query (ClientProject + ProjectMember) with automatic backfill, and replaced all `createMany({skipDuplicates: true})` with `upsert()` pattern
+- Files modified:
+  - `src/app/api/client/projects/route.ts` (major rewrite)
+  - `src/app/api/projects/route.ts` (skipDuplicates fix)
+  - `src/app/api/projects/[id]/members/route.ts` (skipDuplicates fix)

@@ -78,10 +78,15 @@ export async function POST(request: NextRequest) {
         select: { id: true },
       })
       if (clientUsers.length > 0) {
-        await db.clientProject.createMany({
-          data: clientUsers.map(u => ({ clientId: u.id, projectId: project.id })),
-          skipDuplicates: true,
-        })
+        await Promise.all(
+          clientUsers.map(u =>
+            db.clientProject.upsert({
+              where: { clientId_projectId: { clientId: u.id, projectId: project.id } },
+              create: { clientId: u.id, projectId: project.id },
+              update: {},
+            })
+          )
+        )
       }
     }
 
