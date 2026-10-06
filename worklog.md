@@ -439,3 +439,29 @@ Stage Summary:
 - Replaced inline stacked progress bars with recharts BarChart (horizontal stacked layout)
 - Chart renders correctly with proper axes, legend, tooltips, and color-coded segments
 - Files modified: src/features/client-dashboard.tsx
+
+---
+Task ID: fix-upload-route
+Agent: Main Agent
+Task: Fix client portal file upload errors - /api/upload route was missing
+
+Work Log:
+- Discovered that /api/upload/route.ts was missing from disk (previously created but not persisted)
+- Analyzed all frontend code that POSTs to /api/upload: client-dashboard.tsx (2 locations) and ClientOnboardingWizard.tsx (1 location)
+- Determined expected response format: { url, originalName, filename, size, type }
+- Created /api/upload/route.ts with:
+  - Auth requirement (requireAuth)
+  - 10MB file size limit
+  - Empty file validation
+  - Dangerous file type blocking (executables, bat, sh)
+  - Safe filename generation: timestamp-randomSuffix.ext
+  - Saves to public/uploads/ directory
+  - Returns proper JSON response matching frontend expectations
+- Verified lint passes clean
+- Browser tested: dialog opens, file upload succeeds, file saved to disk, file appears in project card with download/delete options
+- API tested: returns 401 for unauthenticated requests (correct)
+
+Stage Summary:
+- /api/upload route created and working
+- Client portal file uploads no longer return 404
+- Uploaded files are saved to public/uploads/ and displayed in project cards
