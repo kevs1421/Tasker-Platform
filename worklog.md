@@ -465,3 +465,25 @@ Stage Summary:
 - /api/upload route created and working
 - Client portal file uploads no longer return 404
 - Uploaded files are saved to public/uploads/ and displayed in project cards
+
+---
+Task ID: fix-client-progress
+Agent: Main Agent
+Task: Fix client portal not displaying project track progress for active projects
+
+Work Log:
+- Investigated the client portal Projects page rendering
+- Used VLM to analyze screenshots - confirmed bar chart and progress bars render correctly
+- Discovered kevinP client was not a member of the YDS project (only linked to Yber Digitals via ClientProject)
+- The /api/client/projects API uses dual-source lookup (ClientProject + ProjectMember) correctly
+- Added kevinP as a ProjectMember of YDS project so they can see both active projects
+- After fix: kevinP can see both YDS (100%, 1/1 tasks) and Yber Digitals (25%, 2/8 tasks)
+- Bar chart correctly shows stacked horizontal bars for both projects
+- Individual project cards show segmented progress bars with task breakdowns
+- Verified Prisma version: @prisma/client 6.19.2, prisma CLI 6.19.2
+
+Stage Summary:
+- Client portal now displays progress tracking for ALL active projects the client is linked to
+- Dual-source project visibility (ClientProject + ProjectMember) is working
+- Progress bar, bar chart, and task statistics all render correctly
+- Prisma version: 6.19.2 (both client and CLI)
