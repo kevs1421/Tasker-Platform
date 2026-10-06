@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -8,6 +8,10 @@ import {
   Calendar, Users, Loader2, FileText, Shield, Lock, Save,
   Upload, File, ImageIcon, FileSpreadsheet, Trash2, Download, BarChart3,
 } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, ResponsiveContainer, Cell,
+} from 'recharts'
 import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
 import type { Project } from '@/types'
@@ -315,106 +319,117 @@ export function ClientProjects() {
       </Dialog>
 
       {/* ─── Project Progress Overview ──────────────────────────── */}
-      {projects.length > 0 && (
-        <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-primary" />
-                Project Progress
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-5">
-                {projects.map((project) => {
-                  const todo = project.taskStats?.todo || 0
-                  const inProgress = project.taskStats?.in_progress || 0
-                  const inReview = project.taskStats?.in_review || 0
-                  const completed = project.taskStats?.done || 0
-                  const total = todo + inProgress + inReview + completed
+      {projects.length > 0 && (() => {
+        // Build bar chart data: one entry per project with task counts by status
+        const barData = projects.map(project => ({
+          name: project.name,
+          'To Do': project.taskStats?.todo || 0,
+          'In Progress': project.taskStats?.in_progress || 0,
+          'In Review': project.taskStats?.in_review || 0,
+          'Done': project.taskStats?.done || 0,
+          total: (project.taskStats?.todo || 0) + (project.taskStats?.in_progress || 0) + (project.taskStats?.in_review || 0) + (project.taskStats?.done || 0),
+          progress: project.progress ?? 0,
+        }))
 
-                  const todoPct = total > 0 ? Math.round((todo / total) * 100) : 0
-                  const inProgressPct = total > 0 ? Math.round((inProgress / total) * 100) : 0
-                  const inReviewPct = total > 0 ? Math.round((inReview / total) * 100) : 0
-                  // Use the API-provided progress for the text display (consistent with project cards)
-                  // Use the remainder calculation for the bar segment width (ensures segments sum to 100%)
-                  const completedBarPct = total > 0 ? Math.max(0, 100 - todoPct - inProgressPct - inReviewPct) : 0
-                  const completedDisplayPct = project.progress ?? 0
+        const maxTasks = Math.max(...barData.map(d => d.total), 1)
 
-                  return (
-                    <div key={project.id} className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
-                          <span className="text-sm font-medium">{project.name}</span>
-                        </div>
-                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          {total > 0 ? `${completedDisplayPct}%` : 'No tasks'}
-                        </span>
-                      </div>
-                      {/* Stacked progress bar */}
-                      {total > 0 ? (
-                        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-                          {todo > 0 && (
-                            <div
-                              className="bg-slate-400 dark:bg-slate-500 transition-all duration-500"
-                              style={{ width: `${todoPct}%` }}
-                              title={`Not Started: ${todo}`}
-                            />
-                          )}
-                          {inProgress > 0 && (
-                            <div
-                              className="bg-amber-500 transition-all duration-500"
-                              style={{ width: `${inProgressPct}%` }}
-                              title={`In Progress: ${inProgress}`}
-                            />
-                          )}
-                          {inReview > 0 && (
-                            <div
-                              className="bg-blue-500 transition-all duration-500"
-                              style={{ width: `${inReviewPct}%` }}
-                              title={`In Review: ${inReview}`}
-                            />
-                          )}
-                          {completed > 0 && (
-                            <div
-                              className="bg-emerald-500 transition-all duration-500"
-                              style={{ width: `${completedBarPct}%` }}
-                              title={`Completed: ${completed}`}
-                            />
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" />
-                      )}
-                      {/* Legend */}
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 dark:bg-slate-500" />
-                          Not Started ({todo})
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
-                          In Progress ({inProgress})
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
-                          In Review ({inReview})
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-                          Completed ({completed})
-                        </span>
-                      </div>
+        // Custom tooltip
+        const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
+          if (!active || !payload?.length) return null
+          const item = barData.find(d => d.name === label)
+          return (
+            <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
+              <p className="font-semibold mb-1.5">{label}</p>
+              {payload.map((entry, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: entry.color }} />
+                  <span className="text-muted-foreground">{entry.name}:</span>
+                  <span className="font-medium">{entry.value}</span>
+                </div>
+              ))}
+              {item && (
+                <div className="mt-1.5 pt-1.5 border-t text-emerald-600 dark:text-emerald-400 font-medium">
+                  {item.progress}% complete
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        return (
+          <motion.div {...fadeSlide} transition={{ delay: 0.1 }}>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  Project Progress
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
+              </CardHeader>
+              <CardContent>
+                {barData.some(d => d.total > 0) ? (
+                  <div className="w-full" style={{ height: Math.max(180, barData.length * 60 + 40) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={barData}
+                        layout="vertical"
+                        margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
+                        barCategoryGap="25%"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
+                        <XAxis
+                          type="number"
+                          allowDecimals={false}
+                          tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
+                          axisLine={{ stroke: 'var(--color-border)' }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={90}
+                          tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend
+                          iconType="square"
+                          iconSize={10}
+                          wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                        />
+                        <Bar dataKey="To Do" stackId="tasks" fill="#94a3b8" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="In Progress" stackId="tasks" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="In Review" stackId="tasks" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="Done" stackId="tasks" fill="#10b981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+                    No tasks across your projects yet
+                  </div>
+                )}
+                {/* Per-project progress summary below chart */}
+                <div className="mt-4 space-y-2">
+                  {barData.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{d.name}</span>
+                      <span className={cn(
+                        'font-semibold',
+                        d.progress >= 75 ? 'text-emerald-600 dark:text-emerald-400' :
+                        d.progress >= 40 ? 'text-amber-600 dark:text-amber-400' :
+                        'text-red-500'
+                      )}>
+                        {d.total > 0 ? `${d.progress}% (${d['Done']}/${d.total} tasks)` : 'No tasks'}
+                      </span>
                     </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )
+      })()}
 
       {projects.length === 0 ? (
         <EmptyState

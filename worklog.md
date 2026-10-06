@@ -414,3 +414,28 @@ Stage Summary:
 - kevinP -> Yber Digitals (25% progress, 2/8 tasks done)
 - PKevin -> YDS (100% progress, 1/1 tasks done)
 - The API already enforces client isolation (only returns projects linked to the requesting clientId)
+---
+Task ID: 3
+Agent: main
+Task: Change Project Progress display from stacked progress bar to bar graph
+
+Work Log:
+- Analyzed the uploaded image showing the current stacked horizontal progress bar
+- Added recharts imports (BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell)
+- Replaced the stacked progress bar section (lines 317-417) with a proper horizontal stacked bar chart
+- The bar chart shows:
+  - Y-axis: project names
+  - X-axisCaxis: task count scale
+  - Stacked bars: To Do (slate), In Progress (amber), In Review (blue), Done (emerald)
+ ! Custom tooltip showing status counts and completion percentage
+  - Legend with all 4 status categories
+  - Progress summary below chart with color-coded percentages
+- Verified rendering for both clients via browser:
+  - kevinP: Yber Digitals bar with 4 segments (3 To Do, 2 In Progress, 1 In Review, 2 Done) on 0-8 scale
+  - PKevin: YDS bar with 1 segment (1 Done) on 0-4 scale
+- Lint passes with no errors
+
+Stage Summary:
+- Replaced inline stacked progress bars with recharts BarChart (horizontal stacked layout)
+- Chart renders correctly with proper axes, legend, tooltips, and color-coded segments
+- Files modified: src/features/client-dashboard.tsx
