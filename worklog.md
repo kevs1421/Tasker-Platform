@@ -389,3 +389,28 @@ Stage Summary:
   - `src/app/api/client/projects/route.ts` (major rewrite)
   - `src/app/api/projects/route.ts` (skipDuplicates fix)
   - `src/app/api/projects/[id]/members/route.ts` (skipDuplicates fix)
+---
+Task ID: 2
+Agent: main
+Task: Fix client project visibility - each client should only see their own projects
+
+Work Log:
+- Investigated all ClientProject and ProjectMember links in the database
+- Found both clients (kevinP and PKevin) were linked to BOTH projects via both ClientProject and ProjectMember tables
+- Removed incorrect links:
+  - Deleted kevinP -> YDS ClientProject link
+  - Deleted PKevin -> Yber Digitals ClientProject link
+  - Removed kevinP from YDS ProjectMember
+  - Removed PKevin from Yber Digitals ProjectMember
+- Correct final state:
+  - kevinP -> Yber Digitals only (ClientProject + ProjectMember)
+  - PKevin -> YDS only (ClientProject + ProjectMember)
+- Verified via API: kevinP sees only Yber Digitals, PKevin sees only YDS
+- Verified via browser: both clients see only their own project with progress
+
+Stage Summary:
+- Root cause: Both clients were linked to both projects in both junction tables
+- Fix: Corrected the database associations to match each client to their own project only
+- kevinP -> Yber Digitals (25% progress, 2/8 tasks done)
+- PKevin -> YDS (100% progress, 1/1 tasks done)
+- The API already enforces client isolation (only returns projects linked to the requesting clientId)
