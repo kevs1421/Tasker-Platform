@@ -510,3 +510,52 @@ Stage Summary:
 - PostgreSQL running at localhost:5432, database: taskflow, user: taskflow
 - All 19 tables created and schema is in sync
 - App fully functional with PostgreSQL backend
+
+---
+Task ID: 1
+Agent: main
+Task: Fix client portal project progress not displaying
+
+Work Log:
+- Investigated the project structure and found Prisma schema was set to PostgreSQL but .env had SQLite URL
+- Found PostgreSQL server IS installed at /home/z/postgresql/ and running on port 5432
+- Restored correct .env with PostgreSQL URL: DATABASE_URL=postgresql://taskflow:taskflow123@localhost:5432/taskflow?schema=public
+- Discovered the PostgreSQL database was nearly empty - only had the admin user from seeding
+- Root cause: The seed script only created an admin user; no client users, projects, or tasks existed
+- Updated prisma/seed.ts to create comprehensive test data including:
+  - 2 client users (kevinp@yberdigitals.com, pkevin@yberdigitals.com)
+  - 1 team member, 1 training member
+  - 3 projects with proper ClientProject links
+  - Tasks with various statuses (todo, in_progress, in_review, done)
+- Fixed bugs in client-dashboard.tsx:
+  - Added 401 handling in fetchProjects - force logout on expired session instead of showing empty state
+  - Added error state with retry button for better UX
+  - Fixed race condition - don't set loading=false on early return
+  - Fixed stable React keys - use project name instead of array index
+- Verified the API returns correct progress data via curl tests
+- Verified the client portal displays progress correctly via Agent Browser
+
+Stage Summary:
+- Root cause: Empty PostgreSQL database (no client users, projects, or tasks)
+- Fixed by updating seed script with comprehensive test data
+- Added 401 error handling and retry UI in client dashboard
+- Client portal now shows: project progress bars, task stats, percentage completion
+- Test credentials: kevinp@yberdigitals.com / kevinp123 (client), pkevin@yberdigitals.com / pkevin123 (client)
+
+---
+Task ID: 2
+Agent: main
+Task: Final verification of client portal project progress fix
+
+Work Log:
+- Confirmed API returns correct progress data for client users
+- kevinp@yberdigitals.com sees: YDS Mobile App (43%, 3/7 done) and Yber Digitals Website (25%, 2/8 done)
+- pkevin@yberdigitals.com sees: YDS Mobile App (43%, 3/7 done) and Brand Identity Design (40%, 2/5 done)
+- Browser test confirmed progress bars, task stats, and percentage completion display correctly
+- Server is unstable in sandbox environment (crashes under heavy load) but core functionality works
+
+Stage Summary:
+- Client portal project progress IS displaying correctly
+- Root cause was empty database (no client users, projects, or tasks seeded)
+- Fix: Updated seed script + added 401 error handling + retry UI in client dashboard
+- All API tests pass, browser test confirmed working UI

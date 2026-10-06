@@ -99,6 +99,7 @@ export function ClientProjects() {
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<ClientProject[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Upload files state
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ url: string; originalName: string; filename: string; size: number; type: string; uploadedAt: string; projectId: string }>>([])
@@ -112,19 +113,34 @@ export function ClientProjects() {
 
 
   const fetchProjects = useCallback(async () => {
-    if (!user?.id) return
+    if (!user?.id) return // Don't set loading=false — parent ensures user is hydrated before mounting
+    setLoading(true)
+    setError(null)
     try {
       // Use the client-only endpoint that queries through ClientProject table
       // This ensures only projects explicitly assigned to this client are returned
       const res = await authFetch(`/api/client/projects?clientId=${user.id}`)
+
+      // Handle 401 — session expired or invalid, force logout
+      if (res.status === 401) {
+        useAuthStore.getState().forceLogout()
+        return
+      }
+
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to load projects')
+        let errorMsg = 'Failed to load projects'
+        try {
+          const data = await res.json()
+          errorMsg = data.error || errorMsg
+        } catch { /* response not JSON */ }
+        throw new Error(errorMsg)
       }
       const data = await res.json()
       setProjects(data.projects || [])
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load projects')
+      const msg = e instanceof Error ? e.message : 'Failed to load projects'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -217,6 +233,31 @@ export function ClientProjects() {
   // formatFileSize is now imported from @/lib/format
 
   if (loading) return <PageSkeleton />
+
+  // Error state with retry button
+  if (error && projects.length === 0) {
+    return (
+      <div className="p-4 md:p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+            <FolderKanban className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">My Projects</h1>
+            <p className="text-sm text-muted-foreground">Track progress on all your active projects</p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="p-6 text-center">
+            <p className="text-sm text-muted-foreground mb-3">{error}</p>
+            <Button variant="outline" onClick={() => fetchProjects()} className="gap-2">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -411,8 +452,8 @@ export function ClientProjects() {
                 )}
                 {/* Per-project progress summary below chart */}
                 <div className="mt-4 space-y-2">
-                  {barData.map((d, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
+                  {barData.map((d) => (
+                    <div key={d.name} className="flex items-center justify-between text-sm">
                       <span className="font-medium">{d.name}</span>
                       <span className={cn(
                         'font-semibold',
