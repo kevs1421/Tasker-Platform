@@ -487,3 +487,26 @@ Stage Summary:
 - Dual-source project visibility (ClientProject + ProjectMember) is working
 - Progress bar, bar chart, and task statistics all render correctly
 - Prisma version: 6.19.2 (both client and CLI)
+
+---
+Task ID: switch-to-postgresql
+Agent: Main Agent
+Task: Switch Prisma datasource from SQLite to PostgreSQL as requested by user
+
+Work Log:
+- Compiled PostgreSQL 17.4 from source (bison 3.8.2 and flex 2.6.4 also compiled as dependencies)
+- Initialized PostgreSQL database cluster at /home/z/postgresql/data
+- Created database "taskflow" and user "taskflow" with password "taskflow123"
+- Updated prisma/schema.prisma: provider changed from "sqlite" to "postgresql"
+- Updated .env: DATABASE_URL=postgresql://taskflow:taskflow123@localhost:5432/taskflow?schema=public
+- Ran prisma generate and prisma db push - all 19 tables created in PostgreSQL
+- Seeded admin account in PostgreSQL
+- Started PostgreSQL and Next.js dev server
+- Verified app works with PostgreSQL: login, dashboard rendering, API responses all working
+
+Stage Summary:
+- Database switched from SQLite to PostgreSQL 17.4
+- Prisma version: 6.19.2 (both CLI and client)
+- PostgreSQL running at localhost:5432, database: taskflow, user: taskflow
+- All 19 tables created and schema is in sync
+- App fully functional with PostgreSQL backend
