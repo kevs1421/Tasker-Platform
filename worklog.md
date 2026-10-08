@@ -559,3 +559,28 @@ Stage Summary:
 - Root cause was empty database (no client users, projects, or tasks seeded)
 - Fix: Updated seed script + added 401 error handling + retry UI in client dashboard
 - All API tests pass, browser test confirmed working UI
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix client portal project progress not displaying
+
+Work Log:
+- Investigated the project structure and traced the data flow: ClientProjects component → /api/client/projects API → Prisma DB
+- Discovered root cause: Prisma schema had `provider = "postgresql"` but the actual database was SQLite (file at /home/z/my-project/db/custom.db)
+- The DATABASE_URL in .env was `file:/home/z/my-project/db/custom.db` (SQLite format) but schema expected PostgreSQL
+- Also found start-dev.sh and keep-alive.sh were overriding DATABASE_URL with a PostgreSQL connection string (postgresql://taskflow:taskflow123@localhost:5432/taskflow) but PostgreSQL was not installed
+- Fixed prisma/schema.prisma: changed provider from "postgresql" to "sqlite"
+- Fixed start-dev.sh: changed DATABASE_URL to correct SQLite path
+- Fixed keep-alive.sh: changed DATABASE_URL to correct SQLite path
+- Regenerated Prisma client with `bun run db:generate`
+- Verified database schema is in sync with `bun run db:push`
+- Confirmed data exists: 2 client users, 3 ClientProject links, 2 active projects, 9 tasks
+- Tested API directly: /api/client/projects returns correct taskStats and progress data
+- Browser-tested: logged in as client user "kevinP" and verified full UI rendering
+
+Stage Summary:
+- Root cause: Prisma schema provider mismatch (postgresql vs sqlite)
+- Fix: Changed provider to "sqlite" in schema, fixed DATABASE_URL in scripts
+- Verified: Client portal now shows "Project Progress" chart, "My Projects" with task stats
+  - YDS: 100% (1/1 tasks done)
+  - Yber Digitals: 25% (2/8 tasks done: 3 todo, 2 in_progress, 1 in_review, 2 done)

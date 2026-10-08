@@ -1,6 +1,6 @@
 #!/bin/bash
 # Persistent Next.js dev server wrapper
-export DATABASE_URL="postgresql://taskflow:taskflow123@localhost:5432/taskflow?schema=public"
+export DATABASE_URL="file:/home/z/my-project/db/custom.db"
 export PATH="/home/z/postgresql/bin:$PATH"
 export LD_LIBRARY_PATH="/home/z/postgresql/lib:$LD_LIBRARY_PATH"
 cd /home/z/my-project
