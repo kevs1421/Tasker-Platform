@@ -584,3 +584,28 @@ Stage Summary:
 - Verified: Client portal now shows "Project Progress" chart, "My Projects" with task stats
   - YDS: 100% (1/1 tasks done)
   - Yber Digitals: 25% (2/8 tasks done: 3 todo, 2 in_progress, 1 in_review, 2 done)
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix client portal showing "No active projects" (user confirmed with screenshot)
+
+Work Log:
+- User provided screenshot showing "No active projects" empty state on client portal
+- Used VLM to analyze screenshot: confirmed empty state with "No active projects" message
+- Investigated database data: both client users (kevinP, PKevin) have ClientProject links and ProjectMember entries
+- Discovered the root cause: the old dev server was still running with PostgreSQL Prisma client from before the schema fix
+- The server needed to be restarted after changing prisma provider from postgresql → sqlite
+- Cleared .next cache and restarted dev server
+- Tested API: /api/client/projects now correctly returns projects with taskStats and progress
+- Browser-tested both client users:
+  - kevinP: sees 2 projects (YDS 100%, Yber Digitals 25%) with Project Progress chart
+  - PKevin: sees 1 project (YDS 100%) with Project Progress chart
+- Both users now see: Project Progress bar chart, task breakdowns, progress bars on project cards
+
+Stage Summary:
+- Root cause: Dev server wasn't restarted after Prisma schema provider change
+- After restart with clean cache, the client portal correctly displays:
+  - Project Progress overview chart (stacked bar chart with To Do/In Progress/In Review/Done)
+  - Per-project progress summary (e.g., "100% (1/1 tasks)", "25% (2/8 tasks)")
+  - Individual project cards with progress bars and task status breakdowns
+- All lint checks pass
