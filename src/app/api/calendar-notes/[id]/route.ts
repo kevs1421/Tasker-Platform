@@ -8,21 +8,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const { id } = await params
-    const { searchParams } = new URL(req.url)
-    const userId = searchParams.get('userId')
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    }
 
     const note = await db.calendarNote.findFirst({
-      where: { id, userId },
+      where: { id },
     })
 
     if (!note) {
       return NextResponse.json({ error: 'Note not found' }, { status: 404 })
+    }
+
+    // Ownership check: non-admin users can only delete their own notes
+    if (note.userId !== authed.id && authed.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only delete your own notes' }, { status: 403 })
     }
 
     await db.calendarNote.delete({ where: { id } })

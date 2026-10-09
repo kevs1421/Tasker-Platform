@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, handleApiError } from '@/lib/api-auth'
-import { getAuthUser } from '@/lib/session'
+import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 // GET /api/screenshot-config
 // Returns the admin-configured global settings, or per-user defaults
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthUser(request)
+    const user = await requireAuth(request)
 
     // Non-admin users get minimal defaults for client-side use
-    if (!user || user.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({
         autoEnabled: true,
         intervalMinutes: 5,
@@ -44,6 +43,11 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
     const { autoEnabled, intervalMinutes } = body
+
+    // Validate intervalMinutes is a positive number (minimum 1)
+    if (intervalMinutes !== undefined && (typeof intervalMinutes !== 'number' || intervalMinutes < 1)) {
+      return NextResponse.json({ error: 'intervalMinutes must be a positive number (minimum 1)' }, { status: 400 })
+    }
 
     // Upsert config using the admin's actual user ID (satisfies FK constraint)
     const config = await db.screenshotConfig.upsert({

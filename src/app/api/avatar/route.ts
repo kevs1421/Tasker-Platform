@@ -11,13 +11,18 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 // POST /api/avatar — Upload profile image
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const formData = await req.formData()
     const file = formData.get('avatar') as File | null
     const userId = formData.get('userId') as string | null
 
     if (!file || !userId) {
       return NextResponse.json({ error: 'avatar file and userId are required' }, { status: 400 })
+    }
+
+    // IDOR check: only the user themselves or admin can upload avatar
+    if (authed.id !== userId && authed.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only upload your own avatar' }, { status: 403 })
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
@@ -58,11 +63,16 @@ export async function POST(req: NextRequest) {
 // DELETE /api/avatar?userId=xxx
 export async function DELETE(req: NextRequest) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
     if (!userId) {
       return NextResponse.json({ error: 'userId required' }, { status: 400 })
+    }
+
+    // IDOR check: only the user themselves or admin can delete avatar
+    if (authed.id !== userId && authed.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only delete your own avatar' }, { status: 403 })
     }
 
     const user = await db.user.findUnique({ where: { id: userId }, select: { avatar: true } })

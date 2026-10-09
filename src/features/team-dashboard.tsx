@@ -1243,7 +1243,7 @@ export function TeamTasks() {
             </Button>
           </div>
           {!isTraining && (
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) { setCTitle(''); setCDesc(''); setCStatus('todo'); setCPriority('medium'); setCDueDate(undefined); setCTags(''); setCAssignee('') } }}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" /> Create Task
@@ -1540,10 +1540,10 @@ export function TeamTasks() {
 
       {/* Task Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={(open) => { setDetailOpen(open); if (!open) { setDetailTask(null); setComments([]) } }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
           {detailTask && (
             <>
-              <DialogHeader>
+              <DialogHeader className="shrink-0 px-6 pt-6 pb-2">
                 <div className="flex items-center gap-3">
                   <div className={cn('h-3 w-3 rounded-full', getStatusConfig(detailTask.status).dotColor)} />
                   {isEditingTitle ? (
@@ -1577,6 +1577,7 @@ export function TeamTasks() {
                 <DialogDescription className="sr-only">Task details</DialogDescription>
               </DialogHeader>
 
+              <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
               <div className="space-y-6">
                 {/* Status / Priority / Due Date */}
                 <div className="grid grid-cols-3 gap-4">
@@ -1852,6 +1853,7 @@ export function TeamTasks() {
                   </div>
                 </div>
               </div>
+              </ScrollArea>
             </>
           )}
         </DialogContent>

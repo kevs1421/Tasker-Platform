@@ -7,7 +7,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { id } = await params
     const body = await request.json()
     const { action, description, projectId, taskId, timeIn, timeOut } = body
@@ -15,6 +15,11 @@ export async function PATCH(
     const existing = await db.timeEntry.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Time entry not found' }, { status: 404 })
+    }
+
+    // Ownership check: only the owner or admin can modify
+    if (existing.userId !== authed.id && authed.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only modify your own time entries' }, { status: 403 })
     }
 
     if (action === 'time_out') {
@@ -97,8 +102,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { id } = await params
+
+    const existing = await db.timeEntry.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Time entry not found' }, { status: 404 })
+    }
+
+    // Ownership check: only the owner or admin can delete
+    if (existing.userId !== authed.id && authed.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only delete your own time entries' }, { status: 403 })
+    }
+
     await db.timeEntry.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {

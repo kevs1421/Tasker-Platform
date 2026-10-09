@@ -4,9 +4,16 @@ import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const { searchParams } = new URL(req.url)
     const clientId = searchParams.get('clientId')
+
+    // For client role, verify clientId matches authenticated user
+    if (authed.role === 'client') {
+      if (clientId && clientId !== authed.id) {
+        return NextResponse.json({ error: 'You can only view your own onboarding forms' }, { status: 403 })
+      }
+    }
 
     // If clientId is provided, return forms assigned to this client OR
     // forms assigned to projects the client is a member of (where clientId is null)

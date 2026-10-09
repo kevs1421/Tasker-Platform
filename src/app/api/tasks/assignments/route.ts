@@ -4,8 +4,12 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request)
-    const { userId, taskId, assignedBy } = await request.json()
+    const authed = await requireAuth(request)
+    // Client role cannot manage assignments
+    if (authed.role === 'client') {
+      return NextResponse.json({ error: 'Client users cannot manage task assignments' }, { status: 403 })
+    }
+    const { userId, taskId } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
     const existing = await db.taskAssignment.findUnique({ where: { taskId_userId: { taskId, userId } } })
@@ -20,10 +24,8 @@ export async function POST(request: NextRequest) {
     await db.activityLog.create({
       data: {
         action: 'task_assigned',
-        details: assignedBy
-          ? `Assigned ${assignment.user?.name || userId} to task`
-          : `User ${assignment.user?.name || userId} assigned to task`,
-        userId: assignedBy || userId,
+        details: `Assigned ${assignment.user?.name || userId} to task`,
+        userId: authed.id,
         taskId,
       }
     })
@@ -34,7 +36,11 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
+    // Client role cannot manage assignments
+    if (authed.role === 'client') {
+      return NextResponse.json({ error: 'Client users cannot manage task assignments' }, { status: 403 })
+    }
     const { userId, taskId } = await request.json()
     if (!userId || !taskId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     await db.taskAssignment.deleteMany({ where: { userId, taskId } })

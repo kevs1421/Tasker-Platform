@@ -7,7 +7,7 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const submissionId = searchParams.get('submissionId')
     const fileId = searchParams.get('fileId')
@@ -26,6 +26,11 @@ export async function GET(request: NextRequest) {
 
     if (!submission) {
       return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
+    }
+
+    // Access control: admin can access any submission, client can only access their own
+    if (authed.role !== 'admin' && submission.clientId !== authed.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Parse files from responsesJson
@@ -61,7 +66,13 @@ export async function GET(request: NextRequest) {
       if (!file) continue
 
       const urlPath = file.url.startsWith('/') ? file.url : `/${file.url}`
+
+      // Path traversal check: ensure the resolved path stays within the uploads directory
+      const uploadsDir = join(process.cwd(), 'public', 'uploads')
       const filePath = join(publicDir, urlPath)
+      if (!filePath.startsWith(uploadsDir)) {
+        continue // Skip files that escape the uploads directory
+      }
 
       const label = key
         .replace(/([A-Z])/g, ' $1')

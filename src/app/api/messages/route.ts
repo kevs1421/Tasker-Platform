@@ -171,9 +171,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request)
-    const { content, senderId, receiverId, groupId, projectId } = await request.json()
-    if (!content || !senderId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    const authed = await requireAuth(request)
+    const { content, receiverId, groupId, projectId } = await request.json()
+    if (!content) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
     // Must target either a user or a group, not both
     if (!receiverId && !groupId) {
@@ -185,10 +185,9 @@ export async function POST(request: NextRequest) {
     // training    → can message admin, team only
     // client      → can message admin, team only
     if (receiverId) {
-      const sender = await db.user.findUnique({ where: { id: senderId }, select: { role: true } })
       const receiver = await db.user.findUnique({ where: { id: receiverId }, select: { role: true } })
-      if (sender && receiver) {
-        const senderRole = sender.role
+      if (receiver) {
+        const senderRole = authed.role
         const receiverRole = receiver.role
         let allowed = false
         if (senderRole === 'admin' || senderRole === 'team') {
@@ -204,10 +203,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // For group messages, verify sender is a member of the group
+    if (groupId) {
+      const membership = await db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId: authed.id } } })
+      if (!membership) {
+        return NextResponse.json({ error: 'Not a member of this group' }, { status: 403 })
+      }
+    }
+
     const message = await db.message.create({
       data: {
         content,
-        senderId,
+        senderId: authed.id,
         receiverId: receiverId || null,
         groupId: groupId || null,
         projectId: projectId || null,
@@ -234,23 +241,19 @@ export async function POST(request: NextRequest) {
 // DELETE /api/messages?deleteConversation=true&userId=xxx&groupId=xxx — Delete group (and all its messages)
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
     const messageId = searchParams.get('id')
     const deleteConversation = searchParams.get('deleteConversation')
     const otherId = searchParams.get('otherId')
     const groupId = searchParams.get('groupId')
-
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
 
     // Delete a single message
     if (messageId && !deleteConversation) {
       const msg = await db.message.findUnique({ where: { id: messageId } })
       if (!msg) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
       // Only allow deleting own messages, or admin can delete any
-      const userRecord = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
-      if (msg.senderId !== userId && userRecord?.role !== 'admin') {
+      if (msg.senderId !== authed.id && authed.role !== 'admin') {
         return NextResponse.json({ error: 'Cannot delete this message' }, { status: 403 })
       }
       await db.message.delete({ where: { id: messageId } })
@@ -262,8 +265,8 @@ export async function DELETE(request: NextRequest) {
       await db.message.deleteMany({
         where: {
           OR: [
-            { senderId: userId, receiverId: otherId, groupId: null },
-            { senderId: otherId, receiverId: userId, groupId: null },
+            { senderId: authed.id, receiverId: otherId, groupId: null },
+            { senderId: otherId, receiverId: authed.id, groupId: null },
           ],
         },
       })
@@ -275,8 +278,7 @@ export async function DELETE(request: NextRequest) {
       const group = await db.messageGroup.findUnique({ where: { id: groupId } })
       if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
       // Only creator or admin can delete
-      const userRecord = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
-      if (group.createdBy !== userId && userRecord?.role !== 'admin') {
+      if (group.createdBy !== authed.id && authed.role !== 'admin') {
         return NextResponse.json({ error: 'Cannot delete this group' }, { status: 403 })
       }
       await db.messageGroup.delete({ where: { id: groupId } })

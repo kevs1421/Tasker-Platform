@@ -296,39 +296,7 @@ export function ClientProjects() {
             onDrop={(e) => {
               e.preventDefault()
               setUploadDragOver(null)
-              // Set the project context before handling files
-              const files = e.dataTransfer.files
-              if (files && files.length > 0) {
-                // Use a separate handler for dialog drops
-                void (async () => {
-                  setUploading(true)
-                  const newFiles: typeof uploadedFiles = []
-                  for (let i = 0; i < files.length; i++) {
-                    const file = files[i]
-                    try {
-                      if (file.size > 10 * 1024 * 1024) throw new Error(`File size exceeds 10MB limit`)
-                      if (file.size === 0) throw new Error('File is empty')
-                      const formData = new FormData()
-                      formData.append('file', file)
-                      const res = await authFetch('/api/upload', { method: 'POST', body: formData })
-                      const data = await res.json()
-                      if (!res.ok) {
-                        throw new Error(data.error || 'Upload failed')
-                      }
-                      newFiles.push({ ...data, uploadedAt: new Date().toISOString(), projectId: uploadDialogProjectId })
-                    } catch (err: unknown) {
-                      toast.error(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
-                    }
-                  }
-                  if (newFiles.length > 0) {
-                    const updated = [...uploadedFiles, ...newFiles]
-                    setUploadedFiles(updated)
-                    saveUploadedFiles(updated)
-                    toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded successfully`)
-                  }
-                  setUploading(false)
-                })()
-              }
+              handleFileUpload(e.dataTransfer.files)
             }}
             onClick={() => fileInputRef.current?.click()}
             className={cn(
@@ -671,11 +639,10 @@ export function ClientProfile() {
     const fetchProfile = async () => {
       try {
         const res = await authFetch(`/api/user/profile?userId=${user.id}`)
+        const data = await res.json()
         if (!res.ok) {
-          const data = await res.json()
           throw new Error(data.error || 'Failed to load profile')
         }
-        const data = await res.json()
         if (data.user) {
           setName(data.user.name || '')
           setEmail(data.user.email || '')

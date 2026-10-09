@@ -300,6 +300,7 @@ export function AdminOnboarding() {
   const [forms, setForms] = useState<OnboardingForm[]>([])
   const [selectedForm, setSelectedForm] = useState<(OnboardingForm & { submissions: Onboarding[] }) | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [formDetailLoading, setFormDetailLoading] = useState(false)
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
 
@@ -369,6 +370,7 @@ export function AdminOnboarding() {
   }, [fetchForms, fetchProjects, fetchClients])
 
   async function openForm(form: OnboardingForm) {
+    setFormDetailLoading(true)
     try {
       const res = await authFetch(`/api/onboarding/${form.id}`)
       if (!res.ok) throw new Error('Failed')
@@ -377,6 +379,8 @@ export function AdminOnboarding() {
       setDialogOpen(true)
     } catch {
       toast.error('Failed to load form details')
+    } finally {
+      setFormDetailLoading(false)
     }
   }
 
@@ -700,6 +704,12 @@ export function AdminOnboarding() {
       {/* Submissions Review Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+          {formDetailLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+          <>
           <DialogHeader className="shrink-0 px-6 pt-6 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-amber-500" />
@@ -891,6 +901,8 @@ export function AdminOnboarding() {
               })}
             </div>
           </ScrollArea>
+          </>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1482,12 +1494,12 @@ export function AdminProjects() {
 
       {/* Create Project Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>Add a new project to your workspace</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="overflow-y-auto flex-1 space-y-4 py-2">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input placeholder="Project name" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
@@ -1594,14 +1606,14 @@ export function AdminProjects() {
 
       {/* Manage Members Dialog */}
       <Dialog open={manageMembersOpen} onOpenChange={setManageMembersOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Manage Members</DialogTitle>
             <DialogDescription>
               Members of &quot;{manageProjectName}&quot;
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="overflow-y-auto flex-1 space-y-4 py-2">
             {membersLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -1727,6 +1739,7 @@ export function AdminTasks() {
       toast.success(`Status updated to ${STATUS_LABELS[newStatus] || newStatus}`)
     } catch {
       toast.error('Failed to update status')
+      fetchTasks(statusFilter)
     } finally {
       setInlineStatusSaving(null)
     }
@@ -3040,6 +3053,7 @@ export function AdminProfile() {
             <CardDescription>Update your account details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handleSave() }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
@@ -3047,7 +3061,7 @@ export function AdminProfile() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile(p => ({ ...p, email: e.target.value }))} />
+                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile(p => ({ ...p, email: e.target.value }))} required pattern="[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
@@ -3084,10 +3098,11 @@ export function AdminProfile() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button type="submit" disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
+            </form>
           </CardContent>
         </Card>
 
@@ -3263,7 +3278,7 @@ export function AdminTimeTracking() {
         setTimeEntries(data.timeEntries ?? [])
       }
     } catch {
-      // silent fail
+      toast.error('Failed to load time entries')
     } finally {
       setLoading(false)
     }

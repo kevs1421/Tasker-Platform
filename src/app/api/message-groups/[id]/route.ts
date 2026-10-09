@@ -8,10 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
 
     const group = await db.messageGroup.findUnique({
       where: { id },
@@ -24,8 +22,8 @@ export async function GET(
 
     if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
 
-    // Check membership
-    if (userId && !group.members.some((m) => m.userId === userId)) {
+    // Check membership (admins can see any group)
+    if (authed.role !== 'admin' && !group.members.some((m) => m.userId === authed.id)) {
       return NextResponse.json({ error: 'Not a member' }, { status: 403 })
     }
 
@@ -48,6 +46,20 @@ export async function PATCH(
       name?: string
       addMemberIds?: string[]
       removeMemberIds?: string[]
+    }
+
+    // Authorization: only group creator, group admin, or system admin can modify
+    const group = await db.messageGroup.findUnique({
+      where: { id },
+      include: { members: true },
+    })
+    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+
+    const isCreator = group.createdBy === user.id
+    const isGroupAdmin = group.members.some((m) => m.userId === user.id && m.role === 'admin')
+    const isSystemAdmin = user.role === 'admin'
+    if (!isCreator && !isGroupAdmin && !isSystemAdmin) {
+      return NextResponse.json({ error: 'Only group creator, group admin, or system admin can modify this group' }, { status: 403 })
     }
 
     if (name !== undefined) {
@@ -102,8 +114,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request)
+    const user = await requireAuth(request)
     const { id } = await params
+
+    const group = await db.messageGroup.findUnique({
+      where: { id },
+      include: { members: true },
+    })
+    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+
+    // Authorization: only group creator, group admin, or system admin can delete
+    const isCreator = group.createdBy === user.id
+    const isGroupAdmin = group.members.some((m) => m.userId === user.id && m.role === 'admin')
+    const isSystemAdmin = user.role === 'admin'
+    if (!isCreator && !isGroupAdmin && !isSystemAdmin) {
+      return NextResponse.json({ error: 'Only group creator, group admin, or system admin can delete this group' }, { status: 403 })
+    }
+
     await db.messageGroup.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {

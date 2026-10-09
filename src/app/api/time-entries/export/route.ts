@@ -12,7 +12,7 @@ function sanitizeCsv(value: string): string {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
@@ -20,11 +20,14 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get('dateTo')
     const role = searchParams.get('role')
 
+    // Non-admin users can only export their own entries
+    const effectiveUserId = authed.role === 'admin' ? userId : authed.id
+
     const where: Record<string, unknown> = { status: 'completed' }
 
     // Always scope to the specific user if provided (regardless of role param)
-    if (userId) {
-      where.userId = userId
+    if (effectiveUserId) {
+      where.userId = effectiveUserId
     }
 
     if (projectId && projectId !== 'all') {

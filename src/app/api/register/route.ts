@@ -17,6 +17,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
     }
 
+    // Validate role is one of the allowed values
+    const allowedRoles = ['admin', 'team', 'training', 'client']
+    const safeRole = allowedRoles.includes(role) ? role : 'client'
+
     const existing = await db.user.findUnique({ where: { email } })
     if (existing) {
       return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
@@ -27,7 +31,7 @@ export async function POST(request: NextRequest) {
         email,
         password: await hashPassword(password),
         name,
-        role: role || 'client',
+        role: safeRole,
         phone: phone || null,
         company: company || null,
       }

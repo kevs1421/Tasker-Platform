@@ -5,10 +5,10 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 // GET /api/message-groups?userId=xxx — List groups for a user
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+    // Non-admin users can only see their own groups
+    const userId = authed.role === 'admin' ? (searchParams.get('userId') || authed.id) : authed.id
 
     const groups = await db.messageGroup.findMany({
       where: { members: { some: { userId } } },
@@ -42,42 +42,39 @@ export async function GET(request: NextRequest) {
 // POST /api/message-groups — Create a new group
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request)
-    const { name, createdBy, memberIds } = await request.json()
-    if (!name || !createdBy || !Array.isArray(memberIds)) {
-      return NextResponse.json({ error: 'name, createdBy, memberIds required' }, { status: 400 })
+    const authed = await requireAuth(request)
+    const { name, memberIds } = await request.json()
+    if (!name || !Array.isArray(memberIds)) {
+      return NextResponse.json({ error: 'name and memberIds required' }, { status: 400 })
     }
 
     // ── Role-based group membership check ──────────────────────
     // Same rules as messaging: admin/team can add everyone,
     // training can add admin/team, client can add admin/team
-    const creator = await db.user.findUnique({ where: { id: createdBy }, select: { role: true } })
-    if (creator) {
-      const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
-        if (senderRole === 'admin' || senderRole === 'team') return true
-        if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
-        if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
-        return false
-      }
-      const members = await db.user.findMany({ where: { id: { in: memberIds } }, select: { id: true, role: true } })
-      for (const member of members) {
-        if (!canMessageRole(creator.role, member.role)) {
-          return NextResponse.json({ error: `Cannot add user with role '${member.role}' to group` }, { status: 403 })
-        }
+    const canMessageRole = (senderRole: string, receiverRole: string): boolean => {
+      if (senderRole === 'admin' || senderRole === 'team') return true
+      if (senderRole === 'training') return receiverRole === 'admin' || receiverRole === 'team'
+      if (senderRole === 'client') return receiverRole === 'admin' || receiverRole === 'team'
+      return false
+    }
+    const members = await db.user.findMany({ where: { id: { in: memberIds } }, select: { id: true, role: true } })
+    for (const member of members) {
+      if (!canMessageRole(authed.role, member.role)) {
+        return NextResponse.json({ error: `Cannot add user with role '${member.role}' to group` }, { status: 403 })
       }
     }
 
     // Creator must be a member
-    const allMemberIds = [...new Set([...memberIds, createdBy])]
+    const allMemberIds = [...new Set([...memberIds, authed.id])]
 
     const group = await db.messageGroup.create({
       data: {
         name,
-        createdBy,
+        createdBy: authed.id,
         members: {
           create: allMemberIds.map((userId: string) => ({
             userId,
-            role: userId === createdBy ? 'admin' : 'member',
+            role: userId === authed.id ? 'admin' : 'member',
           })),
         },
       },

@@ -35,6 +35,7 @@ export function getStatusConfig(status: string) {
 
 export function formatDate(dateStr: string) {
   const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return '—'
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const day = String(d.getDate()).padStart(2, '0')
   return `${months[d.getMonth()]} ${day}, ${d.getFullYear()}`

@@ -4,7 +4,7 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const submissionId = searchParams.get('submissionId')
 
@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
 
     if (!submission) {
       return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
+    }
+
+    // Access control: admin can access any submission, client can only access their own
+    if (authed.role !== 'admin' && submission.clientId !== authed.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     let parsedResponses: Record<string, string> = {}

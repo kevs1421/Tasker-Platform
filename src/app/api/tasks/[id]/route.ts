@@ -34,13 +34,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth(req)
-    // Training users cannot update tasks
+    // Training and client users cannot update tasks
     if (user.role === 'training') {
       return NextResponse.json({ error: 'Training users cannot update tasks' }, { status: 403 })
+    }
+    if (user.role === 'client') {
+      return NextResponse.json({ error: 'Client users cannot update tasks' }, { status: 403 })
     }
     const { id } = await params
     const body = await req.json()
     const { title, description, status, priority, dueDate, tags } = body
+
+    // Non-admin users need project membership to modify tasks
+    if (user.role !== 'admin') {
+      const existingTask = await db.task.findUnique({ where: { id }, select: { projectId: true } })
+      if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      const membership = await db.projectMember.findUnique({
+        where: { projectId_userId: { projectId: existingTask.projectId, userId: user.id } }
+      })
+      if (!membership) return NextResponse.json({ error: 'Not a member of this project' }, { status: 403 })
+    }
 
     const task = await db.task.update({
       where: { id },
@@ -67,13 +80,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth(req)
-    // Training users cannot delete tasks — always check authenticated user's role
+    // Training and client users cannot delete tasks
     if (user.role === 'training') {
       return NextResponse.json({ error: 'Training users cannot delete tasks' }, { status: 403 })
+    }
+    if (user.role === 'client') {
+      return NextResponse.json({ error: 'Client users cannot delete tasks' }, { status: 403 })
     }
     const { id } = await params
 
     const task = await db.task.findUnique({ where: { id } })
+    if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Non-admin users need project membership to delete tasks
+    if (user.role !== 'admin') {
+      const membership = await db.projectMember.findUnique({
+        where: { projectId_userId: { projectId: task.projectId, userId: user.id } }
+      })
+      if (!membership) return NextResponse.json({ error: 'Not a member of this project' }, { status: 403 })
+    }
     await db.task.delete({ where: { id } })
     if (task) await db.activityLog.create({ data: { action: 'task_deleted', details: `Deleted "${task.title}"`, userId: user.id, projectId: task.projectId, taskId: task.id } })
     return NextResponse.json({ success: true })

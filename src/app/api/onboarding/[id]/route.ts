@@ -65,8 +65,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { action, ...data } = body
 
     if (action === 'saveDraft' || action === 'submit') {
-      // Client saves draft or submits onboarding — no admin required
+      // Client saves draft or submits onboarding — require auth
+      const authed = await requireAuth(req)
       const { formId, clientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
+
+      // For client role, verify clientId matches authenticated user
+      if (authed.role === 'client' && clientId !== authed.id) {
+        return NextResponse.json({ error: 'You can only submit your own onboarding' }, { status: 403 })
+      }
 
       const existingSubmission = await db.onboarding.findUnique({ where: { id } })
 

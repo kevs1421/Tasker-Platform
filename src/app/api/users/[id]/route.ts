@@ -12,6 +12,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       select: { id: true, email: true, name: true, phone: true, company: true, avatar: true, role: true, status: true, createdAt: true, updatedAt: true, _count: { select: { assignedTasks: true, createdTasks: true, sentMessages: true } } }
     })
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    // Non-admin users can only view their own profile
+    if (auth.id !== id && auth.role !== 'admin') {
+      return NextResponse.json({ error: 'You can only view your own profile' }, { status: 403 })
+    }
     return NextResponse.json({ user })
   } catch (error) {
     return handleApiError(error)

@@ -4,7 +4,7 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth(request)
+    const authed = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
@@ -13,11 +13,14 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
+    // Non-admin users can only see their own entries
+    const effectiveUserId = authed.role === 'admin' ? userId : authed.id
+
     // Check for any active timer (timed_in status)
     const activeParam = searchParams.get('active')
     if (activeParam === 'true') {
       const activeEntry = await db.timeEntry.findFirst({
-        where: { status: 'timed_in', userId: userId || undefined },
+        where: { status: 'timed_in', userId: effectiveUserId || undefined },
         include: {
           user: { select: { id: true, name: true, avatar: true, role: true } },
           project: { select: { id: true, name: true, color: true } },
@@ -29,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, unknown> = {}
-    if (userId) where.userId = userId
+    if (effectiveUserId) where.userId = effectiveUserId
     if (projectId) where.projectId = projectId
     if (dateFrom || dateTo) {
       where.date = {}

@@ -85,7 +85,7 @@ export function IncomingCallOverlay({
           </button>
           <button
             onClick={onAccept}
-            className="h-14 w-14 rounded-full bg-emerald-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg animate-pulse"
+            className="h-14 w-14 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-lg animate-pulse"
           >
             <Phone className="h-6 w-6" />
           </button>

@@ -5,8 +5,16 @@ import { requireAuth, requireAdmin, handleApiError } from '@/lib/api-auth'
 // GET - list members of a project
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth(req)
+    const authed = await requireAuth(req)
     const { id } = await params
+
+    // Non-admin users can only see members of projects they are members of
+    if (authed.role !== 'admin') {
+      const membership = await db.projectMember.findUnique({
+        where: { projectId_userId: { projectId: id, userId: authed.id } }
+      })
+      if (!membership) return NextResponse.json({ error: 'Not a member of this project' }, { status: 403 })
+    }
     const members = await db.projectMember.findMany({
       where: { projectId: id },
       include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true, status: true } } },

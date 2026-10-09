@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { OnboardingForm, Onboarding } from '@/types'
 import { formatRelativeTime } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
+import { formatFileSize } from '@/lib/format'
 import { authFetch } from '@/lib/client-fetch'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -122,12 +123,6 @@ function FileUploadZone({
     if (f) handleFile(f)
   }
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   return (
     <div className="space-y-2">
       <Label className="text-sm font-medium">
@@ -140,7 +135,7 @@ function FileUploadZone({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{file.originalName}</p>
-            <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
+            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
           </div>
           <Button
             type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"

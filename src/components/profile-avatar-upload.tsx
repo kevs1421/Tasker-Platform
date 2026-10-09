@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { Camera, Loader2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { getInitials } from '@/features/route-guard'
 import { cn } from '@/lib/utils'
@@ -64,12 +65,11 @@ export function ProfileAvatarUpload({ userId, name, avatar, size = 'md', onAvata
         body: formData,
       })
 
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Upload failed')
       }
 
-      const data = await res.json()
       setPreview(data.avatar)
       onAvatarChange?.(data.avatar)
       toast.success('Profile image updated')
@@ -124,7 +124,21 @@ export function ProfileAvatarUpload({ userId, name, avatar, size = 'md', onAvata
         ) : currentAvatar ? (
           <div className="flex items-center gap-1">
             <Camera className={cn(cameraSize[size], 'text-white')} />
-            <Trash2 className={cn(cameraSize[size], 'text-white')} onClick={(e) => { e.stopPropagation(); handleRemove() }} />
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Trash2 className={cn(cameraSize[size], 'text-white')} onClick={(e) => e.stopPropagation()} />
+              </AlertDialogTrigger>
+              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove Avatar</AlertDialogTitle>
+                  <AlertDialogDescription>Are you sure you want to remove your profile image?</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleRemove} className="bg-destructive text-white hover:bg-destructive/90">Remove</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         ) : (
           <Camera className={cn(cameraSize[size], 'text-white')} />
