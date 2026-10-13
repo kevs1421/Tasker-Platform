@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, Cell,
+  Legend, ResponsiveContainer,
 } from 'recharts'
 import { useAuthStore } from '@/stores/auth'
 import { authFetch } from '@/lib/client-fetch'
@@ -331,7 +331,8 @@ export function ClientProjects() {
       {projects.length > 0 && (() => {
         // Build bar chart data: one entry per project with task counts by status
         const barData = projects.map(project => ({
-          name: project.name,
+          name: project.name.length > 16 ? project.name.slice(0, 14) + '…' : project.name,
+          fullName: project.name,
           'To Do': project.taskStats?.todo || 0,
           'In Progress': project.taskStats?.in_progress || 0,
           'In Review': project.taskStats?.in_review || 0,
@@ -340,15 +341,13 @@ export function ClientProjects() {
           progress: project.progress ?? 0,
         }))
 
-        const maxTasks = Math.max(...barData.map(d => d.total), 1)
-
         // Custom tooltip
         const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
           if (!active || !payload?.length) return null
-          const item = barData.find(d => d.name === label)
+          const item = barData.find(d => d.name === label || d.fullName === label)
           return (
             <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
-              <p className="font-semibold mb-1.5">{label}</p>
+              <p className="font-semibold mb-1.5">{item?.fullName || label}</p>
               {payload.map((entry, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: entry.color }} />
@@ -373,29 +372,27 @@ export function ClientProjects() {
                   <BarChart3 className="w-4 h-4 text-primary" />
                   Project Progress
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">Overview of task progress across your projects</p>
+                <p className="text-sm text-muted-foreground">Task breakdown by status for each project</p>
               </CardHeader>
               <CardContent>
                 {barData.some(d => d.total > 0) ? (
-                  <div className="w-full" style={{ height: Math.max(180, barData.length * 60 + 40) }}>
+                  <div className="w-full" style={{ height: Math.max(220, 260) }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={barData}
-                        layout="vertical"
-                        margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
-                        barCategoryGap="25%"
+                        margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
+                        barCategoryGap="20%"
+                        barGap={2}
                       >
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                         <XAxis
-                          type="number"
-                          allowDecimals={false}
+                          dataKey="name"
                           tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
                           axisLine={{ stroke: 'var(--color-border)' }}
+                          tickLine={false}
                         />
                         <YAxis
-                          type="category"
-                          dataKey="name"
-                          width={90}
+                          allowDecimals={false}
                           tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
                           axisLine={false}
                           tickLine={false}
@@ -406,10 +403,10 @@ export function ClientProjects() {
                           iconSize={10}
                           wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
                         />
-                        <Bar dataKey="To Do" stackId="tasks" fill="#94a3b8" radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="In Progress" stackId="tasks" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="In Review" stackId="tasks" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="Done" stackId="tasks" fill="#10b981" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="To Do" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="In Progress" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="In Review" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Done" fill="#10b981" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -421,8 +418,8 @@ export function ClientProjects() {
                 {/* Per-project progress summary below chart */}
                 <div className="mt-4 space-y-2">
                   {barData.map((d) => (
-                    <div key={d.name} className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{d.name}</span>
+                    <div key={d.fullName} className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{d.fullName}</span>
                       <span className={cn(
                         'font-semibold',
                         d.progress >= 75 ? 'text-emerald-600 dark:text-emerald-400' :
