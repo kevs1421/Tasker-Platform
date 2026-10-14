@@ -91,7 +91,7 @@ export default function TechAILoginPage() {
         >
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30 backdrop-blur-md text-xs text-cyan-300 font-medium shadow-inner">
             <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-            <span>AI-Powered Project Intelligence</span>
+            <span>Yber Digitals Project Intelligence</span>
           </div>
           
           <h2 className="text-4xl font-extrabold tracking-tight leading-tight sm:text-5xl text-white drop-shadow-md">
@@ -140,7 +140,7 @@ export default function TechAILoginPage() {
             </motion.div>
             <h1 className="text-3xl font-bold tracking-tight">Sign In</h1>
             <p className="text-sm text-muted-foreground">
-              Enter your credentials to access your AI-powered workspace
+              Enter your credentials to access your Portal Workspace
             </p>
           </div>
 
