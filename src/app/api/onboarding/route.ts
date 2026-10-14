@@ -20,12 +20,39 @@ export async function GET(req: NextRequest) {
     // Also filter to only published forms for clients
     let where: Record<string, unknown> = {}
     if (clientId) {
-      // Find all projects this client is a member of
-      const clientProjects = await db.clientProject.findMany({
+      // Find all projects this client is a member of via BOTH tables:
+      // 1. ClientProject junction table (explicit link)
+      // 2. ProjectMember table (fallback for clients added as project members)
+      const clientProjectLinks = await db.clientProject.findMany({
         where: { clientId },
         select: { projectId: true },
       })
-      const projectIds = clientProjects.map((cp) => cp.projectId)
+      const memberLinks = await db.projectMember.findMany({
+        where: { userId: clientId },
+        select: { projectId: true },
+      })
+      const projectIds = [...new Set([
+        ...clientProjectLinks.map((cp) => cp.projectId),
+        ...memberLinks.map((m) => m.projectId),
+      ])]
+
+      // Back-fill missing ClientProject links so future queries are consistent
+      const linkedIds = new Set(clientProjectLinks.map((cp) => cp.projectId))
+      const missingIds = [...new Set(memberLinks.map((m) => m.projectId))].filter((id) => !linkedIds.has(id))
+      if (missingIds.length > 0) {
+        try {
+          await Promise.all(
+            missingIds.map((projectId) =>
+              db.clientProject.upsert({
+                where: { clientId_projectId: { clientId, projectId } },
+                create: { clientId, projectId },
+                update: {},
+              })
+            )
+          )
+        } catch { /* ignore backfill errors */ }
+      }
+
       where = {
         status: 'published', // Clients can only see published forms
         OR: [

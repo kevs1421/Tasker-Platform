@@ -356,11 +356,12 @@ export default function ClientOnboardingWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'saveDraft',
+          clientId: user?.id,
           responsesJson: submissionData,
         }),
       })
     } catch { /* silent */ }
-  }, [mySubmission?.id, responses, files])
+  }, [mySubmission?.id, responses, files, user?.id])
 
   // Auto-save draft when navigating between steps
   const handleNextWithSave = () => {
@@ -402,6 +403,7 @@ export default function ClientOnboardingWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'submit',
+          clientId: user.id,
           responsesJson: submissionData,
         }),
       })

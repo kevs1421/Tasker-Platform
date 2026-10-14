@@ -25,15 +25,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!form) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     // If clientId is provided, verify the client has access to this form
-    // (either directly assigned or via project membership)
+    // (either directly assigned or via project membership through either table)
     if (clientId) {
       const directAccess = form.clientId === clientId
       if (!directAccess) {
+        // Check both ClientProject and ProjectMember tables for access
         const projectAccess = await db.clientProject.findUnique({
           where: { clientId_projectId: { clientId, projectId: form.projectId } }
         })
-        if (!projectAccess) {
+        const memberAccess = await db.projectMember.findUnique({
+          where: { projectId_userId: { projectId: form.projectId, userId: clientId } }
+        })
+        if (!projectAccess && !memberAccess) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        }
+        // Back-fill ClientProject link if found via ProjectMember but not ClientProject
+        if (!projectAccess && memberAccess) {
+          try {
+            await db.clientProject.upsert({
+              where: { clientId_projectId: { clientId, projectId: form.projectId } },
+              create: { clientId, projectId: form.projectId },
+              update: {},
+            })
+          } catch { /* ignore backfill errors */ }
         }
       }
 
@@ -67,11 +81,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (action === 'saveDraft' || action === 'submit') {
       // Client saves draft or submits onboarding — require auth
       const authed = await requireAuth(req)
-      const { formId, clientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
+      const { formId, clientId: bodyClientId, responsesJson } = data as { formId?: string; clientId?: string; responsesJson?: string }
+
+      // Derive clientId: use body value if provided, otherwise use authenticated user's id
+      const clientId = bodyClientId || authed.id
 
       // For client role, verify clientId matches authenticated user
       if (authed.role === 'client' && clientId !== authed.id) {
         return NextResponse.json({ error: 'You can only submit your own onboarding' }, { status: 403 })
+      }
+
+      // For client role, verify the submission belongs to them (prevent IDOR)
+      if (authed.role === 'client') {
+        const submission = await db.onboarding.findUnique({ where: { id }, select: { clientId: true } })
+        if (submission && submission.clientId !== authed.id) {
+          return NextResponse.json({ error: 'You can only submit your own onboarding' }, { status: 403 })
+        }
       }
 
       const existingSubmission = await db.onboarding.findUnique({ where: { id } })
