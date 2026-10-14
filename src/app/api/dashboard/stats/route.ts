@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (authed.role === 'client') {
       const clientId = userId || authed.id
 
-      // Get all projects visible to this client (via ClientProject or ProjectMember)
+      // Get all projects visible to this client (via ClientProject, ProjectMember, or approved Onboarding)
       const clientProjectLinks = await db.clientProject.findMany({
         where: { clientId },
         select: { projectId: true },
@@ -21,14 +21,19 @@ export async function GET(request: NextRequest) {
         where: { userId: clientId },
         select: { projectId: true },
       })
+      const approvedOnboardings = await db.onboarding.findMany({
+        where: { clientId, status: 'approved' },
+        select: { form: { select: { projectId: true } } },
+      })
       const allProjectIds = [...new Set([
         ...clientProjectLinks.map(l => l.projectId),
         ...memberLinks.map(m => m.projectId),
+        ...approvedOnboardings.map(o => o.form.projectId).filter(Boolean),
       ])]
 
       // Back-fill missing ClientProject links
       const linkedIds = new Set(clientProjectLinks.map(l => l.projectId))
-      const missingIds = [...new Set(memberLinks.map(m => m.projectId))].filter(id => !linkedIds.has(id))
+      const missingIds = allProjectIds.filter(id => !linkedIds.has(id))
       if (missingIds.length > 0) {
         try {
           await Promise.all(

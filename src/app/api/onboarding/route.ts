@@ -20,9 +20,10 @@ export async function GET(req: NextRequest) {
     // Also filter to only published forms for clients
     let where: Record<string, unknown> = {}
     if (clientId) {
-      // Find all projects this client is a member of via BOTH tables:
+      // Find all projects this client is a member of via THREE sources:
       // 1. ClientProject junction table (explicit link)
       // 2. ProjectMember table (fallback for clients added as project members)
+      // 3. Approved Onboarding submissions (Onboarding → OnboardingForm → Project)
       const clientProjectLinks = await db.clientProject.findMany({
         where: { clientId },
         select: { projectId: true },
@@ -31,14 +32,19 @@ export async function GET(req: NextRequest) {
         where: { userId: clientId },
         select: { projectId: true },
       })
+      const approvedOnboardings = await db.onboarding.findMany({
+        where: { clientId, status: 'approved' },
+        select: { form: { select: { projectId: true } } },
+      })
       const projectIds = [...new Set([
         ...clientProjectLinks.map((cp) => cp.projectId),
         ...memberLinks.map((m) => m.projectId),
+        ...approvedOnboardings.map((o) => o.form.projectId).filter(Boolean),
       ])]
 
       // Back-fill missing ClientProject links so future queries are consistent
       const linkedIds = new Set(clientProjectLinks.map((cp) => cp.projectId))
-      const missingIds = [...new Set(memberLinks.map((m) => m.projectId))].filter((id) => !linkedIds.has(id))
+      const missingIds = projectIds.filter((id) => !linkedIds.has(id))
       if (missingIds.length > 0) {
         try {
           await Promise.all(

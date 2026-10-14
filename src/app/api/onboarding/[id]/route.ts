@@ -25,22 +25,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!form) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     // If clientId is provided, verify the client has access to this form
-    // (either directly assigned or via project membership through either table)
+    // (either directly assigned, via project membership, or via approved onboarding)
     if (clientId) {
       const directAccess = form.clientId === clientId
       if (!directAccess) {
-        // Check both ClientProject and ProjectMember tables for access
+        // Check ClientProject, ProjectMember, and approved Onboarding tables for access
         const projectAccess = await db.clientProject.findUnique({
           where: { clientId_projectId: { clientId, projectId: form.projectId } }
         })
         const memberAccess = await db.projectMember.findUnique({
           where: { projectId_userId: { projectId: form.projectId, userId: clientId } }
         })
-        if (!projectAccess && !memberAccess) {
+        const onboardingAccess = await db.onboarding.findFirst({
+          where: { clientId, status: 'approved', formId: form.id },
+          select: { id: true },
+        })
+        if (!projectAccess && !memberAccess && !onboardingAccess) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
-        // Back-fill ClientProject link if found via ProjectMember but not ClientProject
-        if (!projectAccess && memberAccess) {
+        // Back-fill ClientProject link if found via other sources but not ClientProject
+        if (!projectAccess && (memberAccess || onboardingAccess)) {
           try {
             await db.clientProject.upsert({
               where: { clientId_projectId: { clientId, projectId: form.projectId } },
@@ -146,6 +150,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         data: { status: reviewStatus, reviewNotes: reviewNotes || null, reviewedBy, reviewedAt: new Date(), updatedAt: new Date() },
         include: { form: true, client: { select: { id: true, name: true } }, reviewer: { select: { id: true, name: true } } }
       })
+
+      // When onboarding is APPROVED, auto-link the client to the project
+      // so the project becomes visible in their client portal.
+      // This creates both ClientProject (for portal visibility) and
+      // ProjectMember (for general project membership) links.
+      if (reviewStatus === 'approved' && updated.form.projectId && updated.clientId) {
+        try {
+          await db.clientProject.upsert({
+            where: { clientId_projectId: { clientId: updated.clientId, projectId: updated.form.projectId } },
+            create: { clientId: updated.clientId, projectId: updated.form.projectId },
+            update: {},
+          })
+        } catch { /* ignore ClientProject link errors */ }
+        try {
+          await db.projectMember.upsert({
+            where: { projectId_userId: { projectId: updated.form.projectId, userId: updated.clientId } },
+            create: { projectId: updated.form.projectId, userId: updated.clientId, role: 'member' },
+            update: {},
+          })
+        } catch { /* ignore ProjectMember link errors */ }
+      }
+
       await db.activityLog.create({ data: { action: 'onboarding_reviewed', details: `${reviewStatus === 'approved' ? 'Approved' : 'Rejected'} onboarding from ${updated.client.name}`, userId: reviewedBy } })
       return NextResponse.json({ onboarding: updated })
     }

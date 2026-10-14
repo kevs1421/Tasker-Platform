@@ -6,8 +6,12 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
  * GET /api/client/projects/:id?clientId=xxx
  *
  * Returns a single project ONLY if it belongs to the requesting client
- * via either the ClientProject join table OR the ProjectMember table.
- * Also back-fills a missing ClientProject link if found via ProjectMember.
+ * via one of THREE sources:
+ *   1. ClientProject junction table (explicit link)
+ *   2. ProjectMember table (if the client is a project member)
+ *   3. Approved Onboarding submission (Onboarding → OnboardingForm → Project)
+ *
+ * Also back-fills a missing ClientProject link if found via other sources.
  * Prevents URL/project ID bypass.
  */
 export async function GET(
@@ -40,22 +44,36 @@ export async function GET(
         select: { id: true }
       })
       isMember = !!memberLink
-
-      // Back-fill ClientProject link if found via ProjectMember
-      if (isMember) {
-        try {
-          await db.clientProject.upsert({
-            where: { clientId_projectId: { clientId, projectId: id } },
-            create: { clientId, projectId: id },
-            update: {},
-          })
-        } catch {
-          // Ignore backfill errors — the response is still correct
-        }
-      }
     }
 
-    const hasAccess = !!link || isMember
+    // Check Source 3: Approved onboarding submission for this project
+    let hasApprovedOnboarding = false
+    if (!link && !isMember) {
+      const approvedSub = await db.onboarding.findFirst({
+        where: {
+          clientId,
+          status: 'approved',
+          form: { projectId: id },
+        },
+        select: { id: true },
+      })
+      hasApprovedOnboarding = !!approvedSub
+    }
+
+    const hasAccess = !!link || isMember || hasApprovedOnboarding
+
+    // Back-fill ClientProject link if found via other sources but not ClientProject
+    if (hasAccess && !link) {
+      try {
+        await db.clientProject.upsert({
+          where: { clientId_projectId: { clientId, projectId: id } },
+          create: { clientId, projectId: id },
+          update: {},
+        })
+      } catch {
+        // Ignore backfill errors — the response is still correct
+      }
+    }
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Project not found or access denied' }, { status: 404 })

@@ -4,7 +4,7 @@ import { requireAuth, handleApiError } from '@/lib/api-auth'
 
 /**
  * Ensure ClientProject links exist for all projects where this client
- * is a ProjectMember. Uses upsert to handle existing records gracefully.
+ * has access. Uses upsert to handle existing records gracefully.
  */
 async function ensureClientProjectLinks(clientId: string, projectIds: string[]) {
   await Promise.all(
@@ -23,13 +23,13 @@ async function ensureClientProjectLinks(clientId: string, projectIds: string[]) 
  *
  * Returns the projects a client can see in their portal.
  *
- * We use TWO sources to find projects:
+ * We use THREE sources to find projects:
  *   1. ClientProject junction table (explicit link)
  *   2. ProjectMember table (if the client is a project member)
+ *   3. Approved Onboarding submissions (Onboarding → OnboardingForm → Project)
  *
  * This ensures clients always see their assigned projects even if the
- * ClientProject link wasn't created (e.g., added via member management
- * before auto-linking was added). Any missing ClientProject links are
+ * ClientProject link wasn't created. Any missing ClientProject links are
  * back-filled automatically so future queries are consistent.
  */
 export async function GET(request: NextRequest) {
@@ -62,11 +62,27 @@ export async function GET(request: NextRequest) {
     })
     const memberProjectIds = new Set(memberLinks.map(m => m.projectId))
 
+    // ── Source 3: Approved Onboarding submissions (Onboarding → OnboardingForm → Project) ──
+    // This ensures clients who completed onboarding see their project even if
+    // the ClientProject/ProjectMember links weren't created yet
+    const approvedOnboardings = await db.onboarding.findMany({
+      where: {
+        clientId,
+        status: 'approved',
+      },
+      select: {
+        form: { select: { projectId: true } },
+      },
+    })
+    const onboardingProjectIds = new Set(
+      approvedOnboardings.map(o => o.form.projectId).filter(Boolean)
+    )
+
     // Merge: all project IDs the client should see
-    const allProjectIds = new Set([...linkedProjectIds, ...memberProjectIds])
+    const allProjectIds = new Set([...linkedProjectIds, ...memberProjectIds, ...onboardingProjectIds])
 
     // Back-fill missing ClientProject links so future queries are consistent
-    const missingIds = [...memberProjectIds].filter(id => !linkedProjectIds.has(id))
+    const missingIds = [...allProjectIds].filter(id => !linkedProjectIds.has(id))
     if (missingIds.length > 0) {
       try {
         await ensureClientProjectLinks(clientId, missingIds)
